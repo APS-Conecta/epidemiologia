@@ -55,18 +55,32 @@ $degraded = static function (array $feed): void {
 };
 ?>
 
+<!--
+	role="presentation" on each <li>: a tablist must *own* its tabs, and an
+	intervening listitem breaks that — a screen reader announces a tab list with no
+	tabs and loses "2 de 4". Marking the li presentational restores the ownership
+	without touching the layout the list styling gives us.
+
+	Only the selected tab is in the tab sequence; js/main.js moves that as the
+	selection moves. Otherwise Tab walks all four *and* the arrow keys do, which is
+	two conflicting models at once.
+-->
 <div id="app-navigation">
 	<ul role="tablist" aria-label="Secciones de Epidemiología">
-		<li><button class="epi-tab" role="tab" id="t-alertas" aria-controls="p-alertas" aria-selected="true">
+		<li role="presentation"><button class="epi-tab" role="tab" id="t-alertas"
+				aria-controls="p-alertas" aria-selected="true" tabindex="0">
 			Alertas vigentes <span class="epi-count"><?php p(count($alerts['items'])); ?></span>
 		</button></li>
-		<li><button class="epi-tab" role="tab" id="t-informe" aria-controls="p-informe" aria-selected="false">
+		<li role="presentation"><button class="epi-tab" role="tab" id="t-informe"
+				aria-controls="p-informe" aria-selected="false" tabindex="-1">
 			Informe semanal
 		</button></li>
-		<li><button class="epi-tab" role="tab" id="t-tablero" aria-controls="p-tablero" aria-selected="false">
+		<li role="presentation"><button class="epi-tab" role="tab" id="t-tablero"
+				aria-controls="p-tablero" aria-selected="false" tabindex="-1">
 			Tablero MINSAL
 		</button></li>
-		<li><button class="epi-tab" role="tab" id="t-epivigila" aria-controls="p-epivigila" aria-selected="false">
+		<li role="presentation"><button class="epi-tab" role="tab" id="t-epivigila"
+				aria-controls="p-epivigila" aria-selected="false" tabindex="-1">
 			EPIVIGILA
 		</button></li>
 	</ul>
@@ -75,7 +89,7 @@ $degraded = static function (array $feed): void {
 <div id="app-content">
 	<div id="app-content-wrapper" class="epi">
 
-		<section class="epi-pane" id="p-alertas" role="tabpanel" aria-labelledby="t-alertas">
+		<section class="epi-pane" id="p-alertas" role="tabpanel" tabindex="0" aria-labelledby="t-alertas">
 			<h2>Alertas epidemiológicas vigentes</h2>
 			<p class="epi-sub">Fuente: Departamento de Epidemiología, MINSAL · actualizado
 				<?php p($ago($alerts['fetched_at'])); ?></p>
@@ -106,7 +120,7 @@ $degraded = static function (array $feed): void {
 			</ul>
 		</section>
 
-		<section class="epi-pane" id="p-informe" role="tabpanel" aria-labelledby="t-informe" hidden>
+		<section class="epi-pane" id="p-informe" role="tabpanel" tabindex="0" aria-labelledby="t-informe" hidden>
 			<h2>Informe semanal de vigilancia ETI e IRAG</h2>
 			<p class="epi-sub">Fuente: Departamento de Epidemiología, MINSAL · actualizado
 				<?php p($ago($reports['fetched_at'])); ?></p>
@@ -138,7 +152,7 @@ $degraded = static function (array $feed): void {
 			<?php } ?>
 		</section>
 
-		<section class="epi-pane" id="p-tablero" role="tabpanel" aria-labelledby="t-tablero" hidden>
+		<section class="epi-pane" id="p-tablero" role="tabpanel" tabindex="0" aria-labelledby="t-tablero" hidden>
 			<h2>Tablero MINSAL · ETI e IRAG</h2>
 			<p class="epi-sub">El tablero oficial, incrustado. Lo mantiene MINSAL, no nosotros ·
 				tarda unos segundos en cargar · <strong>Total País</strong> y cada región se eligen
@@ -147,10 +161,11 @@ $degraded = static function (array $feed): void {
 			<!-- src is set by js/main.js when this tab is first opened: the report takes
 			     ~15-20 s to paint and nobody reading the alert list should wait for it. -->
 			<iframe class="epi-frame" title="Situación Epidemiológica Vigilancia ETI e IRAG"
-					data-src="<?php p($_['tablero']); ?>" loading="lazy"></iframe>
+					data-src="<?php p($_['tablero']); ?>" loading="lazy"
+					referrerpolicy="no-referrer" allowfullscreen></iframe>
 		</section>
 
-		<section class="epi-pane" id="p-epivigila" role="tabpanel" aria-labelledby="t-epivigila" hidden>
+		<section class="epi-pane" id="p-epivigila" role="tabpanel" tabindex="0" aria-labelledby="t-epivigila" hidden>
 			<h2>EPIVIGILA · Notificación de ENO</h2>
 			<p class="epi-sub">Un enlace al sistema oficial. No se incrusta, y aquí no se guarda nada.</p>
 

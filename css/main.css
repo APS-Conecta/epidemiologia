@@ -31,7 +31,7 @@
 	width: 100%;
 	padding: 10px 14px;
 	border: 0;
-	border-radius: var(--border-radius-element, 8px);
+	border-radius: var(--border-radius-element);
 	background: transparent;
 	color: var(--color-main-text);
 	font: inherit;
@@ -52,7 +52,7 @@
 .epi-count {
 	margin-left: auto;
 	padding: 1px 8px;
-	border-radius: 20px;
+	border-radius: var(--border-radius-pill);
 	background: var(--color-background-darker);
 	font-size: 12px;
 	font-weight: 700;
@@ -129,7 +129,7 @@
 	gap: 20px;
 	flex-wrap: wrap;
 	padding: 20px 22px;
-	border-radius: var(--border-radius-large, 12px);
+	border-radius: var(--border-radius-container);
 	background: var(--color-primary-element);
 	color: var(--color-primary-element-text);
 }
@@ -177,7 +177,7 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 9px 16px;
-	border-radius: var(--border-radius-element, 8px);
+	border-radius: var(--border-radius-element);
 	background: var(--color-primary-element);
 	color: var(--color-primary-element-text);
 	font-weight: 700;
@@ -208,19 +208,24 @@
 .epi-qes {
 	padding: 16px 18px;
 	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large, 12px);
+	border-radius: var(--border-radius-container);
 	background: var(--color-background-hover);
 	line-height: 1.6;
 }
 
+/* --color-warning is a pale cream *background* (#FFEEC5), not an orange. Using it
+   as the border painted a border lighter than its own fill — an invisible outline
+   on the one element that must not read as ordinary content. The saturated orange
+   is --color-element-warning (#BF7900). */
 .epi-aviso {
 	display: flex;
 	gap: 12px;
 	margin: 18px 0;
 	padding: 14px 16px;
-	border: 1px solid var(--color-warning, #e06f00);
-	border-radius: var(--border-radius-large, 12px);
-	background: var(--color-warning-hover, #fff8f0);
+	border: 1px solid var(--color-element-warning);
+	border-radius: var(--border-radius-container);
+	background: var(--color-warning);
+	color: var(--color-warning-text);
 	line-height: 1.55;
 }
 
@@ -239,6 +244,6 @@
 	height: 72vh;
 	min-height: 420px;
 	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large, 12px);
+	border-radius: var(--border-radius-container);
 	background: var(--color-main-background);
 }

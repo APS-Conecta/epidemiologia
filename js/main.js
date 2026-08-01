@@ -14,6 +14,9 @@
 		tabs.forEach(function (other) {
 			var on = other === tab
 			other.setAttribute('aria-selected', on ? 'true' : 'false')
+			// Roving tabindex: only the selected tab is in the tab sequence, so Tab
+			// leaves the widget instead of walking all four while the arrows also do.
+			other.tabIndex = on ? 0 : -1
 			document.getElementById(other.getAttribute('aria-controls')).hidden = !on
 		})
 
@@ -56,7 +59,7 @@
 	// "sarampión". MinsalRepository::fold() does the same for global search — two
 	// languages, so the duplication cannot be removed, only kept honest.
 	function fold(text) {
-		return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+		return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 	}
 
 	rows.forEach(function (row) {
