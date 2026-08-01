@@ -1,3 +1,5 @@
-# PHPUnit is fetched by scripts/test.sh, not vendored.
+# PHPUnit y el generador de OpenAPI se descargan a tools/, no se vendorizan.
 /tools/
 /.phpunit.cache/
+# El bundle de js/ SÍ se versiona; las dependencias de node no.
+/node_modules/

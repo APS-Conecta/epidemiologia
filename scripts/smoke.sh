@@ -20,6 +20,10 @@ CONTAINER="${EPI_CONTAINER:-apsconecta-gestion-nextcloud-1}"
 USER_ID="${EPI_USER:-admin}"
 APP=epidemiologia
 BASE="http://localhost/apps/$APP"
+# OCS: the contract other apps and the future dashboard read. The header is not
+# optional — without it Nextcloud answers 412 before reaching the controller.
+OCS="http://localhost/ocs/v2.php/apps/$APP/api/v1"
+OCSH="OCS-APIRequest: true"
 TOKEN_NAME=epi-smoke
 
 occ() { docker exec -u www-data "$CONTAINER" php occ "$@" 2>/dev/null; }
@@ -71,20 +75,38 @@ if [ -z "$TOKEN" ]; then
 	exit 1
 fi
 
-alerts="$(web "$BASE/api/v1/alerts")"
+alerts="$(web -H "$OCSH" "$OCS/alerts?format=json")"
 # grep -c counts matching *lines*, and the whole payload is one line.
 count="$(printf '%s' "$alerts" | grep -o '"title"' | wc -l | tr -d ' ')"
 [ "$count" -ge 1 ] \
-	&& pass "/api/v1/alerts responde con $count alertas" \
-	|| fail "/api/v1/alerts no devolvió ninguna alerta"
+	&& pass "/ocs/…/api/v1/alerts responde con $count alertas" \
+	|| fail "/ocs/…/api/v1/alerts no devolvió ninguna alerta"
 
 expect "$alerts" '"degraded":false' \
 	"los datos vienen de MINSAL sin degradación" \
 	"el feed está degradado — MINSAL no respondió, o dejó de parsearse"
 
-expect "$(web "$BASE/api/v1/reports")" '"se"' \
-	"/api/v1/reports expone la semana epidemiológica" \
-	"/api/v1/reports no expone la semana epidemiológica"
+expect "$(web -H "$OCSH" "$OCS/reports?format=json")" '"se"' \
+	"/ocs/…/api/v1/reports expone la semana epidemiológica" \
+	"/ocs/…/api/v1/reports no expone la semana epidemiológica"
+
+# The envelope is the contract, not an implementation detail: a consumer parses
+# ocs.data, so losing it is a breaking change even if the payload is intact.
+expect "$alerts" '"ocs"' \
+	"la respuesta viene envuelta en el sobre OCS" \
+	"la respuesta NO trae el sobre OCS"
+
+# Guards the header requirement itself. 412 is Nextcloud refusing before the
+# controller runs; a 200 here would mean the OCS protection is not in effect.
+expect "$(web -o /dev/null -w '%{http_code}' "$OCS/alerts?format=json")" '412' \
+	"sin la cabecera OCS-APIRequest la API responde 412" \
+	"sin la cabecera OCS-APIRequest la API NO responde 412"
+
+# The old plain-Controller route is gone on purpose. If it answers again, some
+# routes.php came back and we have two contracts.
+expect "$(web -o /dev/null -w '%{http_code}' "$BASE/api/v1/alerts")" '404' \
+	"la ruta antigua /apps/…/api/v1 ya no existe" \
+	"la ruta antigua sigue respondiendo — hay dos contratos"
 
 # The navigation endpoint reports an icon path whether or not the file exists, so
 # it proves nothing. What matters is that the path actually serves an SVG: without

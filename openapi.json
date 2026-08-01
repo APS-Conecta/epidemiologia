@@ -1,0 +1,293 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "epidemiologia",
+        "version": "0.0.1",
+        "description": "Alertas, informes IRAG y tablero del MINSAL",
+        "license": {
+            "name": "agpl"
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "basic_auth": {
+                "type": "http",
+                "scheme": "basic"
+            },
+            "bearer_auth": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "OCSMeta": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "statuscode"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "string"
+                    },
+                    "statuscode": {
+                        "type": "integer"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "totalitems": {
+                        "type": "string"
+                    },
+                    "itemsperpage": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    },
+    "paths": {
+        "/ocs/v2.php/apps/epidemiologia/api/v1/alerts": {
+            "get": {
+                "operationId": "api-alerts",
+                "summary": "Alertas epidemiológicas vigentes del MINSAL",
+                "tags": [
+                    "api"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Las alertas vigentes, de más reciente a más antigua",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "updated_at",
+                                                        "fetched_at",
+                                                        "degraded",
+                                                        "items"
+                                                    ],
+                                                    "properties": {
+                                                        "updated_at": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "fetched_at": {
+                                                            "type": "integer",
+                                                            "format": "int64",
+                                                            "nullable": true
+                                                        },
+                                                        "degraded": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "items": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/epidemiologia/api/v1/reports": {
+            "get": {
+                "operationId": "api-reports",
+                "summary": "Informes semanales de vigilancia ETI e IRAG",
+                "tags": [
+                    "api"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Los informes del año en curso, con la semana epidemiológica en `se`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "updated_at",
+                                                        "fetched_at",
+                                                        "degraded",
+                                                        "items"
+                                                    ],
+                                                    "properties": {
+                                                        "updated_at": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "fetched_at": {
+                                                            "type": "integer",
+                                                            "format": "int64",
+                                                            "nullable": true
+                                                        },
+                                                        "degraded": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "items": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "api",
+            "description": "The contract other apps read — and, once it has a home, the front webpage. OCSController rather than a plain Controller because the manual calls it the state-of-the-art surface and, more concretely, because a browser on another origin cannot be served any other way: enabling CORS on a plain Controller is \"generally and highly discouraged\", since the CSRF check then fails unless security is disabled. The planned dashboard is exactly that case. Consumers send `OCS-APIRequest: true` and get the OCS envelope back: GET /ocs/v2.php/apps/epidemiologia/api/v1/alerts { \"ocs\": { \"meta\": {…}, \"data\": { \"updated_at\": …, \"degraded\": false, \"items\": [ … ] } } } No #[CORS] yet: it needs a concrete origin and the dashboard does not have one. Adding it blind would widen the surface for nobody."
+        }
+    ]
+}

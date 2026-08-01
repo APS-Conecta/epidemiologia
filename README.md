@@ -32,31 +32,51 @@ Un *proxy* de lectura con caché, sin base de datos:
 
 ## Para otras apps
 
-Dos rutas JSON de solo lectura, autenticadas con la sesión de Nextcloud:
+Dos rutas OCS de solo lectura. **La cabecera `OCS-APIRequest` no es opcional**: sin ella Nextcloud
+responde `412` antes de llegar al controlador.
 
 ```
-GET /apps/epidemiologia/api/v1/alerts
-GET /apps/epidemiologia/api/v1/reports
+GET /ocs/v2.php/apps/epidemiologia/api/v1/alerts?format=json
+GET /ocs/v2.php/apps/epidemiologia/api/v1/reports?format=json
+OCS-APIRequest: true
 
-{ "updated_at": "2026-07-31T22:15:04",
-  "degraded": false,
-  "items": [ { "title": "OFICIO CP N°15844 / 2026 …", "url": "https://…pdf", "year": "2026" } ] }
+{ "ocs": { "meta": { "status": "ok", "statuscode": 200 },
+           "data": { "updated_at": "2026-07-31T22:15:04",
+                     "degraded": false,
+                     "items": [ { "title": "OFICIO CP N°15844 / 2026 …",
+                                  "url": "https://…pdf", "year": "2026" } ] } } }
 ```
 
-Las alertas también traen `month`; los informes, además, `se` (semana epidemiológica).
+Los datos van dentro de `ocs.data`. Con `format=xml` sale lo mismo en XML, gratis. Las alertas
+traen además `month`; los informes, `se` (semana epidemiológica).
 
-**Es un contrato**: los nombres de los campos no cambian sin subir la versión de la ruta. Conviene
-leer por aquí y no directamente desde MINSAL, por la caché compartida, por el formato ya parseado y
-por el indicador `degraded`.
+**El contrato está en [`openapi.json`](openapi.json)**, generado desde los atributos y los
+docblocks del controlador con `scripts/openapi.sh` — nunca a mano, porque una especificación
+escrita a mano se separa del código en silencio, que es peor que no tener ninguna.
 
-No hay ruta pública ni CORS: hoy los consumidores viven dentro de este Nextcloud. Uno externo
-necesitaría además un límite de tasa, y esa es una decisión para cuando exista.
+Conviene leer por aquí y no directamente desde MINSAL: caché compartida, formato ya parseado, y el
+indicador `degraded`.
+
+### Por qué OCS y no una ruta normal
+
+El manual llama a `OCSController` el método actual, pero la razón concreta es la página web / centro
+de información que viene: **un navegador en otro origen no se puede servir de otra forma**. Activar
+CORS sobre un `Controller` normal está *«generalmente y encarecidamente desaconsejado»* — la
+comprobación CSRF falla salvo que se desactive la seguridad.
+
+Todavía **no hay `#[CORS]`**: hace falta un origen concreto y el tablero aún no tiene uno. Añadirlo
+a ciegas ampliaría la superficie para nadie. Sí hay límite de tasa: 120 peticiones por minuto y
+usuario, que es un techo contra un consumidor desbocado, no una cuota.
+
+> La ruta anterior, `/apps/epidemiologia/api/v1/…`, **ya no existe**. No está obsoleta: se fue.
+> No la consumía nadie todavía, y mantener dos contratos habría costado más que romper uno vacío.
 
 ## Desarrollo
 
 ```sh
 scripts/test.sh     # suite unitaria dentro del contenedor (PHPUnit 11)
 scripts/smoke.sh    # verifica el cableado contra la instancia en marcha
+scripts/openapi.sh  # regenera openapi.json desde el controlador
 ```
 
 `scripts/test.sh` cubre lo único con lógica de verdad: el parseo, el orden, el año, la semana
@@ -74,6 +94,10 @@ MINSAL está caído en vez de que lo rompimos nosotros.
 - **`occ app:enable` sobre una app ya habilitada no registra el trabajo en segundo plano.** Si
   `smoke.sh` avisa de que falta, hay que hacer `occ app:disable` y luego `occ app:enable`.
 - **`opcache.revalidate_freq` es 60 s**, así que un cambio en PHP puede tardar un minuto en verse.
+- **Al añadir o cambiar rutas por atributos hay que reiniciar el contenedor.** `CachingRouter`
+  guarda la colección de rutas ya compilada **una hora** en la caché *local* (APCu), y APCu es por
+  SAPI: limpiarla desde `occ` no sirve, porque la CLI y la web no la comparten. El síntoma es un
+  `998 Invalid query` en OCS mientras `occ` lista la ruta tan tranquilo.
 - **No conviene canalizar `docker exec … | grep -q`**: `grep` corta la tubería al primer acierto, el
   escritor muere con SIGPIPE y, con `pipefail`, una comprobación correcta se reporta como fallo.
 

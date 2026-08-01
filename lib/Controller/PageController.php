@@ -7,12 +7,15 @@ namespace OCA\Epidemiologia\Controller;
 use OCA\Epidemiologia\AppInfo\Application;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 
+#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class PageController extends Controller {
 	/** Power BI's "Publish to web" host — the tablero. */
 	private const TABLERO_HOST = 'https://app.powerbi.com';
@@ -30,6 +33,7 @@ class PageController extends Controller {
 
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse {
 		$response = new TemplateResponse(Application::APP_ID, 'index', [
 			'alerts' => $this->repository->get(MinsalRepository::ALERTS),
