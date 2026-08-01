@@ -37,18 +37,31 @@ class Notifier implements INotifier {
 		}
 
 		$l = $this->l10nFactory->get(Application::APP_ID, $languageCode);
-		$feed = $notification->getSubjectParameters()['feed'] ?? '';
+		$params = $notification->getSubjectParameters();
+		$feed = $params['feed'] ?? '';
+		$days = (int)($params['days'] ?? 0);
 
 		$what = $feed === 'irag'
 			? $l->t('los informes semanales ETI/IRAG')
 			: $l->t('las alertas epidemiológicas vigentes');
 
+		// How long it has been failing is the whole reason ProbeJob backs off rather
+		// than filing this daily: the second and the thirtieth day are different news.
+		$since = $days > 0
+			? $l->n('Lleva %n día sin poder leerse.', 'Lleva %n días sin poder leerse.', $days)
+			: '';
+
 		return $notification
 			->setParsedSubject($l->t('Epidemiología: no se pudo leer %s desde MINSAL', [$what]))
-			->setParsedMessage($l->t(
+			->setParsedMessage(trim($since . ' ' . $l->t(
 				'La página de MINSAL cambió o no respondió, así que la lista mostrada puede estar '
 				. 'incompleta. Se sigue mostrando la última copia buena. Revisa el registro de la '
 				. 'instancia para ver qué falló.'
+			)))
+			// setIcon() rejects relative URLs. app-dark.svg is the unfilled variant —
+			// the notification tray is a light surface, unlike the app menu.
+			->setIcon($this->urls->getAbsoluteURL(
+				$this->urls->imagePath(Application::APP_ID, 'app-dark.svg')
 			))
 			->setLink($this->urls->linkToRouteAbsolute('epidemiologia.page.index'));
 	}
