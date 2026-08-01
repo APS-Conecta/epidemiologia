@@ -1,0 +1,3 @@
+# PHPUnit is fetched by scripts/test.sh, not vendored.
+/tools/
+/.phpunit.cache/

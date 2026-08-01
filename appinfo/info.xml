@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>epidemiologia</id>
+    <name>Epidemiología</name>
+    <summary>Alertas, informes IRAG y tablero del MINSAL</summary>
+    <description><![CDATA[
+Muestra dentro de la intranet la información epidemiológica que el MINSAL publica:
+las alertas epidemiológicas vigentes, el informe semanal de vigilancia ETI e IRAG,
+el tablero nacional, y el acceso a EPIVIGILA.
+
+Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
+no guarda datos en base de datos y no contiene información de pacientes.
+    ]]></description>
+    <version>0.1.0</version>
+    <licence>agpl</licence>
+    <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
+    <namespace>Epidemiologia</namespace>
+    <category>monitoring</category>
+    <dependencies>
+        <php min-version="8.1"/>
+        <nextcloud min-version="34" max-version="34"/>
+    </dependencies>
+    <background-jobs>
+        <job>OCA\Epidemiologia\BackgroundJob\ProbeJob</job>
+    </background-jobs>
+    <navigations>
+        <navigation>
+            <name>Epidemiología</name>
+            <route>epidemiologia.page.index</route>
+        </navigation>
+    </navigations>
+</info>
