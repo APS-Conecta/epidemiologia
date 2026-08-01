@@ -23,14 +23,17 @@ class Notifier implements INotifier {
 	) {
 	}
 
+	#[\Override]
 	public function getID(): string {
 		return Application::APP_ID;
 	}
 
+	#[\Override]
 	public function getName(): string {
 		return $this->l10nFactory->get(Application::APP_ID)->t('Epidemiología');
 	}
 
+	#[\Override]
 	public function prepare(INotification $notification, string $languageCode): INotification {
 		if ($notification->getApp() !== Application::APP_ID) {
 			throw new UnknownNotificationException();

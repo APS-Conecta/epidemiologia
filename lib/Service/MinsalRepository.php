@@ -79,9 +79,10 @@ class MinsalRepository {
 		// reads as "no hay alertas vigentes" — the most dangerous thing this app
 		// could do. So: leave the last good copy alone and say we are degraded.
 		if ($items === []) {
+			// No 'app' key: the injected LoggerInterface is already app-scoped —
+			// DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
 			$this->logger->warning('MINSAL devolvió 0 elementos para el feed {feed}', [
 				'feed' => $feed,
-				'app' => 'epidemiologia',
 			]);
 
 			return $this->present($stored, true);
@@ -284,10 +285,13 @@ class MinsalRepository {
 			]);
 			$pages = json_decode((string)$response->getBody(), true);
 		} catch (Throwable $e) {
-			$this->logger->warning('No se pudo contactar a MINSAL ({slug}): {message}', [
+			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
+			// checks isset($entry['exception']) and serialises the class, the trace and
+			// the previous chain. Passing getMessage() instead threw all of that away
+			// in exactly the case where the trace is what you need.
+			$this->logger->warning('No se pudo contactar a MINSAL ({slug})', [
 				'slug' => $slug,
-				'message' => $e->getMessage(),
-				'app' => 'epidemiologia',
+				'exception' => $e,
 			]);
 
 			return null;

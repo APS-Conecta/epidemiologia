@@ -35,14 +35,17 @@ class MinsalReachable implements ISetupCheck {
 	) {
 	}
 
+	#[\Override]
 	public function getCategory(): string {
 		return 'system';
 	}
 
+	#[\Override]
 	public function getName(): string {
 		return $this->l->t('Epidemiología: conexión con MINSAL');
 	}
 
+	#[\Override]
 	public function run(): SetupResult {
 		$broken = [];
 		foreach ([MinsalRepository::ALERTS, MinsalRepository::IRAG] as $feed) {

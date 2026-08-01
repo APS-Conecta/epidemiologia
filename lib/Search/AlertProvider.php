@@ -27,18 +27,22 @@ class AlertProvider implements IProvider {
 	) {
 	}
 
+	#[\Override]
 	public function getId(): string {
 		return Application::APP_ID . '-alerts';
 	}
 
+	#[\Override]
 	public function getName(): string {
 		return $this->l->t('Alertas epidemiológicas');
 	}
 
+	#[\Override]
 	public function getOrder(string $route, array $routeParameters): int {
 		return str_starts_with($route, Application::APP_ID . '.') ? -1 : 55;
 	}
 
+	#[\Override]
 	public function search(IUser $user, ISearchQuery $query): SearchResult {
 		$matches = array_slice($this->repository->search($query->getTerm()), 0, $query->getLimit());
 

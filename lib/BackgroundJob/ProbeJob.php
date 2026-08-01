@@ -68,6 +68,7 @@ class ProbeJob extends TimedJob {
 		$this->setTimeSensitivity(self::TIME_INSENSITIVE);
 	}
 
+	#[\Override]
 	protected function run($argument): void {
 		foreach ([MinsalRepository::ALERTS, MinsalRepository::IRAG] as $feed) {
 			if ($this->repository->probe($feed)) {
