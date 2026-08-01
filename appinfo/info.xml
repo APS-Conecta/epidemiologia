@@ -18,7 +18,12 @@ no guarda datos en base de datos y no contiene información de pacientes.
     <namespace>Epidemiologia</namespace>
     <category>monitoring</category>
     <dependencies>
-        <php min-version="8.1"/>
+        <!-- Nextcloud only *recommends* intl, but MinsalRepository::fold() needs
+             Normalizer, and fold() runs on every unified search by every user.
+             Declared so a host without intl refuses to enable the app, instead of
+             taking down global search with a fatal. -->
+        <lib>intl</lib>
+        <php min-version="8.2" max-version="8.5"/>
         <nextcloud min-version="34" max-version="34"/>
     </dependencies>
     <background-jobs>

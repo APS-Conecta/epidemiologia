@@ -184,6 +184,53 @@ class MinsalRepositoryTest extends TestCase {
 		);
 	}
 
+	// --- trust boundary: MINSAL's HTML is not ours ---------------------------
+
+	/**
+	 * `p()` is htmlspecialchars: it escapes quotes and angle brackets and cannot
+	 * make a URL scheme safe. A defaced epi.minsal.cl serving
+	 * href="javascript:…/uploads/2026/01/x.pdf" satisfies the anchor pattern and
+	 * the upload-folder pattern, and would otherwise reach href unchanged — in the
+	 * page, in the API other apps read, and in core's search results.
+	 */
+	public function testRejectsEveryUrlThatIsNotHttps(): void {
+		$hostile = [
+			'javascript:alert(document.domain)/uploads/2026/01/a.pdf',
+			'JavaScript:alert(1)/uploads/2026/01/b.pdf',           // schemes are case-insensitive
+			'data:text/html;base64,PHNjcmlwdD4=/uploads/2026/01/c.pdf',
+			'vbscript:msgbox(1)/uploads/2026/01/d.pdf',
+			' javascript:alert(1)/uploads/2026/01/e.pdf',          // leading space
+			'http://epi.minsal.cl/uploads/2026/01/f.pdf',          // downgrade
+		];
+		$anchors = '<a href="https://epi.minsal.cl/uploads/2026/01/real.pdf">Alerta real</a>';
+		foreach ($hostile as $i => $url) {
+			$anchors .= sprintf('<a href="%s">Alerta %d</a>', $url, $i);
+		}
+
+		$items = $this->repository(
+			body: json_encode([['content' => ['rendered' => $anchors], 'modified' => '2026-08-02T09:00:00']]),
+		)->get(MinsalRepository::ALERTS)['items'];
+
+		self::assertCount(1, $items, 'only the https anchor may survive');
+		self::assertSame('https://epi.minsal.cl/uploads/2026/01/real.pdf', $items[0]['url']);
+	}
+
+	/** A page of nothing but hostile anchors parses to zero, which is a failure, not a result. */
+	public function testAPageOfOnlyHostileUrlsIsTreatedAsAFailedParse(): void {
+		$good = $this->repository()->get(MinsalRepository::ALERTS);
+		$cached = $this->store;
+
+		$hostile = '<a href="javascript:alert(1)/uploads/2026/01/x.pdf">Alerta</a>';
+		$after = $this->repository(
+			body: json_encode([['content' => ['rendered' => $hostile], 'modified' => '2026-08-02T09:00:00']]),
+			now: self::NOW + 7200,
+		)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($after['degraded']);
+		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
+		self::assertSame($cached, $this->store, 'the cache must not have been touched');
+	}
+
 	// --- failure: the rule the whole design rests on -------------------------
 
 	public function testAParseReturningNothingNeverOverwritesTheCache(): void {

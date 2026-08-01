@@ -166,8 +166,23 @@ class MinsalRepository {
 		}
 
 		$items = [];
+		$rejected = 0;
 		foreach ($matches as [, $href, $label]) {
 			$url = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+			// Only https. `p()` escapes quotes and angle brackets, so it cannot make a
+			// URL scheme safe: "javascript:alert(1)/uploads/2026/01/x.pdf" satisfies both
+			// the anchor pattern and the upload-folder pattern below, and reaches href
+			// byte for byte. Every URL MINSAL actually publishes is https, so this drops
+			// nothing real — and it guards all three consumers at once, because the API
+			// and the search provider read the same parsed items this page does.
+			//
+			// Counted rather than dropped quietly: a partial silent loss is the one
+			// failure this app is built to avoid, and only zero items raises the banner.
+			if (stripos($url, 'https://') !== 0) {
+				$rejected++;
+				continue;
+			}
 
 			// The upload folder is the only date signal there is, and it is not
 			// derivable from the epi week — SE 29 sits under 2026/07 while SE 24
@@ -199,6 +214,13 @@ class MinsalRepository {
 			}
 
 			$items[] = $item;
+		}
+
+		if ($rejected > 0) {
+			$this->logger->warning(
+				'Se descartaron {rejected} enlaces del feed {feed} por no ser https',
+				['rejected' => $rejected, 'feed' => $feed],
+			);
 		}
 
 		return $this->sort($feed, $items);
