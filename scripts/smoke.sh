@@ -86,6 +86,18 @@ expect "$(web "$BASE/api/v1/reports")" '"se"' \
 	"/api/v1/reports expone la semana epidemiológica" \
 	"/api/v1/reports no expone la semana epidemiológica"
 
+# The navigation endpoint reports an icon path whether or not the file exists, so
+# it proves nothing. What matters is that the path actually serves an SVG: without
+# it the app menu falls back to core's generic placeholder.
+# Note the assets live under /custom_apps/, not /apps/ — the latter 404s with an
+# HTML error page that negative assertions pass against quite happily.
+icon="$(web -o /dev/null -w '%{http_code} %{content_type} %{size_download}' \
+	"http://localhost/custom_apps/$APP/img/$APP.svg")"
+case "$icon" in
+	'200 image/svg+xml'*) pass "el icono de la app se sirve ($icon)" ;;
+	*) fail "el icono no se sirve ($icon) — el menú mostraría el marcador genérico" ;;
+esac
+
 # The one this script is really for. Read the CSP header specifically, so that a
 # stray mention of the host anywhere else on the page cannot make this pass.
 csp="$(web -D - -o /dev/null "$BASE/" | tr -d '\r' | grep -i '^content-security-policy:')"
