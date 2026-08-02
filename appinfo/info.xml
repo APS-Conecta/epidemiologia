@@ -12,7 +12,7 @@ el tablero nacional, y el acceso a EPIVIGILA.
 Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
 no guarda datos en base de datos y no contiene información de pacientes.
     ]]></description>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <licence>agpl</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>

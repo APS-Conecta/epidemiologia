@@ -84,15 +84,20 @@ epidemiológica, la degradación y el plegado de acentos. Las fixtures son **res
 MINSAL capturadas**, no HTML inventado: así se prueba que el parser lee lo que MINSAL publica de
 verdad, con sus rarezas incluidas.
 
-`scripts/smoke.sh` verifica lo que ninguna prueba unitaria ve — que la app se habilita, que la ruta
-responde, que el trabajo diario quedó registrado y que **la CSP permite el dominio del tablero**.
-Esa última es una sola línea en el controlador; sin ella el tablero se ve en blanco, y parece que
-MINSAL está caído en vez de que lo rompimos nosotros.
+`scripts/smoke.sh` verifica lo que ninguna prueba unitaria ve: que la app se habilita, que el
+trabajo diario quedó registrado, que la ruta OCS responde **con su sobre** y rechaza con `412` sin
+la cabecera, que la ruta antigua devuelve 404, que el icono se sirve, que **el bundle de `js/`
+coincide con `src/`**, y que **la CSP permite el dominio del tablero**. Esa última es una sola línea
+en el controlador; sin ella el tablero se ve en blanco, y parece que MINSAL está caído en vez de que
+lo rompimos nosotros.
 
 ### Cosas que muerden
 
 - **`occ app:enable` sobre una app ya habilitada no registra el trabajo en segundo plano.** Si
   `smoke.sh` avisa de que falta, hay que hacer `occ app:disable` y luego `occ app:enable`.
+- **Subir `<version>` en `info.xml` deja toda la instancia en «requiere actualización».** `occ`
+  pasa a modo limitado y las rutas web dejan de responder hasta ejecutar `occ upgrade`. Un
+  `git pull` que traiga un cambio de versión necesita ese paso detrás.
 - **`opcache.revalidate_freq` es 60 s**, así que un cambio en PHP puede tardar un minuto en verse.
 - **Al añadir o cambiar rutas por atributos hay que reiniciar el contenedor.** `CachingRouter`
   guarda la colección de rutas ya compilada **una hora** en la caché *local* (APCu), y APCu es por
@@ -104,8 +109,17 @@ MINSAL está caído en vez de que lo rompimos nosotros.
 ## Instalación
 
 El directorio se coloca en `gestion/apps/` (montado en `custom_apps`) y se habilita con
-`occ app:enable epidemiologia`. No hay migraciones que correr ni nada que compilar: la página se
-renderiza en el servidor y el JavaScript son cuarenta líneas sin dependencias.
+`occ app:enable epidemiologia`. **No hay migraciones que correr**: la app no crea tablas.
+
+`js/` y `css/` **se versionan**, así que desplegar sigue siendo un `git pull` y no hace falta Node
+en el servidor. Quien toque `src/` sí tiene que ejecutar `npm run build` y versionar el resultado —
+`scripts/smoke.sh` avisa si el bundle se quedó atrás.
+
+> **`node_modules` no debería vivir en el webroot de una instancia de producción.** El `.htaccess`
+> de la app lo cierra, pero eso depende de Apache y de `AllowOverride`; el `.htaccess` de Nextcloud
+> pone `js` y `mjs` en su lista blanca de extensiones, así que sin esa protección los ~300 MB de
+> dependencias quedan servidos a cualquier usuario autenticado. Lo correcto es compilar en otro
+> sitio y desplegar sólo lo necesario.
 
 ## Licencia
 
