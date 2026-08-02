@@ -5,6 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 SPDX-License-Identifier: ISC
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: Anthony Fu <https://github.com/antfu>
+SPDX-FileCopyrightText: Antoni Andre <antoniandre.web@gmail.com>
 SPDX-FileCopyrightText: Arnout Kazemier
 SPDX-FileCopyrightText: Borys Serebrov
 SPDX-FileCopyrightText: David Clark
@@ -143,6 +144,9 @@ This file is generated from multiple sources. Included packages:
 - semver
 	- version: 7.8.5
 	- license: ISC
+- splitpanes
+	- version: 4.1.2
+	- license: MIT
 - striptags
 	- version: 3.2.0
 	- license: MIT

@@ -15,6 +15,7 @@ use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
+use OCP\Util;
 
 #[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class PageController extends Controller {
@@ -37,11 +38,18 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse {
-		$response = new TemplateResponse(Application::APP_ID, 'index', [
-			'alerts' => $this->repository->get(MinsalRepository::ALERTS),
-			'reports' => $this->repository->get(MinsalRepository::IRAG),
-			'tablero' => self::TABLERO_URL,
-		]);
+		// IInitialState, not a fetch on mount: the server already holds both feeds
+		// in Redis, so a round trip to ourselves would buy a spinner and nothing
+		// else. The OCS routes exist for the consumers that are not this page.
+		$this->initialState->provideInitialState('alerts', $this->repository->get(MinsalRepository::ALERTS));
+		$this->initialState->provideInitialState('reports', $this->repository->get(MinsalRepository::IRAG));
+		$this->initialState->provideInitialState('tablero', self::TABLERO_URL);
+
+		// The bundle name carries the app id — vite-config prefixes it.
+		Util::addScript(Application::APP_ID, 'epidemiologia-main');
+		Util::addStyle(Application::APP_ID, 'epidemiologia-main');
+
+		$response = new TemplateResponse(Application::APP_ID, 'index');
 
 		// Nextcloud blocks third-party frames by default. The tablero is a Power BI
 		// report published to the web, for which Microsoft generates an iframe

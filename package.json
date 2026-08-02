@@ -6,7 +6,6 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"prebuild": "rm -f js/epidemiologia-main.* js/*.chunk.mjs* css/epidemiologia-main.* css/*.chunk.css*",
 		"build": "vite --mode production build",
 		"dev": "vite --mode development build",
 		"watch": "vite --mode development build --watch"
@@ -16,6 +15,7 @@
 	],
 	"dependencies": {
 		"@nextcloud/initial-state": "^3.0.0",
+		"@nextcloud/l10n": "^3.4.1",
 		"@nextcloud/vue": "^9.8.2",
 		"vue": "^3.5.35",
 		"vue-material-design-icons": "^5.3.1"
