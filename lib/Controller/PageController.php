@@ -13,6 +13,7 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
 
 #[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
@@ -27,6 +28,7 @@ class PageController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private MinsalRepository $repository,
+		private IInitialState $initialState,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -35,6 +37,12 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse {
+		// Toolchain probe: proves IInitialState reaches the browser before the
+		// rewrite depends on it for the real feeds. Removed with src/App.vue.
+		$this->initialState->provideInitialState('toolchain_probe', 'ok ' . date('c'));
+		\OCP\Util::addScript(Application::APP_ID, 'epidemiologia-main');
+		\OCP\Util::addStyle(Application::APP_ID, 'epidemiologia-main');
+
 		$response = new TemplateResponse(Application::APP_ID, 'index', [
 			'alerts' => $this->repository->get(MinsalRepository::ALERTS),
 			'reports' => $this->repository->get(MinsalRepository::IRAG),

@@ -1,0 +1,33 @@
+{
+	"name": "epidemiologia",
+	"description": "Alertas, informes IRAG y tablero del MINSAL, dentro de Nextcloud",
+	"version": "0.1.0",
+	"license": "AGPL-3.0-or-later",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"prebuild": "rm -f js/epidemiologia-main.* js/*.chunk.mjs* css/epidemiologia-main.* css/*.chunk.css*",
+		"build": "vite --mode production build",
+		"dev": "vite --mode development build",
+		"watch": "vite --mode development build --watch"
+	},
+	"browserslist": [
+		"extends @nextcloud/browserslist-config"
+	],
+	"dependencies": {
+		"@nextcloud/initial-state": "^3.0.0",
+		"@nextcloud/vue": "^9.8.2",
+		"vue": "^3.5.35",
+		"vue-material-design-icons": "^5.3.1"
+	},
+	"devDependencies": {
+		"@nextcloud/browserslist-config": "^3.1.2",
+		"@nextcloud/vite-config": "^2.5.4",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.6"
+	},
+	"engines": {
+		"node": "^24.0.0",
+		"npm": "^11.3.0"
+	}
+}

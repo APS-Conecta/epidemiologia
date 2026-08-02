@@ -120,6 +120,25 @@ case "$icon" in
 	*) fail "el icono no se sirve ($icon) — el menú mostraría el marcador genérico" ;;
 esac
 
+# The bundle in js/ is committed — that IS the deployment. So the failure this
+# guards is src/ moving without a rebuild: the running app would then not be the
+# code in this repo, and nothing else here can see that. Upstream Nextcloud runs
+# the same assertion in CI (rebuild, then require a clean tree); we have no CI, so
+# it lives here. Skipped when node is absent, because that is a dev-machine tool
+# and this script must still be runnable on a box that only has docker.
+if command -v npm >/dev/null 2>&1 && [ -d node_modules ]; then
+	npm run build --silent >/dev/null 2>&1
+	drift="$(git status --porcelain js/ css/ 2>/dev/null)"
+	if [ -z "$drift" ]; then
+		pass "el bundle de js/ coincide con src/"
+	else
+		fail "js/ está desactualizado respecto a src/ — ejecuta 'npm run build' y haz commit"
+		printf '%s\n' "$drift" | sed 's/^/        /'
+	fi
+else
+	printf '  --    sin node_modules: no se comprueba si el bundle está al día\n'
+fi
+
 # The one this script is really for. Read the CSP header specifically, so that a
 # stray mention of the host anywhere else on the page cannot make this pass.
 csp="$(web -D - -o /dev/null "$BASE/" | tr -d '\r' | grep -i '^content-security-policy:')"

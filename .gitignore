@@ -1,5 +1,12 @@
 # PHPUnit y el generador de OpenAPI se descargan a tools/, no se vendorizan.
 /tools/
 /.phpunit.cache/
-# El bundle de js/ SÍ se versiona; las dependencias de node no.
+
+# El bundle de js/ y css/ SÍ se versiona — es el despliegue. Las dependencias no.
 /node_modules/
+
+# Los sourcemaps no. Pesan 4,2 MB, cambian en cada build, y se regeneran con
+# `npm run build` desde este mismo repositorio: quien pueda leerlos ya tiene el
+# código. Versionarlos sería 4 MB de ruido por cada cambio de una línea.
+*.map
+*.map.license
