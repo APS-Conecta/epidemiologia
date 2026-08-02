@@ -89,9 +89,6 @@ $degraded = static function (array $feed): void {
 <div id="app-content">
 	<div id="app-content-wrapper" class="epi">
 
-		<!-- Punto de montaje de la prueba del toolchain. Lo reemplaza la reescritura. -->
-		<div id="epidemiologia-vue"></div>
-
 		<section class="epi-pane" id="p-alertas" role="tabpanel" tabindex="0" aria-labelledby="t-alertas">
 			<h2>Alertas epidemiológicas vigentes</h2>
 			<p class="epi-sub">Fuente: Departamento de Epidemiología, MINSAL · actualizado
