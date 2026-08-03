@@ -31,7 +31,7 @@ class MinsalRepositoryTest extends TestCase {
 
 	private array $store = [];
 
-	/** @var list<string> slugs requested, in order */
+	/** @var list<string> request keys, in order — see requestKey() for what a key is */
 	private array $requested = [];
 
 	protected function setUp(): void {
@@ -335,8 +335,8 @@ class MinsalRepositoryTest extends TestCase {
 	// --- doubles -------------------------------------------------------------
 
 	/**
-	 * @param string|null  $body    served for every slug, instead of the fixtures
-	 * @param list<string> $missing slug fragments that should 404
+	 * @param string|null  $body    served for every request, instead of the fixtures
+	 * @param list<string> $missing request-key fragments that should 404
 	 * @param int|null     $now     later than NOW to push a cached copy past its freshness window
 	 */
 	private function repository(
@@ -348,20 +348,20 @@ class MinsalRepositoryTest extends TestCase {
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
 			function (string $url, array $options) use ($body, $missing, $offline): IResponse {
-				$slug = (string)$options['query']['slug'];
-				$this->requested[] = $slug;
+				$key = $this->requestKey($url, $options);
+				$this->requested[] = $key;
 
 				if ($offline) {
 					throw new RuntimeException('cURL error 6: Could not resolve host');
 				}
 				foreach ($missing as $fragment) {
-					if (str_contains($slug, $fragment)) {
+					if (str_contains($key, $fragment)) {
 						throw new RuntimeException('HTTP 404');
 					}
 				}
 
 				$response = $this->createMock(IResponse::class);
-				$response->method('getBody')->willReturn($body ?? $this->fixture($slug));
+				$response->method('getBody')->willReturn($body ?? $this->fixture($key));
 
 				return $response;
 			},
@@ -397,9 +397,53 @@ class MinsalRepositoryTest extends TestCase {
 		return $cache;
 	}
 
-	private function fixture(string $slug): string {
-		$name = str_contains($slug, 'irag') ? 'irag' : 'alerts';
+	/**
+	 * How a request is identified — the string recorded in $requested, matched by
+	 * $missing, and used to pick a fixture.
+	 *
+	 * MINSAL serves both feeds from ONE url and tells them apart by slug, so the
+	 * slug is the request's identity there; every assertion on $requested is
+	 * written in slugs. Any other source is identified by its url.
+	 *
+	 * This used to read $options['query']['slug'] unconditionally. A source that
+	 * sends no slug — an RSS feed, say — would raise on the missing key and then
+	 * fall through to MINSAL's fixture, so its test would pass while asserting
+	 * MINSAL's alerts. Dispatching on the url first is what makes a second source
+	 * a new row rather than a rewrite.
+	 */
+	private function requestKey(string $url, array $options): string {
+		if (str_contains($url, 'epi.minsal.cl')) {
+			return (string)($options['query']['slug'] ?? $url);
+		}
 
-		return (string)file_get_contents(__DIR__ . '/fixtures/' . $name . '.json');
+		return $url;
+	}
+
+	/**
+	 * Which capture answers a request key: the first fragment that matches wins,
+	 * so adding a source is adding a row. Captures are real upstream responses —
+	 * synthetic markup would only prove the parser can read markup we wrote for it.
+	 */
+	private const FIXTURES = [
+		'irag' => 'irag',
+		'alertas-epidemiologicas-vigentes' => 'alerts',
+	];
+
+	/**
+	 * An unmatched key FAILS rather than falling back.
+	 *
+	 * A default would hand MINSAL's alerts to any source that had no capture of
+	 * its own, and the test asserting on them would pass — which is the whole
+	 * failure this double was reworked to make impossible. Pass `body:` for a
+	 * request that is meant to have no fixture.
+	 */
+	private function fixture(string $key): string {
+		foreach (self::FIXTURES as $fragment => $name) {
+			if (str_contains($key, (string)$fragment)) {
+				return (string)file_get_contents(__DIR__ . '/fixtures/' . $name . '.json');
+			}
+		}
+
+		self::fail("no fixture for request '$key' — add one to FIXTURES, or pass body:");
 	}
 }
