@@ -184,7 +184,19 @@ const sources = computed(() => [
 
 .epi-inicio__sources {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	/* Both halves are load-bearing, and each was measured on the instance for #20.
+	   min(320px, 100%) rather than a bare 320px: auto-fit collapses columns but
+	   never shrinks a track below its own floor, so at a 360px viewport — where
+	   this pane's content box is 281px — the card stayed 320px and Inicio, the
+	   landing pane, scrolled sideways.
+	   min-width: 0 because this is itself a grid item, and its automatic minimum
+	   is min-content. Without it the percentage inside min() resolves against an
+	   indefinite width and Chromium blows the grid out to 1968px at EVERY
+	   viewport — far worse than the 39px it was meant to fix. Neither line works
+	   alone: dropping the min() leaves the card clipped at 320px inside a 281px
+	   grid, which merely hides the overflow instead of removing it. */
+	grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+	min-width: 0;
 	gap: calc(var(--default-grid-baseline) * 3);
 	min-height: 0;
 }
@@ -397,6 +409,22 @@ const sources = computed(() => [
 	.epi-inicio {
 		height: auto;
 		grid-template-rows: none;
+	}
+
+	/* Releasing the clipping is not enough on its own: min-height:0 has to come
+	   off the card AND the list, and only together.
+	   On a desktop the pair is deliberate — the card has the height the viewport
+	   gives it and the list shrinks and scrolls inside it. Here the card is
+	   content-sized, so a shrinkable list with nothing forcing it open collapsed
+	   to EXACTLY 0px: the phone showed each card's header and its "Ver las 75
+	   alertas" link with no alerts in between, which is the one thing this pane
+	   exists to show. Freeing only the list makes it render at its 204px while
+	   the card stays 79px, so the rows spill over the card below it. Measured on
+	   the instance for #20 — the pane then scrolls, which is what this block
+	   already says mobile should do. */
+	.epi-card,
+	.epi-card__list {
+		min-height: auto;
 	}
 
 	.epi-card__list {

@@ -191,6 +191,18 @@ const groups = [
 	padding-bottom: calc(var(--default-grid-baseline) * 6);
 }
 
+/* ...but only above the mobile breakpoint. "Fills the pane" means a height fixed
+   to the viewport, and below 1024px InicioPane releases its cards to be sized by
+   their content instead of by the grid row. Keeping the cap as well gives cards
+   that are taller than the box holding them, so they draw on top of each other —
+   measured on the instance for #20. Released here rather than in InicioPane
+   because this rule is App.vue's, and a component cannot unset its parent. */
+@media (max-width: 1024px) {
+	.epi:has(> .epi-inicio:not([style*="display: none"])) {
+		height: auto;
+	}
+}
+
 .epi-nav-footer {
 	display: flex;
 	flex-direction: column;
