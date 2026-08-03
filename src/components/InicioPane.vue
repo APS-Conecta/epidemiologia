@@ -60,12 +60,11 @@
 
 				<ul v-else class="epi-card__list">
 					<li v-for="item in source.feed.items.slice(0, PER_CARD)" :key="item.url" class="epi-row">
-						<!-- title: Inicio rows are one line on purpose (six must fit without
-						     scrolling), and ISP titles put the product at the END, so the
-						     truncation removes the useful half. A tooltip gives it back for
-						     free; the full text lives one click away in the pane. #35 -->
+						<!-- No truncation. Both fuentes put the useful half at the END of the
+						     title, so an ellipsis removes exactly what a reader needed — the
+						     same reasoning #35 recorded for the ISP pane. Showing one whole
+						     title beats showing six prefixes. -->
 						<a :href="item.url"
-							:title="item.title"
 							target="_blank"
 							rel="noopener noreferrer">{{ item.title }}</a>
 						<span class="epi-row__when">{{ item.date || item.month || item.year }}</span>
@@ -126,8 +125,19 @@ import { alerts, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
 
-/** What fits at 500px of content height without the card scrolling. */
-const PER_CARD = 6
+/**
+ * ONE alert per card, shown whole.
+ *
+ * The pane's own subtitle is "lo último que publicaron nuestras fuentes", and
+ * that is literally what this is: the latest thing, complete. Six abbreviated
+ * titles were six rows of "OFICIO CP N°15844 / 2026 Actualización de…" — the
+ * same prefix repeated, with the disease name cut off every time.
+ *
+ * The trade is count for completeness, decided 2026-08-03: what an oficio
+ * instructs a clinic to do is not something to show a prefix of. The other 74
+ * are one click away, in a pane that now also shows them in full.
+ */
+const PER_CARD = 1
 const PER_CARD_WEEKS = 3
 
 /**
@@ -161,12 +171,18 @@ const sources = computed(() => [
 </script>
 
 <style scoped>
-/* The pane is a grid that fills the height it is given, so nothing scrolls on a
-   desktop. Each card clips its own overflow instead — which is what lets a new
-   source arrive as another card rather than as more page. */
+/* The pane still fills the height it is given so nothing scrolls on a desktop,
+   but its rows are sized by their CONTENT and packed to the top.
+   
+   They used to stretch: the cards took 1fr and grew to fill whatever was left.
+   That was right when a card held six rows and needed the room. With one whole
+   alert per card (PER_CARD) it left ~120px of void between the text and the
+   button — and empty space inside a bordered card reads as something that failed
+   to load, where the same space below the content reads as nothing more to show. */
 .epi-inicio {
 	display: grid;
-	grid-template-rows: auto minmax(0, 1fr) auto;
+	grid-template-rows: auto auto auto;
+	align-content: start;
 	gap: calc(var(--default-grid-baseline) * 4);
 	height: 100%;
 	min-height: 0;
@@ -283,23 +299,22 @@ const sources = computed(() => [
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	flex: 1 1 auto;
-	min-height: 0;
-	overflow: hidden;
 	/*
-		The card is a grid cell, so its height is whatever the viewport gives it —
-		never a whole number of 34px rows. Measured on the instance: 186px of box
-		against 204px of content, i.e. 5.47 rows, so the sixth was sliced in half
-		and read as broken rendering.
+		No clipping and no fade any more, and their removal is the point.
 
-		The fade makes a clipped row read as "there is more", which is true, and the
-		"Ver las N" button underneath says where. When the list is shorter than its
-		box the fade falls on empty space and is invisible, so this needs no
-		overflow detection.
+		Both existed to serve a card stretched by a 1fr row: it held six titles in
+		whatever height the viewport left, so the last row was sliced mid-line and a
+		gradient turned that into "there is more" rather than broken rendering.
+
+		The card is now sized to its content and holds ONE whole alert, so the fade
+		had nothing to signal and instead dimmed the final line of a complete title —
+		making finished text look cut off, which is the exact opposite of the reason
+		the titles are shown whole. Its old comment even said the fade would "fall on
+		empty space and be invisible"; that was true of a stretched card and stopped
+		being true here.
 	*/
-	-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
-	mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
+
 
 .epi-card__empty {
 	flex: 1 1 auto;
@@ -313,7 +328,7 @@ const sources = computed(() => [
 
 .epi-row {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: calc(var(--default-grid-baseline) * 2);
 	min-height: var(--default-clickable-area);
 	padding: 0 calc(var(--default-grid-baseline) * 1.5);
@@ -327,11 +342,12 @@ const sources = computed(() => [
 .epi-row a {
 	flex: 1;
 	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	color: var(--color-main-text);
 	text-decoration: none;
+	/* MINSAL titles carry 52-character tokens with no break opportunity in them
+	   (B27_N_1709_REFUERZA_VACUNACION_CONTRA_SARAMPION_2025), and the intrinsic
+	   minimum is what overflows a phone. Same rule, same reason, as AlertRow. */
+	overflow-wrap: anywhere;
 }
 
 .epi-row a:hover,
@@ -411,50 +427,22 @@ const sources = computed(() => [
 		grid-template-rows: none;
 	}
 
-	/* Releasing the clipping is not enough on its own: min-height:0 has to come
-	   off the card AND the list, and only together.
-	   On a desktop the pair is deliberate — the card has the height the viewport
-	   gives it and the list shrinks and scrolls inside it. Here the card is
-	   content-sized, so a shrinkable list with nothing forcing it open collapsed
-	   to EXACTLY 0px: the phone showed each card's header and its "Ver las 75
-	   alertas" link with no alerts in between, which is the one thing this pane
-	   exists to show. Freeing only the list makes it render at its 204px while
-	   the card stays 79px, so the rows spill over the card below it. Measured on
-	   the instance for #20 — the pane then scrolls, which is what this block
-	   already says mobile should do. */
-	.epi-card,
-	.epi-card__list {
+	/* The card can still be squeezed by the flex column above it, and min-height:0
+	   lets it shrink past its content — which is how the phone once showed a card
+	   header and its "Ver las 75 alertas" link with no alert in between (#20). The
+	   list no longer needs the same release: it stopped carrying min-height:0 and
+	   overflow:hidden when the card became content-sized. */
+	.epi-card {
 		min-height: auto;
 	}
 
-	.epi-card__list {
-		overflow: visible;
-	}
-
-	/*
-		Two lines instead of one, on a phone only.
-
-		#35 established the rule for the ISP pane and gave the reason: these titles
-		put the useful half at the END, so truncation removes exactly what a reader
-		needed. Inicio kept one line because "six must fit without scrolling" — but
-		that is a DESKTOP argument, and below this breakpoint the pane scrolls
-		anyway, which is what the rules above already accept.
-
-		Measured at 360px: one line shows 21 characters of a 252-character oficio
-		title, two show 43. Each extra line costs about 66px per card, and there is
-		no hover on a phone, so the `title` attribute that rescues this on a desktop
-		rescues nothing here. Two is the trade; the full text is one tap away in the
-		pane, which is what "Ver las 75 alertas" is for.
-	*/
+	/* The date moves under the title rather than beside it. At 360px the row is
+	   ~280px and the date was taking 90 of them, so a single alert ran to 13 lines
+	   and filled the whole screen. Stacked, the title gets the full width back. */
 	.epi-row {
-		align-items: flex-start;
+		flex-direction: column;
+		gap: calc(var(--default-grid-baseline) * 0.5);
 	}
 
-	.epi-row a {
-		white-space: normal;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-	}
 }
 </style>
