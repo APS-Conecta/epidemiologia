@@ -105,9 +105,11 @@ to what that number counts, and unique per (hoja, sección) rather than per hoja
 _Avoid_: código, diagnóstico — REM carries no CIE-10 and no diagnosis dimension
 
 **Establecimiento**:
-Identified by its DEIS code, from the establishment list DEIS republishes weekly. This one is CESFAM
-Los Castaños, **114302**, La Florida, SSMSO.
-_Avoid_: centro, consultorio, sede
+The clinic an instance belongs to, identified by its DEIS code from the establishment list DEIS
+republishes weekly. **It is configuration, never a constant** — one establishment per instance,
+supplied at install. This instance is CESFAM Los Castaños, `114302`, La Florida, SSMSO; another
+clinic is another instance, not another option in a menu.
+_Avoid_: centro, consultorio, sede, "nuestro CESFAM" in code
 
 ## What this context deliberately has no word for
 
