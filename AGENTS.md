@@ -8,9 +8,16 @@ platform repo's shape.
 loads as parent context whenever you work here — its rules (language split, secrets handling,
 "do not touch" siblings) still apply. Nothing below replaces them; it adds.
 
-**Language.** Code, identifiers, test names and `docs/` in **English**. UI strings (`t('epidemiologia', …)`)
-and code comments in **Spanish**. `README.md` and `CHANGELOG.md` are Spanish because the clinic reads
-them. This is the standing rule from the map, issue #2.
+**Language.** Code, identifiers, test names and `docs/` in **English**. UI strings
+(`t('epidemiologia', …)`) in **Spanish**. `README.md` and `CHANGELOG.md` are Spanish because the
+clinic reads them; commit messages follow the existing log, which is Spanish.
+
+> **Unresolved, flagged rather than decided.** The map's standing rules (issue #2) say *"code
+> comments in Spanish"*, and **the entire codebase contradicts it** — comments in `lib/` and
+> `tests/` are English throughout, and have been since before this file existed. This file first
+> restated the rule without checking. Either the rule is wrong or the code is; it is the map's
+> call, not a file-by-file one. Until it is answered, **match the file you are editing** and do not
+> convert anything.
 
 ## Agent skills
 

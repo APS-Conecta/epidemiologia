@@ -8,20 +8,26 @@ the next reader from "fixing" it.
 
 ## Why
 
-`is-heading` renders `h{Math.max(2, headingLevel)}` — a floor of 2 with no ceiling. `NcAppContent`
-renders the document's only `<h1>` from `pageHeading`, as `class="hidden-visually"`. In `App.vue` the
+`is-heading` renders `h{Math.max(2, headingLevel)}` — a floor of 2 with no ceiling. In `App.vue` the
 navigation precedes the content, so three captions would produce:
 
 ```
 <nav>   h2 "MINSAL"   h2 "ISP"   h2 "Notificación"
-<main>  h1 "Epidemiología"  (hidden-visually)
+<main>  h1 "Epidemiología"   (hidden-visually, from pageHeading)
         h2 "Alertas epidemiológicas vigentes"     ← PaneHeader
 ```
 
-Three `h2`s before the page's only `h1` — the standard *"page should begin with h1 / heading levels
-should only increase by one"* finding, and a WCAG 1.3.1 issue in every audit tool. The app is
-currently clean on this (one hand-written heading in the whole codebase), so adding the captions is
-what would introduce the defect.
+Three `h2`s before the content's `h1` — the standard *"heading levels should only increase by one"*
+finding, and a WCAG 1.3.1 issue in every audit tool. The app is currently clean on this: one
+hand-written heading in the whole codebase.
+
+> **Premise corrected 2026-08-02 (#26).** This ADR first said `NcAppContent` renders *the document's
+> only* `<h1>`. Measured on the running instance, the page carries **two** — the header's
+> "APS Conecta Gestión" and `pageHeading`'s "Epidemiología" — so the document does not literally
+> begin at the captions. The conclusion is unchanged and the reasoning is now narrower: the captions
+> would still sit at level 2 immediately above a level-1, which is the level-skip the tools flag, and
+> a nav group label is a label for a list either way. Files, measured beside us, emits no heading in
+> its navigation at all.
 
 Semantically, a nav group label is a **label for a list**, not a section of the document. Marking it
 up as a label is the honest reading, not merely the convenient one.
