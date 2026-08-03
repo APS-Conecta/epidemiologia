@@ -35,23 +35,49 @@
 			</a>
 		</NcNoteCard>
 
+		<!--
+			Two controls by default, like the MINSAL pane. The library gives NcTextField
+			a 240px minimum and NcSelect a 260px one, so five of them demand 1280px and
+			overflowed a ~1000px pane sideways. Those minimums are the components'
+			designed usable width, so the fix is fewer controls, not narrower ones.
+		-->
 		<div class="epi-filters">
 			<NcTextField v-model="query"
 				type="search"
-				:label="t('epidemiologia', 'Buscar por título')"
-				:placeholder="t('epidemiologia', 'amoxicilina, falsificado, dispositivo…')" />
+				:label="t('epidemiologia', 'Buscar')"
+				:placeholder="t('epidemiologia', 'amoxicilina, dispositivo, falsificado…')" />
 			<NcSelect v-model="kind"
-				class="epi-filters__select"
 				:options="kinds"
 				label="label"
 				:input-label="t('epidemiologia', 'Tipo de alerta')"
 				:placeholder="t('epidemiologia', 'Todos los tipos')" />
+			<NcButton variant="tertiary" @click="more = !more">
+				<template #icon>
+					<Tune :size="20" />
+				</template>
+				{{ more ? t('epidemiologia', 'Menos filtros') : t('epidemiologia', 'Más filtros') }}
+				<!-- A hidden filter that is ON must never be invisible, or the list looks
+				     wrong for no reason a reader can see. -->
+				<template v-if="!more && hiddenActive">&nbsp;({{ hiddenActive }})</template>
+			</NcButton>
+		</div>
+
+		<div v-if="more" class="epi-filters">
+			<NcSelect v-model="year"
+				:options="years"
+				label="label"
+				:input-label="t('epidemiologia', 'Año')"
+				:placeholder="t('epidemiologia', 'Todos')" />
 			<NcSelect v-model="month"
-				class="epi-filters__select"
 				:options="months"
 				label="label"
-				:input-label="t('epidemiologia', 'Publicado')"
-				:placeholder="t('epidemiologia', 'Cualquier fecha')" />
+				:input-label="t('epidemiologia', 'Mes')"
+				:placeholder="t('epidemiologia', 'Todos')" />
+			<NcSelect v-model="sort"
+				:options="SORTS"
+				label="label"
+				:clearable="false"
+				:input-label="t('epidemiologia', 'Ordenar por')" />
 		</div>
 
 		<p class="epi-count">
@@ -92,10 +118,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NcButton, NcChip, NcDateTime, NcEmptyContent, NcNoteCard, NcSelect, NcTextField } from '@nextcloud/vue'
 import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
+import Tune from 'vue-material-design-icons/Tune.vue'
 import PaneHeader from './PaneHeader.vue'
 import { ispAlerts, fold } from '../state.js'
 
@@ -143,10 +170,39 @@ const kindLabel = (slug) => KIND_LABELS[slug] ?? prettify(slug)
 
 const query = ref('')
 const kind = ref(null)
+const year = ref(null)
 const month = ref(null)
 
-// Folded once, not per keystroke — same reason as the MINSAL list.
-const folded = ispAlerts.items.map((a) => ({ ...a, _fold: fold(a.title) }))
+/**
+ * Sorting. "Tipo" needs a single key from a list of categories, so it uses the
+ * alphabetically first label — deterministic, and it groups an alert with the
+ * category a reader would look for it under. Date breaks every tie, because a
+ * list of recalls with no date order is unusable whatever it is grouped by.
+ */
+const SORTS = [
+	{ id: 'recent', label: t('epidemiologia', 'Más recientes') },
+	{ id: 'oldest', label: t('epidemiologia', 'Más antiguas') },
+	{ id: 'kind', label: t('epidemiologia', 'Tipo de alerta') },
+	{ id: 'title', label: t('epidemiologia', 'Título') },
+]
+const sort = ref(SORTS[0])
+
+/** The secondary row is collapsed until asked for. */
+const more = ref(false)
+
+/** How many collapsed filters are currently narrowing the list. */
+const hiddenActive = computed(() => (year.value ? 1 : 0) + (month.value ? 1 : 0))
+
+/**
+ * Folded ONCE, not per keystroke. The search covers the title AND the category
+ * labels, so typing "dispositivo" finds device alerts whose title never says the
+ * word — which is most of them, since the title names the product.
+ */
+const folded = ispAlerts.items.map((a) => ({
+	...a,
+	_fold: fold(a.title + ' ' + (a.categories ?? []).map(kindLabel).join(' ')),
+	_kind: [...(a.categories ?? [])].map(kindLabel).sort()[0] ?? '',
+}))
 
 /** Categories present in the data, with how many alerts each carries. */
 const kinds = computed(() => {
@@ -162,43 +218,80 @@ const kinds = computed(() => {
 		.sort((a, b) => a.label.localeCompare(b.label, getCanonicalLocale()))
 })
 
-/** Months present in the data, newest first. The ISP publishes a real day. */
+/** Years present in the data, newest first. */
+const years = computed(() => tally(ispAlerts.items, (a) => (a.date ?? '').slice(0, 4))
+	.sort((a, b) => b.id.localeCompare(a.id))
+	.map((y) => ({ ...y, label: `${y.id} (${y.count})` })))
+
+/**
+ * Months, scoped to the chosen year. Offering a month that the selected year
+ * does not have would let a reader build a filter pair that can only ever
+ * return nothing.
+ */
 const months = computed(() => {
-	const seen = new Map()
-	for (const alert of ispAlerts.items) {
-		const key = (alert.date ?? '').slice(0, 7)
-		if (key) {
-			seen.set(key, (seen.get(key) ?? 0) + 1)
+	const inYear = year.value
+		? ispAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value.id))
+		: ispAlerts.items
+
+	return tally(inYear, (a) => (a.date ?? '').slice(5, 7))
+		.sort((a, b) => b.id.localeCompare(a.id))
+		.map((m) => ({ ...m, label: `${monthName(m.id)} (${m.count})` }))
+})
+
+// Changing the year can strand a month that year does not have — which would
+// silently show zero results and look like a bug in the data.
+watch(year, () => {
+	if (month.value && !months.value.some((m) => m.id === month.value.id)) {
+		month.value = null
+	}
+})
+
+/** @return {Array<{id: string, count: number}>} non-empty keys with their counts */
+function tally(items, key) {
+	const counts = new Map()
+	for (const item of items) {
+		const k = key(item)
+		if (k) {
+			counts.set(k, (counts.get(k) ?? 0) + 1)
 		}
 	}
 
-	return [...seen.entries()]
-		.sort((a, b) => b[0].localeCompare(a[0]))
-		.map(([id, count]) => ({ id, count, label: `${monthName(id)} (${count})` }))
-})
-
-function monthName(key) {
-	const [year, m] = key.split('-')
-	const name = new Date(Number(year), Number(m) - 1, 1)
-		.toLocaleDateString(getCanonicalLocale(), { month: 'long' })
-
-	return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`
+	return [...counts.entries()].map(([id, count]) => ({ id, count }))
 }
 
-const filtered = computed(() => query.value.trim() !== '' || kind.value !== null || month.value !== null)
+function monthName(mm) {
+	const name = new Date(2000, Number(mm) - 1, 1)
+		.toLocaleDateString(getCanonicalLocale(), { month: 'long' })
+
+	return `${name.charAt(0).toUpperCase()}${name.slice(1)}`
+}
+
+const filtered = computed(() => query.value.trim() !== ''
+	|| kind.value !== null || year.value !== null || month.value !== null)
 
 function clear() {
 	query.value = ''
 	kind.value = null
+	year.value = null
 	month.value = null
 }
 
 const shown = computed(() => {
 	const needle = fold(query.value.trim())
-
-	return folded.filter((alert) => (!needle || alert._fold.includes(needle))
+	const rows = folded.filter((alert) => (!needle || alert._fold.includes(needle))
 		&& (!kind.value || (alert.categories ?? []).includes(kind.value.id))
-		&& (!month.value || (alert.date ?? '').startsWith(month.value.id)))
+		&& (!year.value || (alert.date ?? '').startsWith(year.value.id))
+		&& (!month.value || (alert.date ?? '').slice(5, 7) === month.value.id))
+
+	const by = {
+		recent: (a, b) => b.at - a.at,
+		oldest: (a, b) => a.at - b.at,
+		title: (a, b) => a.title.localeCompare(b.title, getCanonicalLocale()),
+		// Date breaks the tie so each type reads newest-first inside its group.
+		kind: (a, b) => a._kind.localeCompare(b._kind, getCanonicalLocale()) || b.at - a.at,
+	}[sort.value.id]
+
+	return [...rows].sort(by)
 })
 
 const countLabel = computed(() => {
@@ -212,21 +305,21 @@ const countLabel = computed(() => {
 </script>
 
 <style scoped>
+/*
+	A wrapping row. With at most three controls per row the library's 240/260px
+	minimums fit a ~1000px pane, so nothing overflows sideways and nothing has to
+	be forced narrower than the component was designed for.
+*/
 .epi-filters {
 	display: flex;
-	gap: calc(var(--default-grid-baseline) * 3);
 	flex-wrap: wrap;
+	gap: calc(var(--default-grid-baseline) * 3);
 	align-items: flex-end;
 	margin-bottom: calc(var(--default-grid-baseline) * 2);
 }
 
 .epi-filters :deep(.input-field) {
-	flex: 1;
-	min-width: 240px;
-}
-
-.epi-filters__select {
-	min-width: 220px;
+	flex: 1 1 240px;
 }
 
 .epi-count {
