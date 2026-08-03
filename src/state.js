@@ -11,6 +11,7 @@ const EMPTY = { items: [], updated_at: null, fetched_at: null, degraded: false }
  * A missing feed should degrade to an empty pane, never to a blank app.
  */
 export const alerts = loadState(APP, 'alerts', EMPTY)
+export const ispAlerts = loadState(APP, 'ispAlerts', EMPTY)
 export const reports = loadState(APP, 'reports', EMPTY)
 export const tablero = loadState(APP, 'tablero', '')
 
