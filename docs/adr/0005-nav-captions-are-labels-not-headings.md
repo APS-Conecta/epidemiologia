@@ -41,6 +41,21 @@ up as a label is the honest reading, not merely the convenient one.
 - **Drop the captions.** Would trade the fix for the defect: the captions are what turn the
   navigation from a tab bar into a structure, which was the whole point.
 
+## How it has to be built, learned by building it
+
+Two structural constraints, both found by measuring the rendered DOM and neither obvious from the
+component's docs:
+
+- **Grouped navigation cannot use the `#list` slot.** That slot wraps its content in one
+  `NcAppNavigationList`, i.e. one `<ul>`, so several captioned lists inside it render `ul > ul` —
+  invalid, and it destroys the list semantics this ADR exists to protect. `#list` is for a single
+  flat list. Grouped navigation goes in the **default slot**, which is a `<div>`. Files does the
+  same. This retires the idea, carried for a while in the plan, that moving to `#list` was a latent
+  correctness win: for this design it is a defect.
+- **Each caption must be the first `<li>` of the list it labels.** Without `is-heading` the caption
+  renders an `<li>`, and an `<li>` loose in the body `<div>` is as invalid as `ul > ul`. Putting it
+  inside its own list is both valid and where `aria-labelledby` wants it.
+
 ## Consequences
 
 - **A screen-reader user loses H-key navigation between nav groups.** That is the price. The group is
