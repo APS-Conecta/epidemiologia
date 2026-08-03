@@ -110,9 +110,21 @@ class IspRepository {
 			}
 			$reached++;
 			foreach ($this->parse($body) as $item) {
-				// Dedupe by link. The same alert is filed under several categories,
-				// so the first feed that carries it wins and the rest are skipped.
-				$items[$item['url']] ??= $item;
+				$url = $item['url'];
+
+				// Dedupe by link — the same alert is filed under several categories.
+				// The categories are MERGED rather than the first feed winning: an
+				// alert genuinely belongs to all of them, and they are the only facet
+				// a reader can filter by. The feed's own <category> elements are
+				// empty, so which feed carried it is the ONLY place this comes from;
+				// keeping just the first would throw the filter away before it exists.
+				if (isset($items[$url])) {
+					$items[$url]['categories'][] = $term;
+					continue;
+				}
+
+				$item['categories'] = [$term];
+				$items[$url] = $item;
 			}
 		}
 

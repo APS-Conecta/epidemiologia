@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\BackgroundJob;
 
 use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -58,6 +59,7 @@ class ProbeJob extends TimedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private MinsalRepository $repository,
+		private IspRepository $isp,
 		private IManager $notifications,
 		private IGroupManager $groups,
 		private IAppConfig $config,
@@ -71,11 +73,26 @@ class ProbeJob extends TimedJob {
 	#[\Override]
 	protected function run($argument): void {
 		foreach ([MinsalRepository::ALERTS, MinsalRepository::IRAG] as $feed) {
-			if ($this->repository->probe($feed)) {
-				$this->recovered($feed);
-			} else {
-				$this->failed($feed);
-			}
+			$this->judge($feed, $this->repository->probe($feed));
+		}
+
+		// The ISP goes through the SAME backoff and the same counters, so a MINSAL
+		// outage and an ISP outage cannot drown each other out — each keeps its own
+		// failure count and its own "failing since" stamp, and each is notified on
+		// its own 2nd, 7th and 30th consecutive day.
+		//
+		// It probes differently on purpose: MinsalRepository asks one page for its
+		// modification date, while IspRepository has 24 feeds and no cheap liveness
+		// signal, so its probe is a full refresh. That is 24 requests a day, which is
+		// the price of the source having no equivalent of `modified`.
+		$this->judge(IspRepository::ALERTS, $this->isp->probe());
+	}
+
+	private function judge(string $feed, bool $healthy): void {
+		if ($healthy) {
+			$this->recovered($feed);
+		} else {
+			$this->failed($feed);
 		}
 	}
 
