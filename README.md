@@ -97,6 +97,7 @@ per user, a ceiling against a runaway consumer rather than a quota.
 ```sh
 scripts/test.sh     # unit suite, inside the container (PHPUnit 11)
 scripts/smoke.sh    # checks the wiring against the running instance
+scripts/layout.sh   # checks the layout in a real browser, at three viewports
 scripts/openapi.sh  # regenerates openapi.json from the controller
 ```
 
@@ -104,10 +105,21 @@ scripts/openapi.sh  # regenerates openapi.json from the controller
 the same `nextcloud:34` image the instance runs, and the bundle check that rebuilds `src/` and
 requires `js/` and `css/` to be unchanged.
 
-**`scripts/smoke.sh` stays manual, deliberately.** Its assertions need a provisioned instance with
-the app enabled, an admin user and an app password — and their value *is* that they run against a
-real instance, so faking one in CI would test the fake. Run it before a release and after any change
-to routes, the CSP or the background job.
+`scripts/layout.sh` is the part of visual checking a machine can do: it drives headless chromium at
+**360, 768 and 1366** and asserts three things per pane — nothing wider than the pane that holds it,
+no two cards drawn on top of each other, and **nothing with content rendered at zero height**. That
+third one exists because the other two cannot see it: a list with six rows and no height does not
+overflow and does not overlap, and the landing pane shows no alerts. Seven of this app's fifteen
+fixed defects were CSS or markup, and every one was found by a person looking at a screen.
+
+It needs `npm install && npx playwright install chromium` once. **360 px is only reachable this
+way** — a real browser window on a dev machine will not go that narrow.
+
+**`scripts/smoke.sh` and `scripts/layout.sh` stay manual, deliberately.** Their assertions need a
+provisioned instance with the app enabled, an admin user and an app password — and their value *is*
+that they run against a real one, so faking it in CI would test the fake. Run both before a release:
+smoke after any change to routes, the CSP or the background job, and layout after any change to CSS
+that affects how a pane is arranged.
 
 `scripts/test.sh` covers the only things with real logic: parsing, ordering, the year, the semana
 epidemiológica, degradation, accent folding, and the catalogue of sources. The fixtures are **real

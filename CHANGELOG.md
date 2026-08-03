@@ -43,8 +43,21 @@ history they describe is unchanged.
   counting calls on a mock — which ADR-0007 forbids and which was near-tautological,
   since a regression there would throw rather than call twice.
 
+- **`scripts/layout.sh`, the layout gate** (#40): headless chromium at 360, 768 and
+  1366, asserting per pane that nothing is wider than the pane holding it, that no
+  two cards are drawn on top of each other, and that **nothing with content renders
+  at zero height**. The third exists because the other two cannot see it — a list
+  with six rows and no height neither overflows nor overlaps, and the landing pane
+  shows no alerts. Manual, like `smoke.sh`, and for the same reason.
+- **360 px is finally reachable.** A browser window on this machine will not go
+  below ~500, which is why #20 shipped measured rather than seen. A headless
+  viewport has no such floor, and looking at it there is what found the two
+  problems above.
+
 ### Changed
 
+- **Panel headings are lighter below the breakpoint**, and Inicio's rows wrap to two
+  lines. See above; both measured at a real 360 px viewport.
 - The chassis plan's debt entry asserting the old testing rule is corrected in the
   same change, so two documents do not disagree about the same rule.
 - **Review fixes** from the two-axis review of this change: `feed` replaced by
