@@ -175,10 +175,27 @@ const groups = [
 	the old stylesheet fought both, which is why the app looked wrong beside
 	official ones. Everything here is a token or a multiple of the grid baseline.
 */
+/*
+	The left inset clears the navigation toggle, and that is the whole reason it is
+	not a round number.
+
+	`.app-navigation-toggle-wrapper` is `position: absolute; left: 308px` INSIDE the
+	navigation, so the button floats over the first ~42px of the content area — and
+	it is not a child of `main`, so nothing in a pane can push it out of the way.
+	At 32px of inset it sat on top of the first letter of every pane heading:
+	`elementFromPoint` at the "I" of "Informe" returned the toggle's icon, not the
+	text. Files leaves the same corner clear, which is why its toolbar begins after
+	the hamburger rather than under it.
+
+	One clickable area plus FOUR baselines, not two: two clears the button by a
+	single pixel, which both looks cramped and would collide again the moment the
+	platform nudges that wrapper. Four leaves ~9px of air.
+*/
 .epi {
 	max-width: 1100px;
 	padding: calc(var(--default-grid-baseline) * 6) calc(var(--default-grid-baseline) * 8)
-		calc(var(--default-grid-baseline) * 10);
+		calc(var(--default-grid-baseline) * 10)
+		calc(var(--default-clickable-area) + var(--default-grid-baseline) * 4);
 }
 
 /* Inicio fills the pane instead of scrolling it, so its grid can size to the
