@@ -163,9 +163,10 @@ Traps to carry forward, all measured:
 - **Add `:aria-label`** — the one unambiguous defect (#26): Files has one, we do not.
 - **Give the column a top and a bottom.** This is what actually reads as un-Nextcloud: four items in
   a 562px column with nothing beneath them, against Files' search field above and settings below.
-- Move the `NcAppNavigationItem`s into `<template #list>` and drop the hand-placed
-  `NcAppNavigationList` — the documented API, and it enables the stretch rule. Worth doing, but
-  **not the fix**: Files uses the default slot too.
+- **Do NOT move to the `#list` slot.** Built and measured: that slot wraps its content in one
+  `<ul>`, so several captioned lists inside it render `ul > ul` — invalid, and it destroys the list
+  semantics. Grouped navigation belongs in the **default slot**, as Files does, with each caption
+  as the first `<li>` of the list it labels. See [ADR-0005](adr/0005-nav-captions-are-labels-not-headings.md).
 - Group with `NcAppNavigationCaption` — **without `is-heading`**, each caption's `headingId` wired to
   its list's `aria-labelledby` ([ADR-0005](adr/0005-nav-captions-are-labels-not-headings.md)).
   **Inicio** ungrouped at top, then *MINSAL* (Alertas vigentes · Informe semanal · Tablero), *ISP*
