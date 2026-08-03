@@ -65,6 +65,10 @@ legitimately render two different navigation designs on the same instance. Nobod
 | 7 | Disease card shows **Población en Control**; **PIV is an input** held by the REM owner; without PIV, absolute numbers only |
 | 8 | **Track A ships first**, then B, then the disease pane |
 | 9 | **The establishment is instance configuration, never a constant** — [ADR-0003](adr/0003-establishment-is-instance-configuration.md). One clinic per instance; no selector |
+| 10 | **All users see everything; nothing is editable.** The content is public information and read-only reporting, so no group restriction and no in-code guard. This is the app's existing behaviour, now a decision rather than an omission |
+| 11 | **Serie P feeds the disease view; Serie A comes later**, and the *vigilancia epidemiológica* sections come with it — they are hoja A04, so they cannot arrive first |
+| 12 | **Nav captions are labels, not headings** — [ADR-0005](adr/0005-nav-captions-are-labels-not-headings.md) |
+| 13 | **The REM extracts carry no licence** — [ADR-0004](adr/0004-rem-extracts-carry-no-licence.md). Fine for an intranet; the paid-product question goes to `LICENSING.md` §5 for sign-off |
 
 ### Measured this session — do not re-derive
 
@@ -141,9 +145,10 @@ Traps to carry forward, all measured:
 - Move the `NcAppNavigationItem`s into `<template #list>`; drop the hand-placed
   `NcAppNavigationList` — the library supplies it for that slot.
 - Add `:aria-label="t('epidemiologia', 'Epidemiología')"`.
-- Group with `NcAppNavigationCaption is-heading`: **Inicio** ungrouped at top, then *MINSAL*
-  (Alertas vigentes · Informe semanal · Tablero), *ISP* (Alertas sanitarias), *Notificación*
-  (EPIVIGILA).
+- Group with `NcAppNavigationCaption` — **without `is-heading`**, each caption's `headingId` wired to
+  its list's `aria-labelledby` ([ADR-0005](adr/0005-nav-captions-are-labels-not-headings.md)).
+  **Inicio** ungrouped at top, then *MINSAL* (Alertas vigentes · Informe semanal · Tablero), *ISP*
+  (Alertas sanitarias), *Notificación* (EPIVIGILA).
 - Reserve the `#footer` slot for settings, per `components.rst`: *"the bottom of the navigation is
   reserved for the settings entry"*.
 - Keep `v-show` on the panes. `App.vue:24-28` is right: `v-if` re-pays Power BI's 15–20 s paint on
@@ -213,6 +218,24 @@ the manual's load window, not continuously.
 **B4 — The narrow OCS read API** (that app's own Phase 4), plus **B5 — PIV input** in `IAppConfig`.
 Build only what the first consumer needs.
 
+**B6 — Serie A, later, and the vigilancia sections with it.** Deferred, not dropped, and named here
+so it is not rediscovered. Serie A is the **only** part of REM with a diagnosis axis: hoja **A04
+Sección A** counts consultas médicas by a closed MINSAL causal list with the manual's own synonym
+mapping (IRA alta · SBO · Neumonía · Exacerbación asma · EPOC · ITS · VIH-SIDA · Salud mental ·
+Cardiovascular · Otras morbilidades), monthly, by sex × age band; **A23** adds 11 respiratory
+diagnoses. **A04 Secciones P–U** are the *vigilancia epidemiológica* block — encuesta, quimioprofilaxis
+de bloqueo, toma de muestras, seguimiento de casos y contactos, BAI, BAC. They are hoja A04, so they
+arrive with Serie A and not before.
+
+Three facts to carry into that phase:
+
+- **Serie A counts events, not people** — *"un mismo paciente puede tener más de un ingreso al mes"*.
+  It can never be summed into persons, and it cannot produce cobertura; the manual routes coverage to
+  Serie P by name, three times verbatim.
+- **No REM cell is CIE-10 coded**, verified across the whole 656-page manual — three passing mentions,
+  none defining a column. Any CIE-10 join needs a hand-built crosswalk from the synonym lists.
+- **There is no vaccination data in Serie A at all.** It lives in other DEIS products.
+
 ---
 
 # Track C — `gestion`
@@ -241,6 +264,12 @@ key from it; both apps read that key and neither hardcodes a code
 republished **weekly**, so `sites/establecimientos-deis-2026-07-23.csv` is a snapshot with a
 refreshable generator behind it.
 
+**C3b — record the REM licence finding.** `docs/LICENSING.md` has **no concept of a data source** —
+its §3 inventory is scoped to runtime components (images, apps, fonts), so REM needs a new section,
+not a new row. The paid-product question goes to **§5 Open items** with the `[needs legal sign-off]`
+marker that file already uses five times. Detail and evidence in
+[ADR-0004](adr/0004-rem-extracts-carry-no-licence.md).
+
 **C4 — one section, not a new document.** `gestion` has no app-UI standard; the only four mentions of
 `@nextcloud/vue` are `THEMING-MODEL.md:158`, `MAPEO.md:44` and two comments in `server.css`. A3
 produces one rule worth writing down — use the library's slots as documented, take spacing from
@@ -263,6 +292,7 @@ justify. Vocabulary and the traps around it are in [`CONTEXT.md`](../CONTEXT.md)
 | What | How |
 | --- | --- |
 | Navigation reads like an official app | Screenshot beside Files and Calendar at one width; `.app-navigation__list` present in the DOM; no `ariaLabel` warning in the console |
+| Heading order is not broken by the captions | The document's first heading is the `h1` from `pageHeading`; no `h2` precedes it; every `NcAppNavigationList` has an `aria-labelledby` resolving to its caption. The console-warning check does **not** cover this |
 | Mobile | The panes plus Inicio at 360px — closes **#20** |
 | App still correct | `scripts/test.sh` (31) and `scripts/smoke.sh` (11) green; smoke already asserts the bundle matches `src/`, the old route 404s, OCS 412s without its header, and the CSP allows the tablero domain |
 | Catalogue still honest | `make verify` green in `Databases/apis/` |
@@ -273,11 +303,52 @@ justify. Vocabulary and the traps around it are in [`CONTEXT.md`](../CONTEXT.md)
 | Provisioning idempotent | `make seed` twice changes nothing but the four brand image registrations |
 | Nothing quietly undeclared | `make divergence` no longer names `epidemiologia` |
 
+## Debt found while grilling — not this plan's work, but not lost either
+
+None of these blocks a track. Each was measured, and each would otherwise be rediscovered.
+
+- **There is no CI for this app, at all.** No `.github/` here; the platform's `cleanboot.yml:14` says
+  *"Docs, themes and `apps/` are deliberately absent"*, and `gestion/.gitignore:17` excludes `/apps/*`
+  from the repo entirely. The 31 unit tests and 11 smoke checks are **hand-run only, on every event,
+  forever**. Worse, smoke's bundle-drift check — the one guarding that shipped `js/` matches `src/` —
+  **self-skips when `node_modules` is absent**, which is the state of a fresh clone. `smoke.sh:127`
+  already says it out loud: *"we have no CI, so it lives here."*
+- **`l10n/es.json` was decided in #9 and never created.** Harmless at runtime — `JSResourceLocator`
+  carries a literal `// missing translations files will be ignored`, and the JS side falls back to
+  identity — so all 38 `t()`/`n()` call sites render exactly the source Spanish. The cost is that
+  **#9 is closed with one of its four bullets unbuilt**, so the next reader will believe the file
+  exists. There is also no lint keeping new hardcoded strings out.
+- **The no-backup posture is load-bearing, and this app is currently why it is free.**
+  `ARCHITECTURE.md`: *"There is no backup story in this repo, and that absence is load-bearing
+  elsewhere: it is why convergence reports rather than deletes (#85)."* Everything this app holds is
+  re-derivable from MINSAL in one 44 KB refetch. Keeping it that way — caching REM reads rather than
+  persisting them — is what keeps the posture honest, and is a second reason the tables live in
+  `analizador_rem`. A *gated* planilla figure is the first datum in this stack that cannot be
+  refetched from a public URL.
+- **Five of eight `lib/` classes have no test** — `ApiController`, `PageController`, `Notifier`,
+  `AlertProvider`, `MinsalReachable`. Stated as deliberate: the repository is the single seam.
+- **The existing test fake is coupled to the MINSAL call shape.** It reads
+  `$options['query']['slug']` unconditionally and switches fixtures on `str_contains($slug, 'irag')`.
+  A04's ISP feeds already outgrow that, before REM arrives. Any new source needs the fake to dispatch
+  on `$url` first.
+- **No seam exists for "the sibling app is not installed".** Nothing injects `IAppManager`. Upstream's
+  idiom is Talk's `IBroker::hasBackend()`; `analizador_rem` exposes HTTP, not `OCP\`, so that pattern
+  does not transfer and Track D needs its own answer.
+- **Vocabulary drift is live.** `analizador-rem`'s docs prescribe `--groups=SOME --groups=direccion`
+  and this app's own test uses `notify_groups=['informatica']` — **none of those groups exist**.
+  Restricting an app to a nonexistent group restricts it to nobody, and unlike folders there is no
+  `prune` that would ever reconcile it.
+
 ## Deliberately not in this plan
 
 - **No charts we draw, and no CKAN datasets.** `ckan-eno`, `ckan-rem20` and `ckan-defunciones` stay
   recorded and unused. The disease pane shows counts and a decreed constant, not a curve.
 - **No incidencia.** No source produces it at this grain — see `CONTEXT.md`.
+- **No group restriction and no in-code guard.** The content is public and read-only, so the app
+  stays visible to every user. Recorded as a decision because the platform's lever
+  (`app_restrict_to_groups`) has never been pointed at a CESFAM group, and choosing not to use it is
+  as much a choice as using it.
+- **No vaccination coverage.** Serie A carries none; it lives in other DEIS products.
 - **No PDF thumbnails** — [ADR-0002](adr/0002-no-pdf-rasterisation.md).
 - **No dark theme.** `enforce_theme=light`. **#19** stays a verification, not a build.
 - **No CORS.** **#18** is blocked on a product fact, not on engineering.

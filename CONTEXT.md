@@ -62,8 +62,19 @@ Resumen Estadístico Mensual — "registros agrupados que son parte fundamental 
 sanitarias de Chile". Aggregates only: no patient identifiers, no diagnoses.
 
 **Serie**:
-One official REM instrument. **Serie A** is monthly production; **Serie P** is the instrument for
-Población en Control and is **semestral**. The two are never summed together.
+One official REM instrument. **Serie A** is monthly and counts **events** — the manual is explicit
+that *"un mismo paciente puede tener más de un ingreso al mes"*, so it can never be summed into
+people. **Serie P** is **semestral** and counts **people** under control at a corte. The manual
+routes coverage to Serie P by name, three times verbatim. The two are never summed together and
+answer different questions.
+
+**Diagnóstico REM**:
+The cause a Serie A figure is attributed to, drawn from a **closed MINSAL causal list** with the
+manual's own synonym mapping — *IRA alta*, *SBO*, *Neumonía*, *Exacerbación asma*, *EPOC*, *ITS*,
+*VIH-SIDA*, *Salud mental*, *Cardiovascular*, *Otras morbilidades*. It is a diagnosis axis, but not
+a coded one: **no REM cell is CIE-10 coded**, verified across the whole Serie A manual. Serie P has
+no diagnosis axis at all.
+_Avoid_: CIE-10, código diagnóstico, patología
 
 **Corte**:
 The date a Serie P figure refers to — **junio or diciembre**. The manual is explicit that data are
@@ -101,8 +112,15 @@ Explicitly not over Población en Control — using it as its own denominator me
 
 **Código de prestación**:
 The DEIS activity code carried by every REM figure. The only machine-readable anchor from a number
-to what that number counts, and unique per (hoja, sección) rather than per hoja.
-_Avoid_: código, diagnóstico — REM carries no CIE-10 and no diagnosis dimension
+to what that number counts, and unique per (hoja, sección) rather than per hoja. It identifies an
+**activity**, not a diagnosis — the diagnosis, where there is one, is the row's own label.
+_Avoid_: código, diagnóstico
+
+**Vigilancia epidemiológica (REM)**:
+Hoja A04 Secciones P–U — encuesta epidemiológica, quimioprofilaxis de bloqueo, toma de muestras,
+seguimiento de casos y contactos, búsqueda activa institucional y comunitaria. These count
+**surveillance activity**, not notified cases; ENO case notification is not in REM at all.
+_Avoid_: casos notificados, ENO
 
 **Establecimiento**:
 The clinic an instance belongs to, identified by its DEIS code from the establishment list DEIS
