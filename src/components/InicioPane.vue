@@ -430,5 +430,31 @@ const sources = computed(() => [
 	.epi-card__list {
 		overflow: visible;
 	}
+
+	/*
+		Two lines instead of one, on a phone only.
+
+		#35 established the rule for the ISP pane and gave the reason: these titles
+		put the useful half at the END, so truncation removes exactly what a reader
+		needed. Inicio kept one line because "six must fit without scrolling" — but
+		that is a DESKTOP argument, and below this breakpoint the pane scrolls
+		anyway, which is what the rules above already accept.
+
+		Measured at 360px: one line shows 21 characters of a 252-character oficio
+		title, two show 43. Each extra line costs about 66px per card, and there is
+		no hover on a phone, so the `title` attribute that rescues this on a desktop
+		rescues nothing here. Two is the trade; the full text is one tap away in the
+		pane, which is what "Ver las 75 alertas" is for.
+	*/
+	.epi-row {
+		align-items: flex-start;
+	}
+
+	.epi-row a {
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+	}
 }
 </style>

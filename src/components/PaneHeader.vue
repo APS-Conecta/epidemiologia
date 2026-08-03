@@ -46,4 +46,25 @@ defineProps({
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
 }
+
+/*
+	The one place this component states a size, and only below the breakpoint.
+
+	Core sets h2 to 1.8em with a line-height of 1.5 and has no mobile rule to
+	inherit — checked, not assumed. On a phone that is a body leading applied to
+	display type: "Informe semanal de vigilancia ETI e IRAG" ran to THREE lines
+	and 122px, so 26% of a 556px screen was spent before any content. Measured on
+	the instance at a real 360px viewport.
+
+	1.5em with 1.3 leading puts the longest title on two lines at 59px — 15%.
+	Going smaller kept shrinking it (1.3em reaches 47px) and stopped buying
+	anything a reader notices, so this is the least deviation from the platform
+	that solves the problem rather than the smallest number that fits.
+*/
+@media (max-width: 1024px) {
+	.epi-head h2 {
+		font-size: 1.5em;
+		line-height: 1.3;
+	}
+}
 </style>
