@@ -11,7 +11,6 @@ use OCA\Epidemiologia\Notification\Notifier;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
-use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
 use OCP\Notification\INotification;
@@ -29,6 +28,8 @@ use PHPUnit\Framework\TestCase;
  * green suite. The first test below is that missing assertion.
  */
 class NotifierTest extends TestCase {
+	use Doubles;
+
 	public function testAnIspOutageNamesTheIspAndNotMinsal(): void {
 		$subject = $this->render(Sources::SANITARY_ALERTS);
 
@@ -94,18 +95,8 @@ class NotifierTest extends TestCase {
 	}
 
 	private function notifier(): Notifier {
-		$l = $this->createMock(IL10N::class);
-		$l->method('t')->willReturnCallback(
-			static fn (string $text, $parameters = []): string => $parameters === []
-				? $text
-				: vsprintf($text, (array)$parameters),
-		);
-		$l->method('n')->willReturnCallback(
-			static fn (string $one, string $many, int $count): string => str_replace('%n', (string)$count, $many),
-		);
-
 		$factory = $this->createMock(IFactory::class);
-		$factory->method('get')->willReturn($l);
+		$factory->method('get')->willReturn($this->l10n());
 
 		$urls = $this->createMock(IURLGenerator::class);
 		$urls->method('imagePath')->willReturn('/img/app-dark.svg');

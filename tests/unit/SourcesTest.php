@@ -10,7 +10,6 @@ namespace OCA\Epidemiologia\Tests\Unit;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
-use OCP\IL10N;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -21,6 +20,8 @@ use PHPUnit\Framework\TestCase;
  * counted by the probe and invisible to the setup check, the notifier and search.
  */
 class SourcesTest extends TestCase {
+	use Doubles;
+
 	public function testEveryIdResolvesToAPayload(): void {
 		$sources = $this->sources();
 
@@ -110,16 +111,5 @@ class SourcesTest extends TestCase {
 		$isp->method('search')->willReturn([['title' => 'Una alerta del ISP', 'url' => 'https://y/b']]);
 
 		return new Sources($minsal, $isp);
-	}
-
-	private function l10n(): IL10N {
-		$l = $this->createMock(IL10N::class);
-		$l->method('t')->willReturnCallback(
-			static fn (string $text, $parameters = []): string => $parameters === []
-				? $text
-				: vsprintf($text, (array)$parameters),
-		);
-
-		return $l;
 	}
 }

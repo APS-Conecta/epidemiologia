@@ -12,8 +12,6 @@ use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCA\Epidemiologia\SetupCheck\SourcesReachable;
-use OCP\AppFramework\Services\IAppConfig;
-use OCP\IL10N;
 use OCP\SetupCheck\SetupResult;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -32,11 +30,10 @@ use RuntimeException;
  * fails in this file instead of in front of an administrator.
  */
 class SourcesReachableTest extends TestCase {
+	use Doubles;
+
 	/** 2026-08-03T12:00:00Z */
 	private const NOW = 1785758400;
-
-	/** @var array<string, mixed> in-memory IAppConfig, as ProbeJobTest backs it */
-	private array $store = [];
 
 	protected function setUp(): void {
 		$this->store = [];
@@ -183,32 +180,8 @@ class SourcesReachableTest extends TestCase {
 			}
 		}
 
-		return new SourcesReachable($this->config(), new Sources($minsal, $isp), $this->l10n());
+		return new SourcesReachable($this->appConfig(), new Sources($minsal, $isp), $this->l10n());
 	}
 
-	private function config(): IAppConfig {
-		$config = $this->createMock(IAppConfig::class);
-		$config->method('getAppValueInt')->willReturnCallback(
-			fn (string $key, int $default = 0): int => (int)($this->store[$key] ?? $default),
-		);
 
-		return $config;
-	}
-
-	private function l10n(): IL10N {
-		$l = $this->createMock(IL10N::class);
-		$l->method('t')->willReturnCallback(
-			static fn (string $text, $parameters = []): string => $parameters === []
-				? $text
-				: vsprintf($text, (array)$parameters),
-		);
-		// Rendered as a marker rather than a formatted date: the format belongs to
-		// the platform and to the reader's locale, and asserting it here would make
-		// this test fail on a language change that broke nothing.
-		$l->method('l')->willReturnCallback(
-			static fn (string $type, $data, array $options = []): string => $type . ':' . $data->getTimestamp(),
-		);
-
-		return $l;
-	}
 }

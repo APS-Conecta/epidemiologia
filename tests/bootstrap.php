@@ -17,7 +17,12 @@ if (!is_file($thirdParty)) {
 require_once $thirdParty;
 
 spl_autoload_register(static function (string $class) use ($nextcloud): void {
+	// Most specific prefix FIRST: the loop returns on the first one that matches,
+	// so a Tests\Unit class under the general OCA\Epidemiologia\ root would be
+	// looked for in lib/Tests/Unit/ and never found. PHPUnit loads the *Test.php
+	// files itself; this entry exists for what they share — the Doubles trait.
 	$roots = [
+		'OCA\\Epidemiologia\\Tests\\Unit\\' => __DIR__ . '/unit/',
 		'OCP\\' => $nextcloud . '/lib/public/',
 		'OCA\\Epidemiologia\\' => dirname(__DIR__) . '/lib/',
 	];

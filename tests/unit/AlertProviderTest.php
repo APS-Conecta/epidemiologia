@@ -11,7 +11,6 @@ use OCA\Epidemiologia\Search\AlertProvider;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
-use OCP\IL10N;
 use OCP\IUser;
 use OCP\Search\ISearchQuery;
 use PHPUnit\Framework\TestCase;
@@ -27,6 +26,8 @@ use RuntimeException;
  * collaborator was called.
  */
 class AlertProviderTest extends TestCase {
+	use Doubles;
+
 	/**
 	 * A term both fuentes really do carry: MINSAL numbers its oficios "N°15844",
 	 * the ISP numbers its recalls "N° 22/26". Needed because the doubles honour the
@@ -235,16 +236,5 @@ class AlertProviderTest extends TestCase {
 
 	private function user(): IUser {
 		return $this->createMock(IUser::class);
-	}
-
-	private function l10n(): IL10N {
-		$l = $this->createMock(IL10N::class);
-		$l->method('t')->willReturnCallback(
-			static fn (string $text, $parameters = []): string => $parameters === []
-				? $text
-				: vsprintf($text, (array)$parameters),
-		);
-
-		return $l;
 	}
 }

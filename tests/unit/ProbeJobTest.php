@@ -6,7 +6,6 @@ namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\BackgroundJob\ProbeJob;
 use OCA\Epidemiologia\Service\Sources;
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IGroup;
 use OCP\IGroupManager;
@@ -25,10 +24,9 @@ use ReflectionMethod;
  * honest — an untested backoff is a backoff that quietly becomes "every run".
  */
 class ProbeJobTest extends TestCase {
-	private const NOW = 1785585600;
+	use Doubles;
 
-	/** @var array<string, mixed> in-memory IAppConfig */
-	private array $store = [];
+	private const NOW = 1785585600;
 
 	/** @var list<string> uids notified, in order, one entry per notify() */
 	private array $notified = [];
@@ -196,30 +194,9 @@ class ProbeJobTest extends TestCase {
 			},
 		);
 
-		return new ProbeJob($time, $sources, $notifications, $groups, $this->config());
+		return new ProbeJob($time, $sources, $notifications, $groups, $this->appConfig());
 	}
 
 	private string $lastUid = '';
 
-	private function config(): IAppConfig {
-		$config = $this->createMock(IAppConfig::class);
-		$config->method('getAppValueInt')->willReturnCallback(
-			fn (string $key, int $default = 0): int => (int)($this->store[$key] ?? $default),
-		);
-		$config->method('setAppValueInt')->willReturnCallback(
-			function (string $key, int $value): bool {
-				$this->store[$key] = $value;
-
-				return true;
-			},
-		);
-		$config->method('getAppValueArray')->willReturnCallback(
-			fn (string $key, array $default = []): array => (array)($this->store[$key] ?? $default),
-		);
-		$config->method('deleteAppValue')->willReturnCallback(function (string $key): void {
-			unset($this->store[$key]);
-		});
-
-		return $config;
-	}
 }

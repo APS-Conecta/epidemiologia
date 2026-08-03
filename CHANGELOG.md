@@ -53,6 +53,14 @@ history they describe is unchanged.
   search that matches nothing" and "a cold cache" stopped being the same test; and
   result assertions look entries up by title rather than by position, since no
   story specifies an order between fuentes.
+- **The platform doubles live in one trait** (`tests/unit/Doubles.php`) instead of
+  four copies of the translation double and two of the app config. The `t()` arm
+  was byte-identical in all four; the `n()` and `l()` arms each existed once and
+  are now available everywhere. Not a line-count win — the trait is about as long
+  as what it replaced, most of it docblock — but there is **one definition instead
+  of four**. What is deliberately NOT shared is each test's `Sources`: those
+  configure their repositories differently, and one builder for all of them would
+  have more parameters than the call sites it replaced.
 - `CONTEXT.md`'s avoid line for **fuente** now says *institución as a synonym for
   fuente* — naming the institution itself is correct and necessary, and a result
   that does not say which one it came from is the defect the distinction prevents.
