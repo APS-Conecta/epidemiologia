@@ -60,7 +60,14 @@
 
 				<ul v-else class="epi-card__list">
 					<li v-for="item in source.feed.items.slice(0, PER_CARD)" :key="item.url" class="epi-row">
-						<a :href="item.url" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+						<!-- title: Inicio rows are one line on purpose (six must fit without
+						     scrolling), and ISP titles put the product at the END, so the
+						     truncation removes the useful half. A tooltip gives it back for
+						     free; the full text lives one click away in the pane. #35 -->
+						<a :href="item.url"
+							:title="item.title"
+							target="_blank"
+							rel="noopener noreferrer">{{ item.title }}</a>
 						<span class="epi-row__when">{{ item.date || item.month || item.year }}</span>
 					</li>
 				</ul>

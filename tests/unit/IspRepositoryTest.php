@@ -84,6 +84,35 @@ class IspRepositoryTest extends TestCase {
 		);
 	}
 
+	/**
+	 * The categories are the only facet a reader can filter by, and they exist
+	 * nowhere in the feed itself — the <category> elements are empty, so the only
+	 * source is which feed carried the item. Keeping just the first would discard
+	 * the filter before it was ever built.
+	 */
+	public function testAnAlertKeepsEveryCategoryThatCarriedIt(): void {
+		$items = $this->repository()->get()['items'];
+
+		$shared = array_values(array_filter(
+			$items,
+			static fn (array $i): bool => count($i['categories']) > 1,
+		));
+
+		self::assertNotEmpty($shared, 'no alert kept more than one category — the merge is not happening');
+		foreach ($items as $item) {
+			self::assertNotEmpty($item['categories']);
+			self::assertSame(array_unique($item['categories']), $item['categories']);
+		}
+	}
+
+	public function testEveryCategoryOnAnItemIsOneWeActuallyPolled(): void {
+		foreach ($this->repository()->get()['items'] as $item) {
+			foreach ($item['categories'] as $category) {
+				self::assertContains($category, $this->requested);
+			}
+		}
+	}
+
 	public function testSortsNewestFirst(): void {
 		$dates = array_column($this->repository()->get()['items'], 'date');
 		$sorted = $dates;
