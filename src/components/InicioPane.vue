@@ -61,7 +61,7 @@
 				<ul v-else class="epi-card__list">
 					<li v-for="item in source.feed.items.slice(0, PER_CARD)" :key="item.url" class="epi-row">
 						<a :href="item.url" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
-						<span class="epi-row__when">{{ item.month || item.year }}</span>
+						<span class="epi-row__when">{{ item.date || item.month || item.year }}</span>
 					</li>
 				</ul>
 
@@ -115,7 +115,7 @@ import { computed } from 'vue'
 import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
-import { alerts, reports } from '../state.js'
+import { alerts, ispAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
 
@@ -137,6 +137,18 @@ const sources = computed(() => [
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
 		emptyText: t('epidemiologia', 'MINSAL no tiene alertas vigentes publicadas.'),
 		degradedText: t('epidemiologia', 'No hemos podido contactar a MINSAL. Esta lista puede estar incompleta.'),
+	},
+	{
+		id: 'isp-alertas',
+		name: t('epidemiologia', 'Alertas sanitarias'),
+		feed: ispAlerts,
+		pane: 'isp',
+		lead: false,
+		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', ispAlerts.items.length),
+		// Not "el ISP no publicó": several of its 24 categories are legitimately
+		// empty in any given week, and saying nothing was published would be false.
+		emptyText: t('epidemiologia', 'Sus categorías no traen alertas esta semana.'),
+		degradedText: t('epidemiologia', 'No hemos podido contactar al ISP. Esta lista puede estar incompleta.'),
 	},
 ])
 </script>

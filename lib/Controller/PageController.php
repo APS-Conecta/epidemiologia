@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Controller;
 
 use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
@@ -29,6 +30,7 @@ class PageController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private MinsalRepository $repository,
+		private IspRepository $isp,
 		private IInitialState $initialState,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -43,6 +45,7 @@ class PageController extends Controller {
 		// else. The OCS routes exist for the consumers that are not this page.
 		$this->initialState->provideInitialState('alerts', $this->repository->get(MinsalRepository::ALERTS));
 		$this->initialState->provideInitialState('reports', $this->repository->get(MinsalRepository::IRAG));
+		$this->initialState->provideInitialState('ispAlerts', $this->isp->get());
 		$this->initialState->provideInitialState('tablero', self::TABLERO_URL);
 
 		// The bundle name carries the app id — vite-config prefixes it.

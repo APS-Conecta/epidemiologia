@@ -98,6 +98,13 @@ lo rompimos nosotros.
 - **Subir `<version>` en `info.xml` deja toda la instancia en «requiere actualización».** `occ`
   pasa a modo limitado y las rutas web dejan de responder hasta ejecutar `occ upgrade`. Un
   `git pull` que traiga un cambio de versión necesita ese paso detrás.
+- **Tras un `npm run build`, un navegador que ya visitó la app se queda sin estilos.** El fichero de
+  entrada `css/epidemiologia-main.css` sólo hace `@import` del chunk, y el chunk lleva **hash de
+  contenido**: cambia en cada build. Pero la URL de la entrada lleva `?v=<cachebuster>`, que **no**
+  cambia salvo que suba la versión de la app — así que el navegador sirve una entrada cacheada que
+  importa un chunk que el build ya borró, y la app aparece sin CSS. Medido; cuesta tres recargas
+  entender qué pasa. Se arregla solo al publicar (subir `<version>` mueve el cachebuster); en
+  desarrollo, recarga forzada del `.css` además de la del `.mjs`.
 - **`opcache.revalidate_freq` es 60 s**, así que un cambio en PHP puede tardar un minuto en verse.
 - **Al añadir o cambiar rutas por atributos hay que reiniciar el contenedor.** `CachingRouter`
   guarda la colección de rutas ya compilada **una hora** en la caché *local* (APCu), y APCu es por

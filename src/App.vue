@@ -47,6 +47,11 @@
 					<template #icon>
 						<component :is="pane.icon" :size="20" />
 					</template>
+					<!-- raw: NcCounterBubble humanises by default, so 1042 would render
+					     as "1 K". Only shown where the number is actionable. -->
+					<template v-if="pane.count !== undefined" #counter>
+						<NcCounterBubble :count="pane.count" type="highlighted" raw />
+					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
 
@@ -77,6 +82,7 @@
 				-->
 				<InicioPane v-show="current === 'inicio'" @open="current = $event" />
 				<AlertsPane v-show="current === 'alertas'" />
+				<IspPane v-show="current === 'isp'" />
 				<ReportPane v-show="current === 'informe'" />
 				<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
 				<EpivigilaPane v-show="current === 'epivigila'" />
@@ -94,18 +100,22 @@ import {
 	NcAppNavigationItem,
 	NcAppNavigationList,
 	NcContent,
+	NcCounterBubble,
 } from '@nextcloud/vue'
 import { t } from '@nextcloud/l10n'
 import Alert from 'vue-material-design-icons/Alert.vue'
 import ChartBellCurve from 'vue-material-design-icons/ChartBellCurve.vue'
 import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
+import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
 import ReportPane from './components/ReportPane.vue'
 import TableroPane from './components/TableroPane.vue'
+import IspPane from './components/IspPane.vue'
 import EpivigilaPane from './components/EpivigilaPane.vue'
+import { ispAlerts } from './state.js'
 
 const current = ref('inicio')
 
@@ -124,8 +134,8 @@ watch(current, (pane) => {
  * and Nextcloud uses counters for what needs action. A permanent number is decoration
  * that trains people to ignore the one place a real count will appear.
  *
- * The ISP group arrives with #33. Declaring its caption now would give an empty
- * pane a permanent home in the navigation.
+ * The ISP counter IS shown, unlike MINSAL's: it counts what arrived, and what
+ * arrived is what needs looking at.
  */
 const panes = [
 	{ id: 'inicio', name: t('epidemiologia', 'Inicio'), icon: markRaw(Home) },
@@ -139,6 +149,13 @@ const groups = [
 			{ id: 'alertas', name: t('epidemiologia', 'Alertas vigentes'), icon: markRaw(Alert) },
 			{ id: 'informe', name: t('epidemiologia', 'Informe semanal'), icon: markRaw(ChartBellCurve) },
 			{ id: 'tablero', name: t('epidemiologia', 'Tablero MINSAL'), icon: markRaw(ChartBox) },
+		],
+	},
+	{
+		id: 'isp',
+		name: t('epidemiologia', 'ISP'),
+		panes: [
+			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill), count: ispAlerts.items.length },
 		],
 	},
 	{

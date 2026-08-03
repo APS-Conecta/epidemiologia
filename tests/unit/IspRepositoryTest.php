@@ -1,0 +1,290 @@
+<?php
+
+declare(strict_types=1);
+
+// SPDX-FileCopyrightText: 2026 Daniel Espinoza Charrier
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+namespace OCA\Epidemiologia\Tests\Unit;
+
+use OCA\Epidemiologia\Service\IspRepository;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\Http\Client\IClient;
+use OCP\Http\Client\IClientService;
+use OCP\Http\Client\IResponse;
+use OCP\ICache;
+use OCP\ICacheFactory;
+use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
+use RuntimeException;
+
+/**
+ * The ISP half of the app's single test seam.
+ *
+ * Fixtures are real captured ISP feeds, not synthetic RSS — synthetic markup
+ * would only prove the parser can read markup we wrote for it. The overlap
+ * between anamed and retiro-de-mercado is genuine and is what the dedupe test
+ * asserts on.
+ */
+class IspRepositoryTest extends TestCase {
+	/** 2026-08-02T12:00:00Z */
+	private const NOW = 1785672000;
+
+	private array $store = [];
+
+	/** @var list<string> terms requested, in order */
+	private array $requested = [];
+
+	/** Terms whose feed should throw instead of answering. */
+	private array $offline = [];
+
+	protected function setUp(): void {
+		$this->store = [];
+		$this->requested = [];
+		$this->offline = [];
+	}
+
+	// --- what the ISP actually publishes -------------------------------------
+
+	public function testReadsEveryAlertTheFeedsCarry(): void {
+		$alerts = $this->repository()->get();
+
+		self::assertFalse($alerts['degraded']);
+		self::assertNotEmpty($alerts['items']);
+	}
+
+	public function testEveryAlertCarriesATitleAnHttpsUrlAndADay(): void {
+		foreach ($this->repository()->get()['items'] as $item) {
+			self::assertNotSame('', $item['title']);
+			self::assertStringStartsWith('https://', $item['url']);
+			self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $item['date']);
+		}
+	}
+
+	/**
+	 * The ISP files one alert under several categories, so the same link arrives
+	 * more than once. Measured across six feeds: 51 slots, 43 unique.
+	 */
+	public function testTheSameAlertFiledUnderTwoCategoriesAppearsOnce(): void {
+		$items = $this->repository()->get()['items'];
+		$urls = array_column($items, 'url');
+
+		self::assertSame(array_unique($urls), $urls, 'an alert was listed twice');
+	}
+
+	public function testTheFixturesStillOverlapSoTheDedupeIsActuallyExercised(): void {
+		// Guards the test above from passing for free if a re-capture happens to
+		// contain no duplicates — the same trick MinsalRepositoryTest uses for sort.
+		$anamed = $this->linksIn('isp-anamed.xml');
+		$retiro = $this->linksIn('isp-retiro.xml');
+
+		self::assertNotEmpty(
+			array_intersect($anamed, $retiro),
+			'the captured feeds no longer share an alert; re-capture with overlap',
+		);
+	}
+
+	public function testSortsNewestFirst(): void {
+		$dates = array_column($this->repository()->get()['items'], 'date');
+		$sorted = $dates;
+		rsort($sorted);
+
+		self::assertSame($sorted, $dates);
+	}
+
+	public function testRejectsEveryUrlThatIsNotHttps(): void {
+		$hostile = $this->rss([
+			['t' => 'javascript', 'u' => 'javascript:alert(1)'],
+			['t' => 'plain http', 'u' => 'http://www.ispch.gob.cl/alerta/x/'],
+			['t' => 'good', 'u' => 'https://www.ispch.gob.cl/alerta/ok/'],
+		]);
+
+		$items = $this->repository(body: $hostile)->get()['items'];
+
+		self::assertCount(1, $items);
+		self::assertSame('good', $items[0]['title']);
+	}
+
+	// --- the rule that differs from MINSAL -----------------------------------
+
+	/**
+	 * The whole reason this class is not a second source inside MinsalRepository.
+	 * ISP categories are sparse and which ones are empty moves week to week.
+	 */
+	public function testAnEmptyFeedIsNormalAndNotDegraded(): void {
+		$alerts = $this->repository(body: $this->rss([]))->get();
+
+		self::assertFalse($alerts['degraded'], 'an empty category is an answer, not a fault');
+		self::assertSame([], $alerts['items']);
+	}
+
+	public function testReachingNoFeedAtAllIsDegraded(): void {
+		$alerts = $this->repository(offlineAll: true)->get();
+
+		self::assertTrue($alerts['degraded']);
+	}
+
+	public function testOneUnreachableFeedDoesNotDegradeTheRest(): void {
+		$alerts = $this->repository(offline: ['anamed'])->get();
+
+		self::assertFalse($alerts['degraded']);
+		self::assertNotEmpty($alerts['items']);
+	}
+
+	// --- caching and degradation, same contract as MINSAL --------------------
+
+	public function testAnUnreachableIspServesTheLastGoodCopyFlaggedDegraded(): void {
+		$before = $this->repository()->get();
+		self::assertNotEmpty($before['items']);
+
+		// Past FRESH_FOR, or get() serves the still-fresh copy and never tries the
+		// network — which is correct behaviour and would make this assert nothing.
+		$after = $this->repository(offlineAll: true, now: self::NOW + 7200)->get();
+
+		self::assertTrue($after['degraded']);
+		self::assertSame($before['items'], $after['items']);
+	}
+
+	public function testTotalFailureNeverOverwritesTheCache(): void {
+		$this->repository()->get();
+		$snapshot = $this->store;
+
+		$this->repository(offlineAll: true, now: self::NOW + 7200)->get();
+
+		self::assertSame($snapshot, $this->store, 'the last good copy was overwritten');
+	}
+
+	public function testWithNothingCachedAndTheIspDownItSaysDegradedRatherThanEmpty(): void {
+		$alerts = $this->repository(offlineAll: true)->get();
+
+		self::assertTrue($alerts['degraded']);
+		self::assertSame([], $alerts['items']);
+		self::assertNull($alerts['fetched_at']);
+	}
+
+	public function testServesTheCacheWithoutRefetchingWhileItIsFresh(): void {
+		$this->repository()->get();
+		$firstPass = count($this->requested);
+		$this->requested = [];
+
+		$this->repository()->get();
+
+		self::assertSame([], $this->requested, 'a fresh cache must not be refetched');
+		self::assertGreaterThan(1, $firstPass, 'the first pass should have polled every term');
+	}
+
+	public function testEveryCategoryIsPolledNotJustAnamed(): void {
+		$this->repository()->get();
+
+		// anamed caps at 10 like the rest, so polling only it would silently lose
+		// whatever the other categories carry.
+		self::assertGreaterThan(20, count($this->requested));
+		self::assertContains('anamed', $this->requested);
+		self::assertContains('robo-hurto', $this->requested);
+	}
+
+	public function testTheProbeReportsFailureWhenNoFeedAnswers(): void {
+		self::assertFalse($this->repository(offlineAll: true)->probe());
+	}
+
+	public function testTheProbeIsHappyWhenTheFeedsAnswer(): void {
+		self::assertTrue($this->repository()->probe());
+	}
+
+	// --- doubles -------------------------------------------------------------
+
+	/**
+	 * @param string|null  $body       served for every term, instead of the fixtures
+	 * @param list<string> $offline    terms that should throw
+	 * @param bool         $offlineAll every term throws
+	 */
+	private function repository(
+		?string $body = null,
+		array $offline = [],
+		bool $offlineAll = false,
+		?int $now = null,
+	): IspRepository {
+		$client = $this->createMock(IClient::class);
+		$client->method('get')->willReturnCallback(
+			function (string $url) use ($body, $offline, $offlineAll): IResponse {
+				$term = $this->termOf($url);
+				$this->requested[] = $term;
+
+				if ($offlineAll || in_array($term, $offline, true)) {
+					throw new RuntimeException('cURL error 60: SSL certificate problem');
+				}
+
+				$response = $this->createMock(IResponse::class);
+				$response->method('getBody')->willReturn($body ?? $this->fixture($term));
+
+				return $response;
+			},
+		);
+
+		$clients = $this->createMock(IClientService::class);
+		$clients->method('newClient')->willReturn($client);
+
+		$time = $this->createMock(ITimeFactory::class);
+		$time->method('getTime')->willReturn($now ?? self::NOW);
+
+		$cacheFactory = $this->createMock(ICacheFactory::class);
+		$cacheFactory->method('createDistributed')->willReturn($this->cache());
+
+		return new IspRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
+	}
+
+	private function cache(): ICache {
+		$cache = $this->createMock(ICache::class);
+		$cache->method('get')->willReturnCallback(fn (string $key) => $this->store[$key] ?? null);
+		$cache->method('set')->willReturnCallback(function (string $key, $value): bool {
+			$this->store[$key] = $value;
+
+			return true;
+		});
+
+		return $cache;
+	}
+
+	/** The category slug is the request's identity here, as the slug is for MINSAL. */
+	private function termOf(string $url): string {
+		return preg_match('#/categorias-alertas/([^/]+)/#', $url, $m) === 1 ? $m[1] : $url;
+	}
+
+	/**
+	 * Only three categories were captured. Every other term answers with the
+	 * `informe-tecnico` capture, which is the sparse one-item case — so the
+	 * dedupe and the sort are exercised without pretending we hold 24 files.
+	 */
+	private function fixture(string $term): string {
+		$file = match ($term) {
+			'anamed' => 'isp-anamed.xml',
+			'retiro-de-mercado' => 'isp-retiro.xml',
+			default => 'isp-informe-tecnico.xml',
+		};
+
+		return (string)file_get_contents(__DIR__ . '/fixtures/' . $file);
+	}
+
+	/** @return list<string> */
+	private function linksIn(string $file): array {
+		$xml = simplexml_load_string((string)file_get_contents(__DIR__ . '/fixtures/' . $file));
+
+		// preserve_keys=false: every node is named `item`, so the default keyed form
+		// collapses 10 siblings into 1 and the overlap check silently passes on nothing.
+		return array_map(static fn ($i): string => trim((string)$i->link), iterator_to_array($xml->channel->item, false));
+	}
+
+	/** @param list<array{t: string, u: string}> $items */
+	private function rss(array $items): string {
+		$body = '';
+		foreach ($items as $item) {
+			$body .= sprintf(
+				'<item><title>%s</title><link>%s</link><pubDate>Tue, 28 Jul 2026 20:38:58 +0000</pubDate></item>',
+				$item['t'],
+				$item['u'],
+			);
+		}
+
+		return '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>' . $body . '</channel></rss>';
+	}
+}
