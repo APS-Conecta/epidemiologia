@@ -45,8 +45,22 @@ defineProps({
 }
 
 /*
-	Wraps, on every viewport. No max-width, no clamp: the whole point is that the
-	end of the title is the part that says what this is about.
+	Wraps in FULL, on every viewport. No max-width, no clamp, no ellipsis — and
+	that is a decision, not an omission.
+
+	Measured with the 75 real alerts: full titles cost 18 screens at 360px against
+	12 with a two-line clamp, and on a desktop the difference is under 1% because
+	the titles already fit in two lines there. So the clamp is nearly free and was
+	proposed on exactly those grounds.
+
+	Rejected 2026-08-03: what is being abbreviated is the subject of an oficio that
+	instructs a clinic on what to do about a disease. Someone has to be able to read
+	what was issued, not a prefix of it. A list that is long because the content is
+	long is honest; a list that is short because it hid the disease name is not.
+
+	If the length ever has to come down, the lever is the boilerplate, not the
+	subject: every title opens with the same 25 characters of reference. Moving that
+	elsewhere shortens the row while still showing everything.
 
 	overflow-wrap: anywhere, and it is load-bearing. MINSAL titles carry tokens
 	like B27_N_1709_REFUERZA_VACUNACION_CONTRA_SARAMPION_2025 — 52 characters with
