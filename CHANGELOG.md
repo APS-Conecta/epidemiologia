@@ -7,6 +7,36 @@ Written in English, like the rest of this repo outside the UI — see [`AGENTS.m
 Entries up to 0.2.0 were originally written in Spanish and were translated on 2026-08-03; the
 history they describe is unchanged.
 
+## [Unreleased]
+
+### Added
+
+- **Tests for the two classes that actually decide something**, `SourcesReachable`
+  and `AlertProvider` — the two that carried two of the three defects in 0.3.0 and
+  had no test at all. They assert what a person sees: the severity of the Visión
+  general row and which fuente it names, and whether a search finds both kinds of
+  alert and keeps them distinguishable. The suite goes from 66 to **86**.
+- Each new guard was proved by reintroducing the defect it exists to catch —
+  enumerating MINSAL's two fuentes by name, always claiming a start date, letting
+  the check reach the network, restricting search to MINSAL, dropping the
+  institution from a result's label. **A regression test that has never failed is
+  worth nothing.**
+- **[ADR-0007](docs/adr/0007-tests-follow-branching-not-layering.md)**: test what
+  **branches**, not what layer it sits in. Replaces the previous rule — *"the
+  repository is the single seam"* — which 0.3.0 disproved three times over.
+- **`fuente` and `sondeo` in the glossary.** A fuente is the unit everything
+  outside a repository counts in and had no word; estado degradado was defined
+  while the sondeo that detects it was not. Also records a collision worth knowing:
+  *aviso* is on `alerta vigente`'s avoid-list, but it is what the bell holds — that
+  is a **notificación**.
+
+### Changed
+
+- The chassis plan's debt entry asserting the old testing rule is corrected in the
+  same change, so two documents do not disagree about the same rule.
+
+No runtime effect: no version bump, no rebuild of the bundle, no `occ upgrade`.
+
 ## [0.3.0] — 2026-08-03
 
 One list of sources. The app had three sources and **seven places that enumerated

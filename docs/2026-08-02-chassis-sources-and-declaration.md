@@ -357,8 +357,15 @@ None of these blocks a track. Each was measured, and each would otherwise be red
   persisting them — is what keeps the posture honest, and is a second reason the tables live in
   `analizador_rem`. A *gated* planilla figure is the first datum in this stack that cannot be
   refetched from a public URL.
-- **Five of eight `lib/` classes have no test** — `ApiController`, `PageController`, `Notifier`,
-  `AlertProvider`, `MinsalReachable`. Stated as deliberate: the repository is the single seam.
+- ~~**Five of eight `lib/` classes have no test** — `ApiController`, `PageController`, `Notifier`,
+  `AlertProvider`, `MinsalReachable`. Stated as deliberate: the repository is the single seam.~~
+  **Corrected 2026-08-03 (#38, [ADR-0007](adr/0007-tests-follow-branching-not-layering.md)).** The
+  single-seam rule was wrong, and this bullet recorded it as deliberate rather than as a risk. All
+  three defects in 0.3.0 were in those "thin glue" classes — a ternary in `Notifier`, a hardcoded
+  loop in `SourcesReachable` (then `MinsalReachable`), a policy choice in `AlertProvider`'s
+  constructor — and the suite stayed green through every one. The rule is now **test what branches,
+  not what layer it sits in**: those three are tested; `ApiController`, `PageController` and
+  `Application` are left to `smoke.sh`, which already asserts what they produce.
 - **The existing test fake is coupled to the MINSAL call shape.** It reads
   `$options['query']['slug']` unconditionally and switches fixtures on `str_contains($slug, 'irag')`.
   A04's ISP feeds already outgrow that, before REM arrives. Any new source needs the fake to dispatch
