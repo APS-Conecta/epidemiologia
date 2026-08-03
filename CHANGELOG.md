@@ -30,10 +30,22 @@ history they describe is unchanged.
   *aviso* is on `alerta vigente`'s avoid-list, but it is what the bell holds — that
   is a **notificación**.
 
+- **CI, at last** (`.github/workflows/ci.yml`): the unit suite on every push and
+  pull request, in the same `nextcloud:34` image the instance runs, plus a bundle
+  check that rebuilds `src/` and requires `js/` and `css/` to be unchanged. The
+  belief that blocked this — that the suite needs a provisioned Nextcloud — was
+  wrong: the image ships `OCP` under `/usr/src/nextcloud`, so the tests run with no
+  entrypoint, no database and no install. Verified by running them exactly that way.
+
 ### Changed
 
 - The chassis plan's debt entry asserting the old testing rule is corrected in the
   same change, so two documents do not disagree about the same rule.
+- **`scripts/smoke.sh` stays manual on purpose**, and `README.md` now says why: its
+  assertions need a real provisioned instance, and faking one in CI would test the
+  fake. Its bundle-drift check keeps its local copy but is no longer the only one —
+  the CI version does not self-skip, and the skip fired exactly where the check
+  mattered most, on a fresh clone with no `node_modules`.
 
 No runtime effect: no version bump, no rebuild of the bundle, no `occ upgrade`.
 

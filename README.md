@@ -100,6 +100,15 @@ scripts/smoke.sh    # checks the wiring against the running instance
 scripts/openapi.sh  # regenerates openapi.json from the controller
 ```
 
+**Two of these run on every push and pull request** (`.github/workflows/ci.yml`): the unit suite, in
+the same `nextcloud:34` image the instance runs, and the bundle check that rebuilds `src/` and
+requires `js/` and `css/` to be unchanged.
+
+**`scripts/smoke.sh` stays manual, deliberately.** Its assertions need a provisioned instance with
+the app enabled, an admin user and an app password — and their value *is* that they run against a
+real instance, so faking one in CI would test the fake. Run it before a release and after any change
+to routes, the CSP or the background job.
+
 `scripts/test.sh` covers the only things with real logic: parsing, ordering, the year, the semana
 epidemiológica, degradation, accent folding, and the catalogue of sources. The fixtures are **real
 captured responses** from MINSAL and the ISP, not invented markup — so the parsers are proven against

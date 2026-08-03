@@ -138,10 +138,12 @@ esac
 
 # The bundle in js/ is committed — that IS the deployment. So the failure this
 # guards is src/ moving without a rebuild: the running app would then not be the
-# code in this repo, and nothing else here can see that. Upstream Nextcloud runs
-# the same assertion in CI (rebuild, then require a clean tree); we have no CI, so
-# it lives here. Skipped when node is absent, because that is a dev-machine tool
-# and this script must still be runnable on a box that only has docker.
+# code in this repo.
+#
+# CI now runs this same assertion and does NOT skip (#39), which matters because
+# the skip below triggers exactly where the check is most needed: a fresh clone
+# has no node_modules. This copy stays anyway — it costs nothing when node is
+# present, and it answers the question locally before a push rather than after.
 if command -v npm >/dev/null 2>&1 && [ -d node_modules ]; then
 	npm run build --silent >/dev/null 2>&1
 	drift="$(git status --porcelain js/ css/ 2>/dev/null)"

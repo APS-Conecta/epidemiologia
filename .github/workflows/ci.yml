@@ -1,0 +1,89 @@
+# The two checks a machine can make without a provisioned instance (#39).
+#
+# Everything here used to be run by hand, on every change, forever — and the one
+# guarding that the shipped bundle matches src/ SKIPPED ITSELF whenever
+# node_modules was absent, which is the state of a fresh clone. That is exactly
+# the machine a check like this should not trust a human to have set up.
+#
+# What is deliberately NOT here: the rest of scripts/smoke.sh. Those assertions
+# need a provisioned Nextcloud with the app enabled, an admin user and an app
+# password — a fixture an order of magnitude heavier than PHPUnit, for checks
+# whose value is precisely that they run against a REAL instance. They stay
+# manual, and README.md says so.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    # The suite is typed against OCP and needs intl, so it runs inside the same
+    # image the instance runs — the identical arrangement scripts/test.sh uses
+    # locally. Pinned to the major this app declares in appinfo/info.xml.
+    container: nextcloud:34-apache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # NEXTCLOUD_ROOT is /usr/src/nextcloud and NOT /var/www/html, which is the
+      # one thing that differs from running this locally. The image ships the
+      # source under /usr/src and the entrypoint copies it into the webroot at
+      # container start — and `container:` here never runs that entrypoint, so
+      # /var/www/html is empty. Measured, not assumed: tests/bootstrap.php reads
+      # this variable for exactly this reason.
+      - name: Resolve Nextcloud
+        run: |
+          test -f /usr/src/nextcloud/3rdparty/autoload.php
+          test -d /usr/src/nextcloud/lib/public
+          php -m | grep -qx intl
+
+      - name: Fetch PHPUnit
+        run: |
+          mkdir -p tools
+          curl -sSLf -o tools/phpunit.phar https://phar.phpunit.de/phpunit-11.phar
+
+      - name: Run the suite
+        env:
+          NEXTCLOUD_ROOT: /usr/src/nextcloud
+        run: php tools/phpunit.phar
+
+  bundle:
+    name: Bundle matches src/
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      # js/ and css/ are committed — that IS the deployment, so src/ moving
+      # without a rebuild means the running app is not the code in this repo.
+      # Rebuilding and requiring a clean tree is the same assertion smoke.sh
+      # makes, minus the self-skip that made it unreliable where it mattered.
+      #
+      # `git status --porcelain` and NOT `git diff --exit-code`: the CSS chunk
+      # carries a content hash, so a rebuild after a real change writes a NEW
+      # file and deletes the old one. `git diff` reports the deletion and is
+      # blind to the addition, so it can pass on precisely the drift that
+      # matters. Verified by planting an untracked chunk — diff called it clean.
+      - name: Rebuild and require no drift
+        run: |
+          npm run build
+          drift="$(git status --porcelain -- js/ css/)"
+          if [ -n "$drift" ]; then
+            printf '%s\n' "$drift"
+            echo "::error::js/ and css/ are behind src/. Run 'npm run build' and commit the result."
+            exit 1
+          fi
