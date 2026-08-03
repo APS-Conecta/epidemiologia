@@ -34,9 +34,22 @@ class MinsalRepositoryTest extends TestCase {
 	/** @var list<string> request keys, in order — see requestKey() for what a key is */
 	private array $requested = [];
 
+	/** @var list<string> request keys that matched no fixture; see fixture() */
+	private array $unmatched = [];
+
 	protected function setUp(): void {
 		$this->store = [];
 		$this->requested = [];
+		$this->unmatched = [];
+	}
+
+	/** Runs outside the repository's catch, which is the only place this can bite. */
+	protected function assertPostConditions(): void {
+		self::assertSame(
+			[],
+			$this->unmatched,
+			'a request matched no fixture — add one to FIXTURES, or pass body:',
+		);
 	}
 
 	// --- parsing -----------------------------------------------------------
@@ -430,12 +443,16 @@ class MinsalRepositoryTest extends TestCase {
 	];
 
 	/**
-	 * An unmatched key FAILS rather than falling back.
+	 * An unmatched key is recorded and asserted in tearDown, NOT thrown here.
 	 *
-	 * A default would hand MINSAL's alerts to any source that had no capture of
-	 * its own, and the test asserting on them would pass — which is the whole
-	 * failure this double was reworked to make impossible. Pass `body:` for a
-	 * request that is meant to have no fixture.
+	 * Throwing looks right and is useless: this runs inside the client's get(),
+	 * and MinsalRepository::request() catches Throwable — AssertionFailedError
+	 * included — logs "no se pudo contactar" and returns null. A missing fixture
+	 * would therefore read as an unreachable host, go down the degraded path, and
+	 * let a test pass green. That is the exact failure this double exists to make
+	 * impossible, so the assertion has to happen where production cannot catch it.
+	 *
+	 * Pass `body:` for a request that is meant to have no fixture.
 	 */
 	private function fixture(string $key): string {
 		foreach (self::FIXTURES as $fragment => $name) {
@@ -444,6 +461,8 @@ class MinsalRepositoryTest extends TestCase {
 			}
 		}
 
-		self::fail("no fixture for request '$key' — add one to FIXTURES, or pass body:");
+		$this->unmatched[] = $key;
+
+		return '';
 	}
 }
