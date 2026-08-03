@@ -122,7 +122,7 @@ import { computed } from 'vue'
 import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
-import { alerts, ispAlerts, reports } from '../state.js'
+import { alerts, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
 
@@ -148,10 +148,10 @@ const sources = computed(() => [
 	{
 		id: 'isp-alertas',
 		name: t('epidemiologia', 'Alertas sanitarias'),
-		feed: ispAlerts,
+		feed: sanitaryAlerts,
 		pane: 'isp',
 		lead: false,
-		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', ispAlerts.items.length),
+		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', sanitaryAlerts.items.length),
 		// Not "el ISP no publicó": several of its 24 categories are legitimately
 		// empty in any given week, and saying nothing was published would be false.
 		emptyText: t('epidemiologia', 'Sus categorías no traen alertas esta semana.'),

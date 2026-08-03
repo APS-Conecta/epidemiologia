@@ -220,6 +220,53 @@ class IspRepositoryTest extends TestCase {
 		self::assertTrue($this->repository()->probe());
 	}
 
+	// --- the global search box -----------------------------------------------
+
+	public function testSearchFindsAnAlertByItsTitle(): void {
+		$repository = $this->repository();
+		$repository->get();
+
+		$hits = $repository->search('amlodipino');
+
+		self::assertNotEmpty($hits);
+		self::assertStringContainsStringIgnoringCase('AMLODIPINO', $hits[0]['title']);
+	}
+
+	/**
+	 * The reason the category slugs are searched at all: an ISP title names the
+	 * product, not what kind of notice it is, so "cosmético" would find nothing if
+	 * only titles were matched.
+	 */
+	public function testSearchFindsAnAlertByItsCategoryWhenTheTitleNeverSaysIt(): void {
+		$repository = $this->repository();
+		$repository->get();
+
+		$hits = $repository->search('cosmeticas');
+
+		self::assertNotEmpty($hits);
+		self::assertStringNotContainsStringIgnoringCase('cosmeticas', $hits[0]['title']);
+	}
+
+	/**
+	 * Every registered provider runs on every global search, so one that fetched
+	 * would put 24 outbound requests in front of someone looking for a Word
+	 * document. MinsalRepository::search() refuses for the same reason.
+	 */
+	public function testSearchNeverFetches(): void {
+		$repository = $this->repository();
+		$repository->get();
+		$warmed = $this->requested;
+
+		$repository->search('amlodipino');
+
+		self::assertSame($warmed, $this->requested);
+	}
+
+	public function testSearchOnAColdCacheFindsNothingRatherThanFetching(): void {
+		self::assertSame([], $this->repository()->search('amlodipino'));
+		self::assertSame([], $this->requested);
+	}
+
 	// --- doubles -------------------------------------------------------------
 
 	/**

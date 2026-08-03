@@ -8,16 +8,28 @@ platform repo's shape.
 loads as parent context whenever you work here — its rules (language split, secrets handling,
 "do not touch" siblings) still apply. Nothing below replaces them; it adds.
 
-**Language.** Code, identifiers, test names and `docs/` in **English**. UI strings
-(`t('epidemiologia', …)`) in **Spanish**. `README.md` and `CHANGELOG.md` are Spanish because the
-clinic reads them; commit messages follow the existing log, which is Spanish.
+**Language.** One line decides it: **Spanish is what a clinician reads. Everything else is English.**
 
-> **Unresolved, flagged rather than decided.** The map's standing rules (issue #2) say *"code
-> comments in Spanish"*, and **the entire codebase contradicts it** — comments in `lib/` and
-> `tests/` are English throughout, and have been since before this file existed. This file first
-> restated the rule without checking. Either the rule is wrong or the code is; it is the map's
-> call, not a file-by-file one. Until it is answered, **match the file you are editing** and do not
-> convert anything.
+| Surface | Language |
+| --- | --- |
+| UI strings — `t('epidemiologia', …)`, `n(…)`, and anything rendered in the app | **Spanish** |
+| Code, identifiers, comments, test names, docblocks | **English** |
+| `docs/`, `CONTEXT.md`, `docs/adr/` | **English** |
+| `README.md`, `CHANGELOG.md` | **English** |
+| `scripts/` output | **English** |
+
+`README.md` and `CHANGELOG.md` used to be Spanish, on the reasoning that "the clinic reads them".
+They do not: a clinician reads the app, and these two are read by whoever maintains it. Settled
+2026-08-03 (#37) and both files converted in the same commit.
+
+**Commit messages stay Spanish**, matching twenty commits of existing log. That is the one
+deliberate exception, kept because a log that switches language halfway is harder to read than one
+that is consistently in either.
+
+> **Resolved 2026-08-03.** This file used to flag a contradiction: the map's standing rules
+> (issue #2) said *"code comments in Spanish"* while the entire codebase wrote them in English. The
+> table above settles it in favour of the code — comments are English, and no file needs converting
+> because none was ever Spanish.
 
 ## Agent skills
 

@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\BackgroundJob\ProbeJob;
-use OCA\Epidemiologia\Service\IspRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IGroup;
@@ -63,14 +62,14 @@ class ProbeJobTest extends TestCase {
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
 		$this->runDays(2, healthy: false);
 
-		// three feeds (MINSAL alertas, MINSAL IRAG, ISP) x one admin
+		// three sources (MINSAL alertas, MINSAL IRAG, ISP) x one admin
 		self::assertSame(['admin', 'admin', 'admin'], $this->notified);
 	}
 
 	public function testAThirtyDayOutageProducesThreeAlarmsAndNotThirty(): void {
 		$this->runDays(30, healthy: false);
 
-		// days 2, 7 and 30, for each of the three feeds — not 90 notifications
+		// days 2, 7 and 30, for each of the three sources — not 90 notifications
 		self::assertCount(9, $this->notified);
 		self::assertSame(30, $this->store['probe_failures_alerts']);
 	}
@@ -85,8 +84,8 @@ class ProbeJobTest extends TestCase {
 	public function testEveryAlarmClearsTheOldOneFirst(): void {
 		$this->runDays(7, healthy: false);
 
-		// Two alarms per feed (days 2 and 7), each preceded by a markProcessed, so the
-		// bell holds one row per feed rather than one per alarm. Three feeds now.
+		// Two alarms per source (days 2 and 7), each preceded by a markProcessed, so
+		// the bell holds one row per source rather than one per alarm.
 		self::assertSame(6, $this->cleared);
 	}
 
@@ -97,7 +96,7 @@ class ProbeJobTest extends TestCase {
 
 		self::assertSame(0, $this->store['probe_failures_alerts']);
 		self::assertArrayNotHasKey('probe_failing_since_alerts', $this->store);
-		self::assertSame(3, $this->cleared, 'one per feed');
+		self::assertSame(3, $this->cleared, 'one per source');
 	}
 
 	public function testAlreadyHealthyRunsDoNotTouchTheBellAtAll(): void {
@@ -121,13 +120,17 @@ class ProbeJobTest extends TestCase {
 	 * The ISP is a separate source with a separate counter. If it shared MINSAL's,
 	 * an ISP outage would reset MINSAL's clock on every healthy MINSAL day and the
 	 * alarm would never reach day 2.
+	 *
+	 * The keys are the registry ids, not the repositories' internal feed names:
+	 * everything outside a repository speaks one vocabulary, which is what stops
+	 * the job and the setup check counting different things.
 	 */
 	public function testEachSourceKeepsItsOwnFailureCount(): void {
 		$this->runDays(3, healthy: false);
 
 		self::assertSame(3, $this->store['probe_failures_alerts']);
-		self::assertSame(3, $this->store['probe_failures_irag']);
-		self::assertSame(3, $this->store['probe_failures_isp-alerts']);
+		self::assertSame(3, $this->store['probe_failures_reports']);
+		self::assertSame(3, $this->store['probe_failures_sanitary_alerts']);
 	}
 
 	public function testTheNotifiedGroupIsConfigurable(): void {
@@ -147,11 +150,8 @@ class ProbeJobTest extends TestCase {
 	}
 
 	private function job(bool $healthy, int $now): ProbeJob {
-		$repository = $this->createMock(MinsalRepository::class);
-		$repository->method('probe')->willReturn($healthy);
-
-		$isp = $this->createMock(IspRepository::class);
-		$isp->method('probe')->willReturn($healthy);
+		$sources = $this->createMock(Sources::class);
+		$sources->method('probe')->willReturn($healthy);
 
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn($now);
@@ -196,7 +196,7 @@ class ProbeJobTest extends TestCase {
 			},
 		);
 
-		return new ProbeJob($time, $repository, $isp, $notifications, $groups, $this->config());
+		return new ProbeJob($time, $sources, $notifications, $groups, $this->config());
 	}
 
 	private string $lastUid = '';

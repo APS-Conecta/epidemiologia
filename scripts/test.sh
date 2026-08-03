@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PHPUNIT_VERSION=11
 
 if [ ! -f "$HERE/tools/phpunit.phar" ]; then
-	printf 'Descargando PHPUnit %s…\n' "$PHPUNIT_VERSION"
+	printf 'Downloading PHPUnit %s…\n' "$PHPUNIT_VERSION"
 	mkdir -p "$HERE/tools"
 	curl -sSL -o "$HERE/tools/phpunit.phar" "https://phar.phpunit.de/phpunit-$PHPUNIT_VERSION.phar"
 fi

@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\BackgroundJob;
 
 use OCA\Epidemiologia\AppInfo\Application;
-use OCA\Epidemiologia\Service\IspRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
@@ -15,7 +14,7 @@ use OCP\Notification\IManager;
 use OCP\Notification\INotification;
 
 /**
- * Detects that MINSAL changed under us.
+ * Detects that a source changed under us.
  *
  * The read path is lazy — it refreshes only when someone opens the app — so on
  * its own a MINSAL restructure in December would go unnoticed until a clinician
@@ -26,10 +25,12 @@ use OCP\Notification\INotification;
  * earns its keep where a cache-warming job would not; a warm cache is a side
  * effect. Yearly cost is roughly 310 KB.
  *
- * It keeps a consecutive-failure count per feed, which is the substrate for both
- * admin-facing signals: the backoff below, and MinsalReachable, the setup check
- * that shows the same state in Administración → Visión general. They read one
- * value, so they cannot disagree.
+ * It keeps a consecutive-failure count per source, which is the substrate for
+ * both admin-facing signals: the backoff below, and SourcesReachable, the setup
+ * check that shows the same state in Administración → Visión general. They read
+ * one value, so they cannot disagree — and since #37 they also enumerate from one
+ * list, so they cannot cover different sources either, which is exactly how the
+ * ISP ended up counted here and invisible there.
  */
 class ProbeJob extends TimedJob {
 	/**
@@ -50,16 +51,15 @@ class ProbeJob extends TimedJob {
 	 */
 	private const NOTIFY_AT = [2, 7, 30];
 
-	/** Consecutive failed probes, per feed. 0 means healthy. */
+	/** Consecutive failed probes, per source. 0 means healthy. */
 	public const FAILURES = 'probe_failures_';
 
-	/** Unix time of the first failure in the current run, per feed. */
+	/** Unix time of the first failure in the current run, per source. */
 	public const FAILING_SINCE = 'probe_failing_since_';
 
 	public function __construct(
 		ITimeFactory $time,
-		private MinsalRepository $repository,
-		private IspRepository $isp,
+		private Sources $sources,
 		private IManager $notifications,
 		private IGroupManager $groups,
 		private IAppConfig $config,
@@ -72,53 +72,52 @@ class ProbeJob extends TimedJob {
 
 	#[\Override]
 	protected function run($argument): void {
-		foreach ([MinsalRepository::ALERTS, MinsalRepository::IRAG] as $feed) {
-			$this->judge($feed, $this->repository->probe($feed));
-		}
-
-		// The ISP goes through the SAME backoff and the same counters, so a MINSAL
-		// outage and an ISP outage cannot drown each other out — each keeps its own
+		// Every source through the SAME backoff and the same counters, so two
+		// simultaneous outages cannot drown each other out — each keeps its own
 		// failure count and its own "failing since" stamp, and each is notified on
 		// its own 2nd, 7th and 30th consecutive day.
 		//
-		// It probes differently on purpose: MinsalRepository asks one page for its
+		// They probe differently underneath: MinsalRepository asks one page for its
 		// modification date, while IspRepository has 24 feeds and no cheap liveness
-		// signal, so its probe is a full refresh. That is 24 requests a day, which is
-		// the price of the source having no equivalent of `modified`.
-		$this->judge(IspRepository::ALERTS, $this->isp->probe());
+		// signal, so its probe is a full refresh. That is the price of a source with
+		// no equivalent of `modified`, and it is the repositories' business, not this
+		// job's — which is why this loop no longer names either of them.
+		foreach (Sources::ALL as $source) {
+			$this->judge($source, $this->sources->probe($source));
+		}
 	}
 
-	private function judge(string $feed, bool $healthy): void {
+	private function judge(string $source, bool $healthy): void {
 		if ($healthy) {
-			$this->recovered($feed);
+			$this->recovered($source);
 		} else {
-			$this->failed($feed);
+			$this->failed($source);
 		}
 	}
 
 	/** Clear the state and take the notification back off the bell. */
-	private function recovered(string $feed): void {
-		if ($this->config->getAppValueInt(self::FAILURES . $feed) === 0) {
+	private function recovered(string $source): void {
+		if ($this->config->getAppValueInt(self::FAILURES . $source) === 0) {
 			return;
 		}
 
-		$this->config->setAppValueInt(self::FAILURES . $feed, 0);
-		$this->config->deleteAppValue(self::FAILING_SINCE . $feed);
-		$this->notifications->markProcessed($this->match($feed));
+		$this->config->setAppValueInt(self::FAILURES . $source, 0);
+		$this->config->deleteAppValue(self::FAILING_SINCE . $source);
+		$this->notifications->markProcessed($this->match($source));
 	}
 
-	private function failed(string $feed): void {
-		$failures = $this->config->getAppValueInt(self::FAILURES . $feed) + 1;
-		$this->config->setAppValueInt(self::FAILURES . $feed, $failures);
+	private function failed(string $source): void {
+		$failures = $this->config->getAppValueInt(self::FAILURES . $source) + 1;
+		$this->config->setAppValueInt(self::FAILURES . $source, $failures);
 
 		if ($failures === 1) {
-			$this->config->setAppValueInt(self::FAILING_SINCE . $feed, $this->time->getTime());
+			$this->config->setAppValueInt(self::FAILING_SINCE . $source, $this->time->getTime());
 		}
 		if (!in_array($failures, self::NOTIFY_AT, true)) {
 			return;
 		}
 
-		$this->tellAdmins($feed, $failures);
+		$this->tellAdmins($source, $failures);
 	}
 
 	/**
@@ -127,14 +126,14 @@ class ProbeJob extends TimedJob {
 	 * What clinicians get instead is the "problemas técnicos" banner on the page,
 	 * which is the signal they can actually act on.
 	 */
-	private function tellAdmins(string $feed, int $days): void {
-		// Clear first, so the bell holds one row per feed rather than one per alarm:
+	private function tellAdmins(string $source, int $days): void {
+		// Clear first, so the bell holds one row per source rather than one per alarm:
 		// on day 30 an admin should see one current notification, not three stale ones.
-		$this->notifications->markProcessed($this->match($feed));
+		$this->notifications->markProcessed($this->match($source));
 
-		$notification = $this->match($feed)
+		$notification = $this->match($source)
 			->setDateTime(new \DateTime('@' . $this->time->getTime()))
-			->setSubject('probe_failed', ['feed' => $feed, 'days' => $days]);
+			->setSubject('probe_failed', ['source' => $source, 'days' => $days]);
 
 		foreach ($this->admins() as $uid) {
 			$this->notifications->notify($notification->setUser($uid));
@@ -145,11 +144,11 @@ class ProbeJob extends TimedJob {
 	 * App, subject and object only — no user, no parameters. This is what
 	 * markProcessed() matches on, and leaving the user off clears it for everyone.
 	 */
-	private function match(string $feed): INotification {
+	private function match(string $source): INotification {
 		return $this->notifications->createNotification()
 			->setApp(Application::APP_ID)
 			->setSubject('probe_failed')
-			->setObject('feed', $feed);
+			->setObject('source', $source);
 	}
 
 	/**

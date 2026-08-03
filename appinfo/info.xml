@@ -3,16 +3,18 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>epidemiologia</id>
     <name>Epidemiología</name>
-    <summary>Alertas, informes IRAG y tablero del MINSAL</summary>
+    <summary>Alertas del MINSAL y del ISP, informes IRAG y tablero nacional</summary>
     <description><![CDATA[
 Muestra dentro de la intranet la información epidemiológica que el MINSAL publica:
 las alertas epidemiológicas vigentes, el informe semanal de vigilancia ETI e IRAG,
-el tablero nacional, y el acceso a EPIVIGILA.
+el tablero nacional, y el acceso a EPIVIGILA. Suma las alertas sanitarias del ISP
+—retiros de mercado, falsificaciones, farmacovigilancia y dispositivos médicos—,
+que la clínica no recibía por ningún otro medio.
 
 Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
 no guarda datos en base de datos y no contiene información de pacientes.
     ]]></description>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <licence>agpl</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>

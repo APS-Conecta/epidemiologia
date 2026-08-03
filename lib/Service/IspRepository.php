@@ -165,6 +165,36 @@ class IspRepository {
 	}
 
 	/**
+	 * Cache-only search, for Nextcloud's global search box. Never fetches, for the
+	 * reason MinsalRepository::search() spells out — 24 outbound requests inside
+	 * every user's every search would be far worse than MINSAL's one.
+	 *
+	 * Matches the title AND the raw category slugs, so "dispositivo" finds device
+	 * alerts whose title never says the word — the title names the product. The
+	 * pane matches prettified labels instead; duplicating its 24-entry map into PHP
+	 * would buy a few accents in a surface whose job is only to get someone into
+	 * the pane, where the real filters are.
+	 *
+	 * @return list<array<string, string>>
+	 */
+	public function search(string $term): array {
+		$needle = MinsalRepository::fold($term);
+		$stored = $this->stored();
+
+		if ($needle === '' || $stored === null) {
+			return [];
+		}
+
+		return array_values(array_filter(
+			$stored['items'] ?? [],
+			static fn (array $item): bool => str_contains(
+				MinsalRepository::fold($item['title'] . ' ' . implode(' ', $item['categories'] ?? [])),
+				$needle,
+			),
+		));
+	}
+
+	/**
 	 * RSS 2.0: title, link, pubDate. Parsed with the XML reader rather than by
 	 * regex — unlike MINSAL's page, this really is a document with a schema.
 	 *

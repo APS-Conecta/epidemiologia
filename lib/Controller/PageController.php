@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Controller;
 
 use OCA\Epidemiologia\AppInfo\Application;
-use OCA\Epidemiologia\Service\IspRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -29,8 +28,7 @@ class PageController extends Controller {
 
 	public function __construct(
 		IRequest $request,
-		private MinsalRepository $repository,
-		private IspRepository $isp,
+		private Sources $sources,
 		private IInitialState $initialState,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -40,12 +38,18 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse {
-		// IInitialState, not a fetch on mount: the server already holds both feeds
+		// IInitialState, not a fetch on mount: the server already holds every feed
 		// in Redis, so a round trip to ourselves would buy a spinner and nothing
-		// else. The OCS routes exist for the consumers that are not this page.
-		$this->initialState->provideInitialState('alerts', $this->repository->get(MinsalRepository::ALERTS));
-		$this->initialState->provideInitialState('reports', $this->repository->get(MinsalRepository::IRAG));
-		$this->initialState->provideInitialState('ispAlerts', $this->isp->get());
+		// else. The OCS route exists for the consumers that are not this page.
+		//
+		// One key, not one per source. Each key is a contract between this file and
+		// state.js that has to be spelled identically in two languages, so three of
+		// them were three chances to typo a source into silence.
+		$this->initialState->provideInitialState('sources', $this->sources->all());
+
+		// Not a source: a constant URL with nothing to fetch, parse, cache or
+		// degrade. It stays out of Sources for the same reason it stays out of the
+		// OCS payload — see ADR-0006.
 		$this->initialState->provideInitialState('tablero', self::TABLERO_URL);
 
 		// The bundle name carries the app id — vite-config prefixes it.

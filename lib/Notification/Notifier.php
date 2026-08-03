@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Notification;
 
 use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\Service\Sources;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
 use OCP\Notification\INotification;
@@ -20,6 +21,7 @@ class Notifier implements INotifier {
 	public function __construct(
 		private IFactory $l10nFactory,
 		private IURLGenerator $urls,
+		private Sources $sources,
 	) {
 	}
 
@@ -41,12 +43,23 @@ class Notifier implements INotifier {
 
 		$l = $this->l10nFactory->get(Application::APP_ID, $languageCode);
 		$params = $notification->getSubjectParameters();
-		$feed = $params['feed'] ?? '';
 		$days = (int)($params['days'] ?? 0);
+		$source = (string)($params['source'] ?? '');
 
-		$what = $feed === 'irag'
-			? $l->t('los informes semanales ETI/IRAG')
-			: $l->t('las alertas epidemiológicas vigentes');
+		// A row this notifier cannot render is refused, not guessed at. Rows written
+		// by 0.2.0 carry the old `feed` key and reach here with no source at all, and
+		// Sources::name() deliberately has no default arm — without this guard the
+		// first such row would throw UnhandledMatchError inside the notifications
+		// endpoint. Throwing here is the documented way out: Nextcloud drops the row.
+		if (!in_array($source, Sources::ALL, true)) {
+			throw new UnknownNotificationException();
+		}
+
+		// The name comes from the catalogue, institution included. It used to be a
+		// ternary on 'irag' here, which meant every source that was not the informes
+		// rendered as "las alertas epidemiológicas vigentes ... desde MINSAL" — so an
+		// ISP outage sent an administrator to inspect a healthy MINSAL page.
+		$what = $this->sources->name($source, $l);
 
 		// How long it has been failing is the whole reason ProbeJob backs off rather
 		// than filing this daily: the second and the thirtieth day are different news.
@@ -55,9 +68,9 @@ class Notifier implements INotifier {
 			: '';
 
 		return $notification
-			->setParsedSubject($l->t('Epidemiología: no se pudo leer %s desde MINSAL', [$what]))
+			->setParsedSubject($l->t('Epidemiología: no se pudo leer %s', [$what]))
 			->setParsedMessage(trim($since . ' ' . $l->t(
-				'La página de MINSAL cambió o no respondió, así que la lista mostrada puede estar '
+				'La fuente cambió o no respondió, así que la lista mostrada puede estar '
 				. 'incompleta. Se sigue mostrando la última copia buena. Revisa el registro de la '
 				. 'instancia para ver qué falló.'
 			)))

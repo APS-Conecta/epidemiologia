@@ -17,15 +17,15 @@
 <template>
 	<section>
 		<PaneHeader :title="t('epidemiologia', 'Alertas sanitarias del ISP')"
-			:fetched-at="ispAlerts.fetched_at">
+			:fetched-at="sanitaryAlerts.fetched_at">
 			{{ t('epidemiologia', 'Fuente: Instituto de Salud Pública de Chile') }}
-			<template v-if="ispAlerts.fetched_at">
+			<template v-if="sanitaryAlerts.fetched_at">
 				· {{ t('epidemiologia', 'actualizado') }}
-				<NcDateTime :timestamp="ispAlerts.fetched_at * 1000" relative-time="long" />
+				<NcDateTime :timestamp="sanitaryAlerts.fetched_at * 1000" relative-time="long" />
 			</template>
 		</PaneHeader>
 
-		<NcNoteCard v-if="ispAlerts.degraded" type="warning">
+		<NcNoteCard v-if="sanitaryAlerts.degraded" type="warning">
 			<strong>{{ t('epidemiologia', 'Problemas técnicos.') }}</strong>
 			{{ t('epidemiologia', 'No hemos podido contactar al ISP, así que esta lista puede estar incompleta.') }}
 			<a href="https://www.ispch.gob.cl/categorias-alertas/anamed/"
@@ -106,8 +106,8 @@
 		</ul>
 
 		<NcEmptyContent v-else
-			:name="ispAlerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
-			:description="ispAlerts.items.length
+			:name="sanitaryAlerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
+			:description="sanitaryAlerts.items.length
 				? t('epidemiologia', 'Ninguna alerta del ISP coincide con esos filtros.')
 				: t('epidemiologia', 'Sus categorías no traen alertas en este momento.')">
 			<template #icon>
@@ -124,7 +124,7 @@ import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import Tune from 'vue-material-design-icons/Tune.vue'
 import PaneHeader from './PaneHeader.vue'
-import { ispAlerts, fold } from '../state.js'
+import { sanitaryAlerts, fold } from '../state.js'
 
 /**
  * The ISP's category slugs, in Spanish and with their accents.
@@ -182,7 +182,7 @@ const month = ref(null)
  * "Quitar filtros" resets everything, and the count line always says
  * "N de 60" so the scoping is never silent.
  */
-const newestYear = [...new Set(ispAlerts.items.map((a) => (a.date ?? '').slice(0, 4)).filter(Boolean))]
+const newestYear = [...new Set(sanitaryAlerts.items.map((a) => (a.date ?? '').slice(0, 4)).filter(Boolean))]
 	.sort()
 	.pop() ?? null
 const year = ref(newestYear ? { id: newestYear, label: newestYear } : null)
@@ -212,7 +212,7 @@ const hiddenActive = computed(() => (year.value ? 1 : 0) + (month.value ? 1 : 0)
  * labels, so typing "dispositivo" finds device alerts whose title never says the
  * word — which is most of them, since the title names the product.
  */
-const folded = ispAlerts.items.map((a) => ({
+const folded = sanitaryAlerts.items.map((a) => ({
 	...a,
 	_fold: fold(a.title + ' ' + (a.categories ?? []).map(kindLabel).join(' ')),
 	_kind: [...(a.categories ?? [])].map(kindLabel).sort()[0] ?? '',
@@ -221,7 +221,7 @@ const folded = ispAlerts.items.map((a) => ({
 /** Categories present in the data, with how many alerts each carries. */
 const kinds = computed(() => {
 	const counts = new Map()
-	for (const alert of ispAlerts.items) {
+	for (const alert of sanitaryAlerts.items) {
 		for (const category of alert.categories ?? []) {
 			counts.set(category, (counts.get(category) ?? 0) + 1)
 		}
@@ -233,7 +233,7 @@ const kinds = computed(() => {
 })
 
 /** Years present in the data, newest first. */
-const years = computed(() => tally(ispAlerts.items, (a) => (a.date ?? '').slice(0, 4))
+const years = computed(() => tally(sanitaryAlerts.items, (a) => (a.date ?? '').slice(0, 4))
 	.sort((a, b) => b.id.localeCompare(a.id))
 	.map((y) => ({ ...y, label: `${y.id} (${y.count})` })))
 
@@ -244,8 +244,8 @@ const years = computed(() => tally(ispAlerts.items, (a) => (a.date ?? '').slice(
  */
 const months = computed(() => {
 	const inYear = year.value
-		? ispAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value.id))
-		: ispAlerts.items
+		? sanitaryAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value.id))
+		: sanitaryAlerts.items
 
 	return tally(inYear, (a) => (a.date ?? '').slice(5, 7))
 		.sort((a, b) => b.id.localeCompare(a.id))
@@ -320,7 +320,7 @@ const shown = computed(() => {
 })
 
 const countLabel = computed(() => {
-	const total = ispAlerts.items.length
+	const total = sanitaryAlerts.items.length
 	if (shown.value.length === total) {
 		return n('epidemiologia', '%n alerta del ISP', '%n alertas del ISP', total)
 	}

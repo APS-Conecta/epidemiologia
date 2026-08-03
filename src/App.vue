@@ -115,7 +115,7 @@ import ReportPane from './components/ReportPane.vue'
 import TableroPane from './components/TableroPane.vue'
 import IspPane from './components/IspPane.vue'
 import EpivigilaPane from './components/EpivigilaPane.vue'
-import { ispAlerts } from './state.js'
+import { sanitaryAlerts } from './state.js'
 
 const current = ref('inicio')
 
@@ -155,7 +155,7 @@ const groups = [
 		id: 'isp',
 		name: t('epidemiologia', 'ISP'),
 		panes: [
-			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill), count: ispAlerts.items.length },
+			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill), count: sanitaryAlerts.items.length },
 		],
 	},
 	{

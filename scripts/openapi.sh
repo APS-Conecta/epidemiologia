@@ -20,22 +20,22 @@ APP=/var/www/html/custom_apps/epidemiologia
 run() { docker exec -w "$APP" -u www-data "$CONTAINER" "$@"; }
 
 if ! run test -f tools/composer.phar; then
-	printf 'Descargando Composer…\n'
+	printf 'Downloading Composer…\n'
 	run mkdir -p tools
 	run sh -c 'curl -sSL -o tools/composer.phar https://getcomposer.org/composer-stable.phar'
 fi
 
 if ! run test -f tools/openapi/vendor/bin/generate-spec; then
-	printf 'Instalando nextcloud/openapi-extractor…\n'
+	printf 'Installing nextcloud/openapi-extractor…\n'
 	run mkdir -p tools/openapi
 	run sh -c 'cd tools/openapi && COMPOSER_HOME=/tmp/composer php ../composer.phar \
 		require --quiet --no-interaction nextcloud/openapi-extractor'
 fi
 
-printf 'Generando openapi.json…\n'
+printf 'Generating openapi.json…\n'
 run sh -c 'php tools/openapi/vendor/bin/generate-spec . openapi.json'
 
 printf '\n'
 run sh -c 'php -r "\$s=json_decode(file_get_contents(\"openapi.json\"),true);
-	printf(\"  %s v%s — %d rutas\n\", \$s[\"info\"][\"title\"], \$s[\"info\"][\"version\"], count(\$s[\"paths\"]));
+	printf(\"  %s v%s — %d routes\n\", \$s[\"info\"][\"title\"], \$s[\"info\"][\"version\"], count(\$s[\"paths\"]));
 	foreach (array_keys(\$s[\"paths\"]) as \$p) { printf(\"    %s\n\", \$p); }"'

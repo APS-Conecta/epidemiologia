@@ -1,10 +1,20 @@
 # Plan — Inicio and the chassis, then REM as a shared source
 
-> **Status: agreed 2026-08-02. A1 done, everything else not started.** Revised the same day after
-> a grilling session that changed the design substantially — the earlier version treated this as a
-> slot fix plus a mockup; it is now four tracks with a dependency line between them. A1 then
-> **disproved this document's own diagnosis**; the section below carries the correction.
-> Written in English, matching this repo's code and its PHPUnit test names.
+> **Status: Track A is done and released as 0.3.0 (2026-08-03). Track C1 done. B, C2–C4 and D not
+> started.** A1–A4 shipped through #26–#36; #37 then closed the track out, and two things in it went
+> beyond what this document planned:
+>
+> - **The OCS contract is now one route keyed by source**, not a route per source, and `/alerts` and
+>   `/reports` are gone. Reasoning and evidence in [ADR-0006](adr/0006-one-ocs-route-keyed-by-source.md).
+>   §A4's *"extend `openapi.json`"* is satisfied by regenerating it, not by adding a third route.
+> - **`Service/Sources.php` is the one list of sources**, because seven places enumerated them
+>   independently and adding the ISP updated four. `MinsalReachable` is now `SourcesReachable`;
+>   references to it below are to the old name.
+>
+> Revised 2026-08-02 after a grilling session that changed the design substantially — the earlier
+> version treated this as a slot fix plus a mockup; it is now four tracks with a dependency line
+> between them. A1 then **disproved this document's own diagnosis**; the section below carries the
+> correction. Written in English, matching this repo's code and its PHPUnit test names.
 
 ## Context
 

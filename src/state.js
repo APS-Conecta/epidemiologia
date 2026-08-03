@@ -2,17 +2,26 @@ import { loadState } from '@nextcloud/initial-state'
 
 const APP = 'epidemiologia'
 
-/** Both feeds share this shape; see MinsalRepository::present(). */
+/** Every source shares this shape; see MinsalRepository::present(). */
 const EMPTY = { items: [], updated_at: null, fetched_at: null, degraded: false }
 
 /**
+ * One key, not one per source. Each loadState key is a contract with
+ * PageController that has to be spelled identically in two languages, so three of
+ * them were three chances to typo a source into silence. PHP enumerates the
+ * sources in Service/Sources.php; this file only names the ones it renders.
+ *
  * Always pass a fallback: loadState() throws when the key is absent, and an
  * absent key is exactly what a forgotten rebuild or a renamed provider produces.
- * A missing feed should degrade to an empty pane, never to a blank app.
+ * A missing source should degrade to an empty pane, never to a blank app.
  */
-export const alerts = loadState(APP, 'alerts', EMPTY)
-export const ispAlerts = loadState(APP, 'ispAlerts', EMPTY)
-export const reports = loadState(APP, 'reports', EMPTY)
+const sources = loadState(APP, 'sources', {})
+
+export const alerts = sources.alerts ?? EMPTY
+export const reports = sources.reports ?? EMPTY
+export const sanitaryAlerts = sources.sanitary_alerts ?? EMPTY
+
+/** Not a source: a constant URL with nothing to fetch, parse, cache or degrade. */
 export const tablero = loadState(APP, 'tablero', '')
 
 /**

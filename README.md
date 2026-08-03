@@ -1,133 +1,155 @@
 # Epidemiología
 
-App de Nextcloud 34 para APS Conecta Gestión. Muestra dentro de la intranet la información
-epidemiológica que el MINSAL publica, y enlaza lo que no se puede mostrar.
+Nextcloud 34 app for APS Conecta Gestión. It surfaces the epidemiological information MINSAL
+publishes inside the intranet, and links to what cannot be surfaced.
 
-Cuatro vistas:
+Five views:
 
-| Vista | Qué es | De dónde sale |
+| View | What it is | Where it comes from |
 | --- | --- | --- |
-| **Alertas vigentes** | Los oficios en vigencia, filtrables por texto y por año | REST público de `epi.minsal.cl` |
-| **Informe semanal** | El informe ETI/IRAG de la semana epidemiológica en curso | REST público de `epi.minsal.cl` |
-| **Tablero MINSAL** | El tablero nacional, incrustado | Power BI *«Publish to web»* |
-| **EPIVIGILA** | Qué es, cómo entrar y el estado real de acceso | Enlace, nunca incrustado |
+| **Inicio** | What was published most recently, freshness first | Everything below, already loaded |
+| **Alertas vigentes** | The oficios in force, filterable by text and by year | Public REST API on `epi.minsal.cl` |
+| **Informe semanal** | The ETI/IRAG report for the current semana epidemiológica | Public REST API on `epi.minsal.cl` |
+| **Alertas sanitarias ISP** | Recalls, falsifications, pharmacovigilance, device withdrawals | 24 hourly RSS feeds on `ispch.gob.cl` |
+| **Tablero MINSAL** | The national dashboard, embedded | Power BI *"Publish to web"* |
+| **EPIVIGILA** | What it is, how to get in, and the real access situation | A link, never embedded |
 
-Solo lee y enlaza información pública. **No copia ni rehospeda documentos del Estado, no crea
-tablas en la base de datos y no toca información de pacientes.**
+It only reads and links public information. **It does not copy or rehost state documents, it creates
+no database tables, and it touches no patient data.**
 
-## Cómo funciona
+The UI is in Spanish because clinicians read it. Everything else here — code, comments, docs, this
+file — is in English; see [`AGENTS.md`](AGENTS.md).
 
-Un *proxy* de lectura con caché, sin base de datos:
+## How it works
 
-- Las páginas se resuelven **por slug, nunca por ID** — los IDs cambian cuando MINSAL republica.
-- Los PDF se **leen de los enlaces, nunca se construyen**: la carpeta de subida no se deduce de la
-  semana epidemiológica (SE 29 está en `2026/07`, SE 24 en `2026/06`).
-- La caché se refresca cada hora, pero **una lectura que devuelve cero elementos es un fallo, nunca
-  un resultado**: no se sobrescribe la caché, se sigue mostrando la última copia buena con un aviso
-  de *problemas técnicos*, y se avisa a quien administra. Sin esa regla, un cambio en la página de
-  MINSAL reemplazaría 75 alertas reales por una lista vacía que un clínico lee como
-  «no hay alertas vigentes».
-- Un trabajo diario a las 03:00 pregunta solo por la fecha de modificación (**859 bytes** frente a
-  44 KB) para **detectar** que MINSAL cambió. Existe para detectar, no para calentar la caché.
+A read-through proxy with a cache, and no database:
 
-## Para otras apps
+- Pages are resolved **by slug, never by ID** — IDs change when MINSAL republishes.
+- PDFs are **read from the anchors, never constructed**: the upload folder is not derivable from the
+  semana epidemiológica (SE 29 sits under `2026/07`, SE 24 under `2026/06`).
+- The cache refreshes hourly, but **a read that returns zero items is a failure, never a result**:
+  the cache is not overwritten, the last good copy keeps being served behind a *problemas técnicos*
+  banner, and whoever administers the instance is told. Without that rule, a change to MINSAL's page
+  would replace 75 real alerts with an empty list that a clinician reads as "no hay alertas
+  vigentes".
+- **The ISP's rule is deliberately different**: one empty feed is normal, and only failing to reach
+  any of the 24 is degradation. That disagreement is why `IspRepository` is a sibling of
+  `MinsalRepository` rather than a second source inside it.
+- A daily job at 03:00 asks only for the modification date (**859 bytes** against 44 KB) to
+  **detect** that MINSAL changed. It exists to detect, not to warm the cache.
 
-Dos rutas OCS de solo lectura. **La cabecera `OCS-APIRequest` no es opcional**: sin ella Nextcloud
-responde `412` antes de llegar al controlador.
+## For other apps
+
+**One** read-only OCS route, with every source keyed by its id. **The `OCS-APIRequest` header is not
+optional**: without it Nextcloud answers `412` before reaching the controller.
 
 ```
-GET /ocs/v2.php/apps/epidemiologia/api/v1/alerts?format=json
-GET /ocs/v2.php/apps/epidemiologia/api/v1/reports?format=json
+GET /ocs/v2.php/apps/epidemiologia/api/v1/sources?format=json
 OCS-APIRequest: true
 
 { "ocs": { "meta": { "status": "ok", "statuscode": 200 },
-           "data": { "updated_at": "2026-07-31T22:15:04",
-                     "degraded": false,
-                     "items": [ { "title": "OFICIO CP N°15844 / 2026 …",
-                                  "url": "https://…pdf", "year": "2026" } ] } } }
+           "data": {
+             "alerts": { "updated_at": "2026-07-31T22:15:04",
+                         "degraded": false,
+                         "items": [ { "title": "OFICIO CP N°15844 / 2026 …",
+                                      "url": "https://…pdf", "year": "2026" } ] },
+             "reports":         { "…": "…" },
+             "sanitary_alerts": { "…": "…" } } } }
 ```
 
-Los datos van dentro de `ocs.data`. Con `format=xml` sale lo mismo en XML, gratis. Las alertas
-traen además `month`; los informes, `se` (semana epidemiológica).
+The data sits inside `ocs.data`. With `format=xml` you get the same thing in XML, for free. **Each
+source carries its own freshness and its own `degraded`**, so an ISP outage does not make MINSAL look
+stale. Alerts also carry `month`; reports carry `se` (semana epidemiológica); sanitary alerts carry
+`date` and `categories`.
 
-**El contrato está en [`openapi.json`](openapi.json)**, generado desde los atributos y los
-docblocks del controlador con `scripts/openapi.sh` — nunca a mano, porque una especificación
-escrita a mano se separa del código en silencio, que es peor que no tener ninguna.
+**One route rather than one per source**, because that is how Nextcloud serves this kind of consumer
+— `dashboard` returns `ocs.data` keyed by widget, `cloud/capabilities` keyed by app — and because
+adding a source now adds a key rather than a route. See
+[`docs/adr/0006`](docs/adr/0006-one-ocs-route-keyed-by-source.md).
 
-Conviene leer por aquí y no directamente desde MINSAL: caché compartida, formato ya parseado, y el
-indicador `degraded`.
+The tablero is not in there: it is a constant URL, with nothing to fetch, parse, cache or degrade.
 
-### Por qué OCS y no una ruta normal
+**The contract lives in [`openapi.json`](openapi.json)**, generated from the controller's attributes
+and docblocks with `scripts/openapi.sh` — never by hand, because a hand-written spec drifts from the
+code silently, which is worse than having none.
 
-El manual llama a `OCSController` el método actual, pero la razón concreta es la página web / centro
-de información que viene: **un navegador en otro origen no se puede servir de otra forma**. Activar
-CORS sobre un `Controller` normal está *«generalmente y encarecidamente desaconsejado»* — la
-comprobación CSRF falla salvo que se desactive la seguridad.
+Reading through here beats reading MINSAL directly: a shared cache, an already-parsed format, and the
+`degraded` flag.
 
-Todavía **no hay `#[CORS]`**: hace falta un origen concreto y el tablero aún no tiene uno. Añadirlo
-a ciegas ampliaría la superficie para nadie. Sí hay límite de tasa: 120 peticiones por minuto y
-usuario, que es un techo contra un consumidor desbocado, no una cuota.
+### Why OCS and not a plain route
 
-> La ruta anterior, `/apps/epidemiologia/api/v1/…`, **ya no existe**. No está obsoleta: se fue.
-> No la consumía nadie todavía, y mantener dos contratos habría costado más que romper uno vacío.
+The manual calls `OCSController` the current approach, but the concrete reason is the web page /
+information centre that is coming: **a browser on another origin cannot be served any other way**.
+Enabling CORS on a plain `Controller` is *"generally and highly discouraged"* — the CSRF check then
+fails unless security is disabled.
 
-## Desarrollo
+There is still **no `#[CORS]`**: it needs a concrete origin and the dashboard does not have one.
+Adding it blind would widen the surface for nobody. There is a rate limit: 120 requests per minute
+per user, a ceiling against a runaway consumer rather than a quota.
+
+> The previous routes **no longer exist**. They are not deprecated, they are gone:
+> `/apps/epidemiologia/api/v1/…` in 0.2.0, and `/ocs/…/api/v1/alerts` and `…/reports` in 0.3.0.
+> Nobody was consuming them, and keeping two contracts would have cost more than breaking an empty
+> one.
+
+## Development
 
 ```sh
-scripts/test.sh     # suite unitaria dentro del contenedor (PHPUnit 11)
-scripts/smoke.sh    # verifica el cableado contra la instancia en marcha
-scripts/openapi.sh  # regenera openapi.json desde el controlador
+scripts/test.sh     # unit suite, inside the container (PHPUnit 11)
+scripts/smoke.sh    # checks the wiring against the running instance
+scripts/openapi.sh  # regenerates openapi.json from the controller
 ```
 
-`scripts/test.sh` cubre lo único con lógica de verdad: el parseo, el orden, el año, la semana
-epidemiológica, la degradación y el plegado de acentos. Las fixtures son **respuestas reales de
-MINSAL capturadas**, no HTML inventado: así se prueba que el parser lee lo que MINSAL publica de
-verdad, con sus rarezas incluidas.
+`scripts/test.sh` covers the only things with real logic: parsing, ordering, the year, the semana
+epidemiológica, degradation, accent folding, and the catalogue of sources. The fixtures are **real
+captured responses** from MINSAL and the ISP, not invented markup — so the parsers are proven against
+what those sites actually publish, quirks included.
 
-`scripts/smoke.sh` verifica lo que ninguna prueba unitaria ve: que la app se habilita, que el
-trabajo diario quedó registrado, que la ruta OCS responde **con su sobre** y rechaza con `412` sin
-la cabecera, que la ruta antigua devuelve 404, que el icono se sirve, que **el bundle de `js/`
-coincide con `src/`**, y que **la CSP permite el dominio del tablero**. Esa última es una sola línea
-en el controlador; sin ella el tablero se ve en blanco, y parece que MINSAL está caído en vez de que
-lo rompimos nosotros.
+`scripts/smoke.sh` checks what no unit test can see: that the app enables, that the daily job is
+registered, that the OCS route answers **with its envelope** and refuses with `412` without the
+header, that every source appears in the payload, that the old routes 404, that the icon is served,
+that **the `js/` bundle matches `src/`**, and that **the CSP allows the tablero's domain**. That last
+one is a single line in a controller; without it the tablero renders blank, and it looks like MINSAL
+is down rather than like we broke it.
 
-### Cosas que muerden
+### Things that bite
 
-- **`occ app:enable` sobre una app ya habilitada no registra el trabajo en segundo plano.** Si
-  `smoke.sh` avisa de que falta, hay que hacer `occ app:disable` y luego `occ app:enable`.
-- **Subir `<version>` en `info.xml` deja toda la instancia en «requiere actualización».** `occ`
-  pasa a modo limitado y las rutas web dejan de responder hasta ejecutar `occ upgrade`. Un
-  `git pull` que traiga un cambio de versión necesita ese paso detrás.
-- **Tras un `npm run build`, un navegador que ya visitó la app se queda sin estilos.** El fichero de
-  entrada `css/epidemiologia-main.css` sólo hace `@import` del chunk, y el chunk lleva **hash de
-  contenido**: cambia en cada build. Pero la URL de la entrada lleva `?v=<cachebuster>`, que **no**
-  cambia salvo que suba la versión de la app — así que el navegador sirve una entrada cacheada que
-  importa un chunk que el build ya borró, y la app aparece sin CSS. Medido; cuesta tres recargas
-  entender qué pasa. Se arregla solo al publicar (subir `<version>` mueve el cachebuster); en
-  desarrollo, recarga forzada del `.css` además de la del `.mjs`.
-- **`opcache.revalidate_freq` es 60 s**, así que un cambio en PHP puede tardar un minuto en verse.
-- **Al añadir o cambiar rutas por atributos hay que reiniciar el contenedor.** `CachingRouter`
-  guarda la colección de rutas ya compilada **una hora** en la caché *local* (APCu), y APCu es por
-  SAPI: limpiarla desde `occ` no sirve, porque la CLI y la web no la comparten. El síntoma es un
-  `998 Invalid query` en OCS mientras `occ` lista la ruta tan tranquilo.
-- **No conviene canalizar `docker exec … | grep -q`**: `grep` corta la tubería al primer acierto, el
-  escritor muere con SIGPIPE y, con `pipefail`, una comprobación correcta se reporta como fallo.
+- **`occ app:enable` on an already-enabled app does not register the background job.** If `smoke.sh`
+  reports it missing, run `occ app:disable` and then `occ app:enable`.
+- **Raising `<version>` in `info.xml` puts the whole instance into "requires upgrade".** `occ` drops
+  into limited mode and the web routes stop answering until `occ upgrade` runs. A `git pull` that
+  brings a version change needs that step behind it.
+- **After `npm run build`, a browser that already visited the app loses its styles.** The entry file
+  `css/epidemiologia-main.css` only `@import`s the chunk, and the chunk carries a **content hash**
+  that changes on every build. But the entry's URL carries `?v=<cachebuster>`, which does **not**
+  change unless the app version does — so the browser serves a cached entry importing a chunk the
+  build already deleted, and the app appears unstyled. Measured; it costs three reloads to work out.
+  It fixes itself on release (raising `<version>` moves the cachebuster); in development, force-reload
+  the `.css` as well as the `.mjs`.
+- **`opcache.revalidate_freq` is 60 s**, so a PHP change can take a minute to show up.
+- **Adding or changing attribute routes needs a container restart.** `CachingRouter` keeps the
+  compiled route collection for **an hour** in the *local* cache (APCu), and APCu is per-SAPI:
+  clearing it from `occ` does nothing, because the CLI and the web do not share it. The symptom is
+  `998 Invalid query` from OCS while `occ` lists the route quite happily.
+- **Do not pipe `docker exec … | grep -q`**: `grep` closes the pipe on its first match, the writer
+  dies of SIGPIPE, and under `pipefail` a passing check reports as a failure.
 
-## Instalación
+## Installation
 
-El directorio se coloca en `gestion/apps/` (montado en `custom_apps`) y se habilita con
-`occ app:enable epidemiologia`. **No hay migraciones que correr**: la app no crea tablas.
+The directory goes in `gestion/apps/` (mounted at `custom_apps`) and is enabled with
+`occ app:enable epidemiologia`. **There are no migrations to run**: the app creates no tables.
 
-`js/` y `css/` **se versionan**, así que desplegar sigue siendo un `git pull` y no hace falta Node
-en el servidor. Quien toque `src/` sí tiene que ejecutar `npm run build` y versionar el resultado —
-`scripts/smoke.sh` avisa si el bundle se quedó atrás.
+`js/` and `css/` **are committed**, so deploying stays a `git pull` and needs no Node on the server.
+Anyone touching `src/` does have to run `npm run build` and commit the result — `scripts/smoke.sh`
+reports it if the bundle falls behind.
 
-> **`node_modules` no debería vivir en el webroot de una instancia de producción.** El `.htaccess`
-> de la app lo cierra, pero eso depende de Apache y de `AllowOverride`; el `.htaccess` de Nextcloud
-> pone `js` y `mjs` en su lista blanca de extensiones, así que sin esa protección los ~300 MB de
-> dependencias quedan servidos a cualquier usuario autenticado. Lo correcto es compilar en otro
-> sitio y desplegar sólo lo necesario.
+> **`node_modules` should not live in the webroot of a production instance.** The app's `.htaccess`
+> closes it off, but that depends on Apache and on `AllowOverride`; Nextcloud's own `.htaccess`
+> whitelists the `js` and `mjs` extensions, so without that protection the ~300 MB of dependencies
+> are served to any authenticated user. The right fix is to build elsewhere and deploy only what is
+> needed.
 
-## Licencia
+## Licence
 
-AGPL-3.0-or-later. Fuente de los datos: Departamento de Epidemiología, MINSAL.
+AGPL-3.0-or-later. Data source: Departamento de Epidemiología, MINSAL, and Instituto de Salud
+Pública de Chile.

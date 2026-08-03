@@ -31,7 +31,7 @@ web() { docker exec -u www-data "$CONTAINER" curl -sS -u "$USER_ID:$TOKEN" "$@" 
 
 failures=0
 pass() { printf '  ok    %s\n' "$1"; }
-fail() { printf '  FALLA %s\n' "$1"; failures=$((failures + 1)); }
+fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 # $1 haystack, $2 needle, $3 message on success, $4 message on failure
 expect() {
@@ -48,19 +48,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf '\nEpidemiología — verificación en %s\n\n' "$CONTAINER"
+printf '\nEpidemiología — checking %s\n\n' "$CONTAINER"
 
 occ app:enable "$APP" >/dev/null 2>&1
 expect "$(occ app:list --enabled)" " $APP:" \
-	"la app está instalada y habilitada" \
-	"la app no aparece como habilitada"
+	"the app is installed and enabled" \
+	"the app does not show as enabled"
 
 # info.xml registers this on install/update only, and enabling an already-enabled
 # app is a no-op — so the fix is a disable followed by an enable, not a re-run.
 expect "$(occ background-job:list)" 'ProbeJob' \
-	"el trabajo diario de sondeo está registrado" \
-	"ProbeJob no está registrado: no se detectarán cambios en MINSAL.
-        Corrígelo con: occ app:disable $APP && occ app:enable $APP"
+	"the daily probe job is registered" \
+	"ProbeJob is not registered: changes to the sources will go undetected.
+        Fix it with: occ app:disable $APP && occ app:enable $APP"
 
 # A throwaway app password, minted and revoked here, so running this needs no
 # credentials from whoever runs it.
@@ -70,43 +70,59 @@ TOKEN="$(occ user:add-app-password "$USER_ID" --name="$TOKEN_NAME" -n | tail -1 
 TOKEN_ID="$(occ user:auth-tokens:list "$USER_ID" | grep -F "| $TOKEN_NAME " | tail -1 \
 	| awk -F'|' '{gsub(/[^0-9]/, "", $2); print $2}')"
 if [ -z "$TOKEN" ]; then
-	fail "no se pudo crear una contraseña de aplicación para $USER_ID"
-	printf '\n%d comprobación(es) fallida(s)\n\n' "$failures"
+	fail "could not create an app password for $USER_ID"
+	printf '\n%d check(s) failed\n\n' "$failures"
 	exit 1
 fi
 
-alerts="$(web -H "$OCSH" "$OCS/alerts?format=json")"
+sources="$(web -H "$OCSH" "$OCS/sources?format=json")"
 # grep -c counts matching *lines*, and the whole payload is one line.
-count="$(printf '%s' "$alerts" | grep -o '"title"' | wc -l | tr -d ' ')"
+count="$(printf '%s' "$sources" | grep -o '"title"' | wc -l | tr -d ' ')"
 [ "$count" -ge 1 ] \
-	&& pass "/ocs/…/api/v1/alerts responde con $count alertas" \
-	|| fail "/ocs/…/api/v1/alerts no devolvió ninguna alerta"
+	&& pass "/ocs/…/api/v1/sources answers with $count items" \
+	|| fail "/ocs/…/api/v1/sources returned no items at all"
 
-expect "$alerts" '"degraded":false' \
-	"los datos vienen de MINSAL sin degradación" \
-	"el feed está degradado — MINSAL no respondió, o dejó de parsearse"
+# Every source keyed by its own id. A missing key means Sources::ALL and the
+# payload have drifted apart, which is the failure the registry exists to stop.
+for source in alerts reports sanitary_alerts; do
+	expect "$sources" "\"$source\"" \
+		"source $source is in the response" \
+		"source $source is NOT in the response"
+done
 
-expect "$(web -H "$OCSH" "$OCS/reports?format=json")" '"se"' \
-	"/ocs/…/api/v1/reports expone la semana epidemiológica" \
-	"/ocs/…/api/v1/reports no expone la semana epidemiológica"
+expect "$sources" '"degraded":false' \
+	"the data arrives undegraded" \
+	"some source is degraded — it did not answer, or stopped parsing"
+
+expect "$sources" '"se"' \
+	"the reports expose the semana epidemiológica" \
+	"the reports do not expose the semana epidemiológica"
 
 # The envelope is the contract, not an implementation detail: a consumer parses
 # ocs.data, so losing it is a breaking change even if the payload is intact.
-expect "$alerts" '"ocs"' \
-	"la respuesta viene envuelta en el sobre OCS" \
-	"la respuesta NO trae el sobre OCS"
+expect "$sources" '"ocs"' \
+	"the response comes wrapped in the OCS envelope" \
+	"the response does NOT carry the OCS envelope"
 
 # Guards the header requirement itself. 412 is Nextcloud refusing before the
 # controller runs; a 200 here would mean the OCS protection is not in effect.
-expect "$(web -o /dev/null -w '%{http_code}' "$OCS/alerts?format=json")" '412' \
-	"sin la cabecera OCS-APIRequest la API responde 412" \
-	"sin la cabecera OCS-APIRequest la API NO responde 412"
+expect "$(web -o /dev/null -w '%{http_code}' "$OCS/sources?format=json")" '412' \
+	"without the OCS-APIRequest header the API answers 412" \
+	"without the OCS-APIRequest header the API does NOT answer 412"
 
 # The old plain-Controller route is gone on purpose. If it answers again, some
 # routes.php came back and we have two contracts.
 expect "$(web -o /dev/null -w '%{http_code}' "$BASE/api/v1/alerts")" '404' \
-	"la ruta antigua /apps/…/api/v1 ya no existe" \
-	"la ruta antigua sigue respondiendo — hay dos contratos"
+	"the old /apps/…/api/v1 route is gone" \
+	"the old route still answers — there are two contracts"
+
+# And the per-source routes 0.2.0 published are gone too, with no aliases — see
+# ADR-0006. A 200 here means someone re-added a contract we deliberately broke.
+for gone in alerts reports; do
+	expect "$(web -H "$OCSH" -o /dev/null -w '%{http_code}' "$OCS/$gone?format=json")" '404' \
+		"0.2.0's /ocs/…/api/v1/$gone route is gone" \
+		"/ocs/…/api/v1/$gone still answers — there are two contracts"
+done
 
 # The navigation endpoint reports an icon path whether or not the file exists, so
 # it proves nothing. What matters is that the path actually serves an SVG: without
@@ -116,8 +132,8 @@ expect "$(web -o /dev/null -w '%{http_code}' "$BASE/api/v1/alerts")" '404' \
 icon="$(web -o /dev/null -w '%{http_code} %{content_type} %{size_download}' \
 	"http://localhost/custom_apps/$APP/img/$APP.svg")"
 case "$icon" in
-	'200 image/svg+xml'*) pass "el icono de la app se sirve ($icon)" ;;
-	*) fail "el icono no se sirve ($icon) — el menú mostraría el marcador genérico" ;;
+	'200 image/svg+xml'*) pass "the app icon is served ($icon)" ;;
+	*) fail "the icon is not served ($icon) — the menu would show the generic placeholder" ;;
 esac
 
 # The bundle in js/ is committed — that IS the deployment. So the failure this
@@ -130,25 +146,25 @@ if command -v npm >/dev/null 2>&1 && [ -d node_modules ]; then
 	npm run build --silent >/dev/null 2>&1
 	drift="$(git status --porcelain js/ css/ 2>/dev/null)"
 	if [ -z "$drift" ]; then
-		pass "el bundle de js/ coincide con src/"
+		pass "the js/ bundle matches src/"
 	else
-		fail "js/ está desactualizado respecto a src/ — ejecuta 'npm run build' y haz commit"
+		fail "js/ is behind src/ — run 'npm run build' and commit the result"
 		printf '%s\n' "$drift" | sed 's/^/        /'
 	fi
 else
-	printf '  --    sin node_modules: no se comprueba si el bundle está al día\n'
+	printf '  --    no node_modules: not checking whether the bundle is current\n'
 fi
 
 # The one this script is really for. Read the CSP header specifically, so that a
 # stray mention of the host anywhere else on the page cannot make this pass.
 csp="$(web -D - -o /dev/null "$BASE/" | tr -d '\r' | grep -i '^content-security-policy:')"
 expect "$csp" 'app.powerbi.com' \
-	"la CSP permite el tablero (app.powerbi.com)" \
-	"la CSP NO permite app.powerbi.com — el tablero se vería en blanco"
+	"the CSP allows the tablero (app.powerbi.com)" \
+	"the CSP does NOT allow app.powerbi.com — the tablero would render blank"
 
 if [ "$failures" -eq 0 ]; then
-	printf '\nTodo correcto.\n\n'
+	printf '\nAll good.\n\n'
 else
-	printf '\n%d comprobación(es) fallida(s)\n\n' "$failures"
+	printf '\n%d check(s) failed\n\n' "$failures"
 	exit 1
 fi

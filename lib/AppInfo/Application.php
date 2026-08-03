@@ -6,7 +6,7 @@ namespace OCA\Epidemiologia\AppInfo;
 
 use OCA\Epidemiologia\Notification\Notifier;
 use OCA\Epidemiologia\Search\AlertProvider;
-use OCA\Epidemiologia\SetupCheck\MinsalReachable;
+use OCA\Epidemiologia\SetupCheck\SourcesReachable;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -27,7 +27,7 @@ class Application extends App implements IBootstrap {
 		$context->registerNotifierService(Notifier::class);
 		// The same probe state the notification reports, as a permanent row in
 		// Administración → Visión general. A status row cannot spam; the bell can.
-		$context->registerSetupCheck(MinsalReachable::class);
+		$context->registerSetupCheck(SourcesReachable::class);
 	}
 
 	#[\Override]
