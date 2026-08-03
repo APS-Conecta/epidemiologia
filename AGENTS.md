@@ -22,9 +22,10 @@ loads as parent context whenever you work here — its rules (language split, se
 They do not: a clinician reads the app, and these two are read by whoever maintains it. Settled
 2026-08-03 (#37) and both files converted in the same commit.
 
-**Commit messages stay Spanish**, matching twenty commits of existing log. That is the one
-deliberate exception, kept because a log that switches language halfway is harder to read than one
-that is consistently in either.
+**Commit messages and issue comments stay Spanish**, matching the existing log and tracker. Those
+are the two deliberate exceptions, kept for the same reason: a history that switches language
+halfway is harder to read than one that is consistently in either. Issue *bodies* written as specs
+are English, as #1, #25 and #37 are — they are read alongside the code they describe.
 
 > **Resolved 2026-08-03.** This file used to flag a contradiction: the map's standing rules
 > (issue #2) said *"code comments in Spanish"* while the entire codebase wrote them in English. The
