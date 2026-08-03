@@ -27,6 +27,14 @@ use RuntimeException;
  * collaborator was called.
  */
 class AlertProviderTest extends TestCase {
+	/**
+	 * A term both fuentes really do carry: MINSAL numbers its oficios "N°15844",
+	 * the ISP numbers its recalls "N° 22/26". Needed because the doubles honour the
+	 * term, so a test wanting one result of each kind has to ask for something that
+	 * genuinely matches both rather than assuming every search returns everything.
+	 */
+	private const IN_BOTH = 'N°';
+
 	/** @var list<array<string, string>> returned by the MINSAL double */
 	private array $minsalHits = [];
 
@@ -75,13 +83,16 @@ class AlertProviderTest extends TestCase {
 	 * clinical misunderstanding, not a cosmetic one.
 	 */
 	public function testEachResultSaysWhatKindItIsAndWhoPublishedIt(): void {
-		$sublines = array_column($this->search('alerta'), 'subline');
+		// Looked up by title, not by position: no story specifies an order between
+		// fuentes, so a test that pins one would fail on a change nobody asked about.
+		$entries = $this->search(self::IN_BOTH);
+		$minsal = $this->entryStartingWith($entries, 'OFICIO');
+		$isp = $this->entryStartingWith($entries, 'ALERTA DE RETIRO');
 
-		self::assertCount(2, $sublines);
-		self::assertStringContainsString('MINSAL', $sublines[0]);
-		self::assertStringContainsString('ISP', $sublines[1]);
-		self::assertStringNotContainsString('ISP', $sublines[0]);
-		self::assertStringNotContainsString('MINSAL', $sublines[1]);
+		self::assertStringContainsString('MINSAL', $minsal['subline']);
+		self::assertStringNotContainsString('ISP', $minsal['subline']);
+		self::assertStringContainsString('ISP', $isp['subline']);
+		self::assertStringNotContainsString('MINSAL', $isp['subline']);
 	}
 
 	/**
@@ -90,14 +101,22 @@ class AlertProviderTest extends TestCase {
 	 * assuming one of them.
 	 */
 	public function testEachResultCarriesTheDateItsFuentePublishes(): void {
-		$sublines = array_column($this->search('alerta'), 'subline');
+		$entries = $this->search(self::IN_BOTH);
 
-		self::assertStringContainsString('2026', $sublines[0], 'MINSAL carries a year');
-		self::assertStringContainsString('2026-07-28', $sublines[1], 'the ISP carries a day');
+		self::assertStringContainsString(
+			'2026',
+			$this->entryStartingWith($entries, 'OFICIO')['subline'],
+			'MINSAL publishes only the upload year',
+		);
+		self::assertStringContainsString(
+			'2026-07-28',
+			$this->entryStartingWith($entries, 'ALERTA DE RETIRO')['subline'],
+			'the ISP publishes a real day',
+		);
 	}
 
 	public function testEveryResultLinksToTheSourceDocument(): void {
-		foreach ($this->search('alerta') as $entry) {
+		foreach ($this->search(self::IN_BOTH) as $entry) {
 			self::assertStringStartsWith('https://', $entry['resourceUrl']);
 		}
 	}
@@ -105,29 +124,33 @@ class AlertProviderTest extends TestCase {
 	// --- what must NOT be in there -------------------------------------------
 
 	/**
-	 * Informes are identified by their semana epidemiológica, so a subject search
-	 * matches one only by coincidence. Asserted rather than left true by accident.
+	 * That the informes are not searched is asserted in MinsalRepositoryTest, where
+	 * the exclusion is implemented — it loads both fuentes and shows a term unique
+	 * to an informe finding nothing. Asserting it here instead would have meant
+	 * counting calls on a mock, which ADR-0007 rules out and which would have been
+	 * near-tautological anyway: Sources::search() has no arm for the informes, so a
+	 * regression would throw rather than call twice.
 	 */
-	public function testTheInformesAreNotSearched(): void {
-		$minsal = $this->createMock(MinsalRepository::class);
-		// Sources::search() asks MinsalRepository once, for the alertas. A second
-		// call would mean the informes had been folded in.
-		$minsal->expects(self::once())->method('search')->willReturn($this->minsalHits);
-		$isp = $this->createMock(IspRepository::class);
-		$isp->method('search')->willReturn([]);
-
-		$this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query('alerta'));
-	}
 
 	public function testAColdCacheReturnsNothingRatherThanFailing(): void {
+		// Nothing cached at all — the state before anyone has opened the app today.
 		$this->minsalHits = [];
 		$this->ispHits = [];
 
 		self::assertSame([], $this->search('sarampión'));
 	}
 
+	/**
+	 * A different thing from a cold cache, and the ordinary one: both fuentes hold
+	 * alerts, and none of them is about this. It must read as "no results", never as
+	 * an error in the box every user shares.
+	 */
+	public function testATermThatMatchesNothingReturnsNothing(): void {
+		self::assertSame([], $this->search('hantavirus'));
+	}
+
 	public function testTheQueryLimitIsRespected(): void {
-		self::assertCount(1, $this->search('alerta', limit: 1));
+		self::assertCount(1, $this->search(self::IN_BOTH, limit: 1));
 	}
 
 	/**
@@ -138,15 +161,15 @@ class AlertProviderTest extends TestCase {
 	 */
 	public function testTheProviderNeverFetches(): void {
 		$minsal = $this->createMock(MinsalRepository::class);
-		$minsal->method('search')->willReturn($this->minsalHits);
+		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
 		$isp = $this->createMock(IspRepository::class);
-		$isp->method('search')->willReturn($this->ispHits);
+		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 		foreach ([$minsal, $isp] as $repository) {
 			$repository->method('get')->willThrowException(new RuntimeException('a search provider must not fetch'));
 			$repository->method('refresh')->willThrowException(new RuntimeException('a search provider must not fetch'));
 		}
 
-		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query('alerta'));
+		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query(self::IN_BOTH));
 
 		self::assertCount(2, $result->jsonSerialize()['entries']);
 	}
@@ -156,9 +179,9 @@ class AlertProviderTest extends TestCase {
 	/** @return list<array<string, mixed>> the rendered entries */
 	private function search(string $term, int $limit = 20): array {
 		$minsal = $this->createMock(MinsalRepository::class);
-		$minsal->method('search')->willReturn($this->minsalHits);
+		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
 		$isp = $this->createMock(IspRepository::class);
-		$isp->method('search')->willReturn($this->ispHits);
+		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 
 		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query($term, $limit));
 
@@ -169,6 +192,33 @@ class AlertProviderTest extends TestCase {
 			static fn (\JsonSerializable $entry): array => $entry->jsonSerialize(),
 			$result->jsonSerialize()['entries'],
 		);
+	}
+
+	/**
+	 * A double that actually honours the term. Returning fixtures regardless would
+	 * make "a search that matches nothing" and "a cold cache" indistinguishable —
+	 * two different things a reader can hit, and only one of them is normal.
+	 *
+	 * @param list<array<string, string>> $hits
+	 */
+	private function matching(array $hits): callable {
+		return static fn (string $term): array => array_values(array_filter(
+			$hits,
+			static fn (array $hit): bool => str_contains(
+				mb_strtolower($hit['title'], 'UTF-8'),
+				mb_strtolower($term, 'UTF-8'),
+			),
+		));
+	}
+
+	/** The entry whose title starts with $prefix, so no test depends on result order. */
+	private function entryStartingWith(array $entries, string $prefix): array {
+		foreach ($entries as $entry) {
+			if (str_starts_with($entry['title'], $prefix)) {
+				return $entry;
+			}
+		}
+		self::fail('no result whose title starts with ' . $prefix);
 	}
 
 	private function provider(Sources $sources): AlertProvider {

@@ -15,7 +15,7 @@ three that were not were all in the supposed "thin glue":
 
 | Class | What it actually held | What shipped |
 | --- | --- | --- |
-| `Notifier` | a ternary on the feed id | an ISP outage rendered as *"…desde MINSAL"* |
+| `Notifier` | a ternary on the fuente id | an ISP outage rendered as *"…desde MINSAL"* |
 | `SourcesReachable` | a loop over a hardcoded list | Visión general green through an ISP outage |
 | `AlertProvider` | a policy choice in its constructor | 60 alertas sanitarias absent from global search |
 
@@ -52,7 +52,7 @@ classes to skip, and the layer boundary did not match where decisions live.
   it names, whether a search finds a thing and how it is labelled — never how a counter is stored or
   how many times a collaborator was called.
 - **A regression test that has never failed is worth nothing**, so each new guard was proved by
-  reintroducing the bug it exists for: enumerating MINSAL's two feeds by name, always claiming a
+  reintroducing the bug it exists for: enumerating MINSAL's two fuentes by name, always claiming a
   start date, letting the check fetch, restricting search to MINSAL, dropping the institution from a
   result's label. Each mutation failed exactly the tests that describe it. Worth repeating for any
   future guard.

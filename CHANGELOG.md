@@ -37,10 +37,25 @@ history they describe is unchanged.
   wrong: the image ships `OCP` under `/usr/src/nextcloud`, so the tests run with no
   entrypoint, no database and no install. Verified by running them exactly that way.
 
+- **The informes are asserted to be unsearchable**, in `MinsalRepositoryTest` where
+  the exclusion actually lives: both fuentes are loaded, then a term carried by an
+  informe title and by no alert finds nothing. The first attempt asserted it by
+  counting calls on a mock — which ADR-0007 forbids and which was near-tautological,
+  since a regression there would throw rather than call twice.
+
 ### Changed
 
 - The chassis plan's debt entry asserting the old testing rule is corrected in the
   same change, so two documents do not disagree about the same rule.
+- **Review fixes** from the two-axis review of this change: `feed` replaced by
+  `fuente` in three places (`CONTEXT.md` lists *feed* under Avoid, and the change
+  that added that rule broke it); the search doubles now honour the term, so "a
+  search that matches nothing" and "a cold cache" stopped being the same test; and
+  result assertions look entries up by title rather than by position, since no
+  story specifies an order between fuentes.
+- `CONTEXT.md`'s avoid line for **fuente** now says *institución as a synonym for
+  fuente* — naming the institution itself is correct and necessary, and a result
+  that does not say which one it came from is the defect the distinction prevents.
 - **`scripts/smoke.sh` stays manual on purpose**, and `README.md` now says why: its
   assertions need a real provisioned instance, and faking one in CI would test the
   fake. Its bundle-drift check keeps its local copy but is no longer the only one —

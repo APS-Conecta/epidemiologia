@@ -12,6 +12,11 @@
 # manual, and README.md says so.
 name: CI
 
+# `main` and pull requests, NOT every push. Deliberate, not a narrowing: a commit
+# on a feature branch is checked by that branch's pull request, and running both
+# would double every run for no extra coverage. The gap it leaves is a branch
+# pushed with no pull request open — which is a branch nobody is proposing to
+# merge, and `scripts/test.sh` is one command away locally.
 on:
   push:
     branches: [main]

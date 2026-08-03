@@ -23,7 +23,7 @@ use RuntimeException;
  *
  * This class had no test at all while it was the one that stayed GREEN through an
  * ISP outage: ProbeJob had been writing the ISP's failure count since 0.2.0 and
- * this check walked MINSAL's two feeds by name and never read it. So every
+ * this check walked MINSAL's two fuentes by name and never read it. So every
  * assertion here is on the rendered row — its severity and which fuente it names —
  * and none is on how a counter is stored.
  *

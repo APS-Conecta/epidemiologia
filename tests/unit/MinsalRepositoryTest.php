@@ -324,6 +324,27 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame([], $repository->search('   '));
 	}
 
+	/**
+	 * The informes are not searched, asserted where the exclusion actually lives.
+	 *
+	 * An informe is identified by its semana epidemiológica, so matching one by
+	 * subject happens only by coincidence — and a clínico/a searching for a disease
+	 * does not want a weekly PDF that merely shares a word.
+	 *
+	 * Both fuentes are loaded first, so the cache genuinely holds the informes and
+	 * this cannot pass by their simply being absent. "SE 29" appears in one informe
+	 * title and in no alert title, which is what makes it a probe rather than a
+	 * coincidence.
+	 */
+	public function testTheInformesAreNotSearchable(): void {
+		$repository = $this->repository();
+		$repository->get(MinsalRepository::ALERTS);
+		$reports = $repository->get(MinsalRepository::IRAG);
+
+		self::assertNotEmpty($reports['items'], 'the informes must be cached, or this asserts nothing');
+		self::assertSame([], $repository->search('SE 29'));
+	}
+
 	// --- probe ---------------------------------------------------------------
 
 	public function testTheProbeIsQuietWhenMinsalHasNotChanged(): void {

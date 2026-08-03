@@ -31,7 +31,9 @@ names the fuente that failed. Treating "fuente" and "institución" as the same t
 outage report itself as MINSAL.
 The **tablero** and **EPIVIGILA** are *not* fuentes: nothing about them is fetched, parsed, cached or
 capable of going stale. They are links.
-_Avoid_: feed, canal, origen, institución
+_Avoid_: feed, canal, origen — and **institución as a synonym for fuente**. Naming the
+institution itself is correct and necessary: MINSAL and the ISP are institutions, and a result that
+does not say which one it came from is the defect this distinction exists to prevent.
 
 **Sondeo**:
 The daily check that each fuente can still be read and still parses. It exists to **detect**, not to
