@@ -25,15 +25,7 @@
 			</template>
 		</PaneHeader>
 
-		<NcNoteCard v-if="sanitaryAlerts.degraded" type="warning">
-			<strong>{{ t('epidemiologia', 'Problemas técnicos.') }}</strong>
-			{{ t('epidemiologia', 'No hemos podido contactar al ISP, así que esta lista puede estar incompleta.') }}
-			<a href="https://www.ispch.gob.cl/categorias-alertas/anamed/"
-				target="_blank"
-				rel="noopener noreferrer">
-				{{ t('epidemiologia', 'Ver en ispch.gob.cl') }} ↗
-			</a>
-		</NcNoteCard>
+		<DegradedNotice v-if="sanitaryAlerts.degraded" source="el ISP" url="https://www.ispch.gob.cl/categorias-alertas/anamed/" />
 
 		<!--
 			Two controls by default, like the MINSAL pane. The library gives NcTextField
@@ -93,7 +85,7 @@
 				:title="alert.title"
 				:url="alert.url">
 				<template #meta>
-					<span class="epi-alert__date">{{ alert.date }}</span>
+					<NcDateTime class="epi-alert__date" :timestamp="alert.at * 1000" :relative-time="false" :format="{ dateStyle: 'long' }" />
 					<!-- Every category that carried it, not just the first: an alert
 					     genuinely belongs to all of them. -->
 					<NcChip v-for="category in alert.categories"
@@ -119,11 +111,12 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { NcButton, NcChip, NcDateTime, NcEmptyContent, NcNoteCard, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcButton, NcChip, NcDateTime, NcEmptyContent, NcSelect, NcTextField } from '@nextcloud/vue'
 import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import Tune from 'vue-material-design-icons/Tune.vue'
 import AlertRow from './AlertRow.vue'
+import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
 import { sanitaryAlerts, fold } from '../state.js'
 

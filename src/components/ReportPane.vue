@@ -3,7 +3,7 @@
 		<PaneHeader :title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')"
 			:fetched-at="reports.fetched_at" />
 
-		<DegradedNotice v-if="reports.degraded" />
+		<DegradedNotice v-if="reports.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
 		<template v-if="latest">
 			<!--

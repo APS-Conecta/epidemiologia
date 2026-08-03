@@ -3,7 +3,7 @@
 		<PaneHeader :title="t('epidemiologia', 'Alertas epidemiológicas vigentes')"
 			:fetched-at="alerts.fetched_at" />
 
-		<DegradedNotice v-if="alerts.degraded" />
+		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
 		<div class="epi-filters">
 			<NcTextField v-model="query"
@@ -27,7 +27,7 @@
 				:title="alert.title"
 				:url="alert.url">
 				<template #meta>
-					<span class="epi-alert__year">{{ alert.year }}</span>
+					<span class="epi-alert__when">{{ mes(alert.month) }}</span>
 				</template>
 			</AlertRow>
 		</ul>
@@ -50,7 +50,7 @@ import Magnify from 'vue-material-design-icons/Magnify.vue'
 import AlertRow from './AlertRow.vue'
 import PaneHeader from './PaneHeader.vue'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, fold } from '../state.js'
+import { alerts, fold, mes } from '../state.js'
 
 const query = ref('')
 const year = ref(null)
@@ -109,7 +109,7 @@ const countLabel = computed(() => {
 	flex-direction: column;
 }
 
-.epi-alert__year {
+.epi-alert__when {
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
 	font-variant-numeric: tabular-nums;

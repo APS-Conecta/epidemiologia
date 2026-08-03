@@ -67,7 +67,7 @@
 						<a :href="item.url"
 							target="_blank"
 							rel="noopener noreferrer">{{ item.title }}</a>
-						<span class="epi-row__when">{{ item.date || item.month || item.year }}</span>
+						<span class="epi-row__when">{{ item.date ? fecha(item.date) : mes(item.month) }}</span>
 					</li>
 				</ul>
 
@@ -119,9 +119,9 @@
 <script setup>
 import { computed } from 'vue'
 import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
-import { t, n } from '@nextcloud/l10n'
+import { getCanonicalLocale, t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
-import { alerts, sanitaryAlerts, reports } from '../state.js'
+import { alerts, degradedText, mes, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
 
@@ -137,6 +137,10 @@ defineEmits(['open'])
  * instructs a clinic to do is not something to show a prefix of. The other 74
  * are one click away, in a pane that now also shows them in full.
  */
+/** A real day when the fuente publishes one; the ISP does, MINSAL does not. */
+const fecha = (iso) => new Intl.DateTimeFormat(getCanonicalLocale(), { dateStyle: 'long' })
+	.format(new Date(iso + 'T00:00:00'))
+
 const PER_CARD = 1
 const PER_CARD_WEEKS = 3
 
@@ -153,7 +157,7 @@ const sources = computed(() => [
 		lead: true,
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
 		emptyText: t('epidemiologia', 'MINSAL no tiene alertas vigentes publicadas.'),
-		degradedText: t('epidemiologia', 'No hemos podido contactar a MINSAL. Esta lista puede estar incompleta.'),
+		degradedText: degradedText('MINSAL'),
 	},
 	{
 		id: 'isp-alertas',
@@ -165,7 +169,7 @@ const sources = computed(() => [
 		// Not "el ISP no publicó": several of its 24 categories are legitimately
 		// empty in any given week, and saying nothing was published would be false.
 		emptyText: t('epidemiologia', 'Sus categorías no traen alertas esta semana.'),
-		degradedText: t('epidemiologia', 'No hemos podido contactar al ISP. Esta lista puede estar incompleta.'),
+		degradedText: degradedText('el ISP'),
 	},
 ])
 </script>
