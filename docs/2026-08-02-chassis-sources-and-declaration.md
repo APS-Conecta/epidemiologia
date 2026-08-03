@@ -26,31 +26,44 @@ Plus: this app is invisible to `gestion`. `grep -riI epidemiolog` over the track
 - The wayfinder map is **issue #2**; its 15 original tickets are closed, **#18–#21** remain.
 - Vocabulary is in [`CONTEXT.md`](../CONTEXT.md). Two decisions are in [`adr/`](adr/).
 
-## The navigation defect, named precisely
+## The navigation defect — measured, and not what this document first said
 
-`src/App.vue:3-19` places `NcAppNavigationList` in `NcAppNavigation`'s **default** slot. The library
-branches on `$slots.list`:
+> **Corrected 2026-08-02 against the running instance (NC 34.0.1.2), ticket #26.** The first version
+> of this section named the slot as the cause. That was derived from the component library's source
+> and is **wrong**: Files does exactly the same thing.
 
-```
-<div class="app-navigation__body" :class="{ 'app-navigation__body--no-list': !$slots.list }">
-  <slot />                                    ← our items land here
-</div>
-<NcAppNavigationList v-if="$slots.list" class="app-navigation__list">
-  <slot name="list" />                        ← never rendered
-</NcAppNavigationList>
-```
+Measured side by side, same session, same width:
 
-Consequences, all from that one slot choice: the library's *"always stretch the navigation list"*
-rule (`& &__list { height: 100% }`) **never applies**; `app-navigation__body--no-list` takes over
-(`flex: 1 1 auto; overflow: auto`) wrapping a `<ul>` that also sets `overflow-y: auto`, giving **two
-nested scroll containers**; and the legacy escape hatch `&__content > ul` does not match, because the
-`<ul>` is a grandchild of `__content`, not a child. Separately, `NcAppNavigation` emits a runtime
-warning because neither `ariaLabel` nor `ariaLabelledby` is set.
+| | Files | Epidemiología |
+| --- | --- | --- |
+| `app-navigation__list` wrapper | **absent** | **absent** |
+| `app-navigation__body--no-list` | **present** | **present** |
+| body / list `overflow-y` | auto / auto | auto / auto |
+| nav rect (top / height) | 50 / 562 | 50 / 562 |
+| **nav accessible name** | **"Archivos"** | **null** |
+| search field | present, 50px | **absent** |
+| footer block | present | **absent** |
+| list height in a 562px column | 432 | **164** |
 
-**A second suspect, to confirm on screen rather than assume.** `isLegacy34 = major < 34`, so on NC 34
-the navigation is `background-color: transparent` and `NcContent` carries the frosted chrome. If
-core's bundled apps on 34.0.1 ship an older `@nextcloud/vue`, Files and Epidemiología would
-legitimately render two different navigation designs on the same instance. Nobody has measured it.
+**The version suspect is dead.** Core declares `@nextcloud/vue ^9.8.1` and this app locks 9.9.0, but
+`content--legacy` and `app-navigation--legacy` are both **false** here, and core's own `dist/` ships
+the same class names. Nav transparent, content frosted — working as designed on both.
+
+**The slot is a real deviation from the documented API and is not the cause of anything visible.**
+`src/App.vue` puts `NcAppNavigationList` in the default slot rather than `#list`, so the library's
+*"always stretch the navigation list"* rule never applies and there are two nested scroll
+containers — **and Files is identical on all three counts**. Moving to `#list` is still worth doing,
+because it is what the component documents and it costs nothing; it must not be sold as the fix.
+
+**What actually differs**, in order of substance:
+
+1. **No accessible name.** Files sets `aria-label="Archivos"`; ours is `null`, and the library warns
+   about it at runtime. The one unambiguous defect.
+2. **The column is empty.** Files anchors its navigation at the top (a search field) and the bottom
+   (deleted files, quota, settings). Ours is four items totalling 164px floating in a 562px column
+   with nothing beneath them. **This is what reads as "not a Nextcloud app"** — a design gap, not a
+   markup bug, and the reason the fix is captions plus a top and a bottom rather than a slot move.
+3. Two `h1`s on our page (the header's and `pageHeading`'s) against one on Files. Minor, and not ours.
 
 ## What the grilling settled
 
@@ -60,7 +73,7 @@ legitimately render two different navigation designs on the same instance. Nobod
 | 2 | It shows **what MINSAL last published**, not "new to you" — no per-user state, no first-seen map |
 | 3 | **No PDF thumbnails** — see [ADR-0002](adr/0002-no-pdf-rasterisation.md). SE-number cards instead |
 | 4 | Inicio = **estado → 3 alertas → 3 informes → accesos**; the trust signal leads |
-| 5 | Nav = **Inicio ungrouped, then `NcAppNavigationCaption is-heading` per institution**. This settles the old A/B question: **ISP gets its own pane** |
+| 5 | Nav = **Inicio ungrouped, then `NcAppNavigationCaption` per institution** (as labels, not headings — see 12). This settles the old A/B question: **ISP gets its own pane** |
 | 6 | **`analizador_rem` owns REM**; this app consumes over OCS — [ADR-0001](adr/0001-analizador-rem-owns-rem.md) |
 | 7 | Disease card shows **Población en Control**; **PIV is an input** held by the REM owner; without PIV, absolute numbers only |
 | 8 | **Track A ships first**, then B, then the disease pane |
@@ -95,10 +108,11 @@ legitimately render two different navigation designs on the same instance. Nobod
 
 Depends on nothing outside this repo.
 
-## A1 — Look before designing
+## A1 — Look before designing ✅ done
 
-The stack was down when this was written (`docker ps` showed only `portainer`). Nothing gets built
-until the current state is on screen.
+**Completed 2026-08-02 on NC 34.0.1.2 (#26).** It corrected this document: see the measured table
+above. The version suspect is dead; the slot is real but is not the cause; the accessible name and
+the empty column are. Nothing else gets built without the current state on screen.
 
 1. `make up`, wait for `occ status`.
 2. Screenshot Epidemiología beside **Files** and **Calendar** at one width.
@@ -142,9 +156,12 @@ Traps to carry forward, all measured:
 
 `src/App.vue`:
 
-- Move the `NcAppNavigationItem`s into `<template #list>`; drop the hand-placed
-  `NcAppNavigationList` — the library supplies it for that slot.
-- Add `:aria-label="t('epidemiologia', 'Epidemiología')"`.
+- **Add `:aria-label`** — the one unambiguous defect (#26): Files has one, we do not.
+- **Give the column a top and a bottom.** This is what actually reads as un-Nextcloud: four items in
+  a 562px column with nothing beneath them, against Files' search field above and settings below.
+- Move the `NcAppNavigationItem`s into `<template #list>` and drop the hand-placed
+  `NcAppNavigationList` — the documented API, and it enables the stretch rule. Worth doing, but
+  **not the fix**: Files uses the default slot too.
 - Group with `NcAppNavigationCaption` — **without `is-heading`**, each caption's `headingId` wired to
   its list's `aria-labelledby` ([ADR-0005](adr/0005-nav-captions-are-labels-not-headings.md)).
   **Inicio** ungrouped at top, then *MINSAL* (Alertas vigentes · Informe semanal · Tablero), *ISP*
