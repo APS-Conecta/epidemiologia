@@ -88,11 +88,11 @@
 		</p>
 
 		<ul v-if="shown.length" class="epi-list">
-			<li v-for="alert in shown" :key="alert.url" class="epi-alert">
-				<a class="epi-alert__title" :href="alert.url" target="_blank" rel="noopener noreferrer">
-					{{ alert.title }}
-				</a>
-				<p class="epi-alert__meta">
+			<AlertRow v-for="alert in shown"
+				:key="alert.url"
+				:title="alert.title"
+				:url="alert.url">
+				<template #meta>
 					<span class="epi-alert__date">{{ alert.date }}</span>
 					<!-- Every category that carried it, not just the first: an alert
 					     genuinely belongs to all of them. -->
@@ -101,8 +101,8 @@
 						:text="kindLabel(category)"
 						no-close
 						@click="kind = kinds.find((k) => k.id === category) ?? null" />
-				</p>
-			</li>
+				</template>
+			</AlertRow>
 		</ul>
 
 		<NcEmptyContent v-else
@@ -123,6 +123,7 @@ import { NcButton, NcChip, NcDateTime, NcEmptyContent, NcNoteCard, NcSelect, NcT
 import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import Tune from 'vue-material-design-icons/Tune.vue'
+import AlertRow from './AlertRow.vue'
 import PaneHeader from './PaneHeader.vue'
 import { sanitaryAlerts, fold } from '../state.js'
 
@@ -365,36 +366,6 @@ const countLabel = computed(() => {
 	flex-direction: column;
 }
 
-.epi-alert {
-	padding: calc(var(--default-grid-baseline) * 2.5) calc(var(--default-grid-baseline) * 2);
-	border-bottom: 1px solid var(--color-border);
-	border-radius: var(--border-radius-element);
-}
-
-.epi-alert:hover {
-	background: var(--color-background-hover);
-}
-
-/* Wraps. The product name is at the end of an ISP title, so truncating loses
-   the half that identifies what was recalled. */
-.epi-alert__title {
-	color: var(--color-main-text);
-	text-decoration: none;
-	font-weight: var(--font-weight-heading);
-}
-
-.epi-alert__title:hover,
-.epi-alert__title:focus-visible {
-	text-decoration: underline;
-}
-
-.epi-alert__meta {
-	display: flex;
-	align-items: center;
-	gap: calc(var(--default-grid-baseline) * 2);
-	flex-wrap: wrap;
-	margin: calc(var(--default-grid-baseline) * 1.5) 0 0;
-}
 
 .epi-alert__date {
 	color: var(--color-text-maxcontrast);

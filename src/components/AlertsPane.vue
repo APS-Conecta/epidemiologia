@@ -22,13 +22,14 @@
 		<!-- 75 rows is ~600 DOM nodes, rendered once from initial state with no
 		     images. Virtualising that would be a liability, not an optimisation. -->
 		<ul v-if="shown.length" class="epi-list">
-			<NcListItem v-for="alert in shown"
+			<AlertRow v-for="alert in shown"
 				:key="alert.url"
-				one-line
-				:name="alert.title"
-				:href="alert.url"
-				target="_blank"
-				:details="alert.year" />
+				:title="alert.title"
+				:url="alert.url">
+				<template #meta>
+					<span class="epi-alert__year">{{ alert.year }}</span>
+				</template>
+			</AlertRow>
 		</ul>
 
 		<NcEmptyContent v-else
@@ -43,9 +44,10 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { NcEmptyContent, NcListItem, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcEmptyContent, NcSelect, NcTextField } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
+import AlertRow from './AlertRow.vue'
 import PaneHeader from './PaneHeader.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import { alerts, fold } from '../state.js'
@@ -103,5 +105,13 @@ const countLabel = computed(() => {
 	list-style: none;
 	margin: 0;
 	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.epi-alert__year {
+	color: var(--color-text-maxcontrast);
+	font-size: var(--font-size-small);
+	font-variant-numeric: tabular-nums;
 }
 </style>
