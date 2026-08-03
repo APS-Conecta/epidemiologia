@@ -170,8 +170,22 @@ const kindLabel = (slug) => KIND_LABELS[slug] ?? prettify(slug)
 
 const query = ref('')
 const kind = ref(null)
-const year = ref(null)
 const month = ref(null)
+
+/**
+ * The list opens scoped to the most recent year that HAS data, not to
+ * `new Date().getFullYear()` — in January the ISP may not have published
+ * anything yet, and a default that resolves to an empty list is worse than no
+ * default at all. Derived from the data, so it cannot point at nothing.
+ *
+ * It is a starting point, not a cage: the year select is clearable and
+ * "Quitar filtros" resets everything, and the count line always says
+ * "N de 60" so the scoping is never silent.
+ */
+const newestYear = [...new Set(ispAlerts.items.map((a) => (a.date ?? '').slice(0, 4)).filter(Boolean))]
+	.sort()
+	.pop() ?? null
+const year = ref(newestYear ? { id: newestYear, label: newestYear } : null)
 
 /**
  * Sorting. "Tipo" needs a single key from a list of categories, so it uses the
@@ -265,6 +279,17 @@ function monthName(mm) {
 
 	return `${name.charAt(0).toUpperCase()}${name.slice(1)}`
 }
+
+// Sync the default's label with the real option, so the control does not show a
+// bare "2026" while every other entry shows "2026 (55)".
+watch(years, (list) => {
+	if (year.value) {
+		const match = list.find((y) => y.id === year.value.id)
+		if (match) {
+			year.value = match
+		}
+	}
+}, { immediate: true })
 
 const filtered = computed(() => query.value.trim() !== ''
 	|| kind.value !== null || year.value !== null || month.value !== null)
