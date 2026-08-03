@@ -21,10 +21,30 @@ The definitions below are the ones *this* app consumes.
 
 ## What is published nationally
 
+**Fuente**:
+One thing this app fetches, parses and caches, carrying its own freshness and its own estado
+degradado: *alertas vigentes* and *informes ETI/IRAG* from MINSAL, *alertas sanitarias* from the ISP.
+A fuente is **not an institution** — MINSAL publishes two of them — and **not a class**: those same
+two share one repository. It is the unit that everything outside a repository counts in: the payload
+other apps read is keyed by fuente, the sondeo keeps one failure count per fuente, and a notificación
+names the fuente that failed. Treating "fuente" and "institución" as the same thing is what made an ISP
+outage report itself as MINSAL.
+The **tablero** and **EPIVIGILA** are *not* fuentes: nothing about them is fetched, parsed, cached or
+capable of going stale. They are links.
+_Avoid_: feed, canal, origen, institución
+
+**Sondeo**:
+The daily check that each fuente can still be read and still parses. It exists to **detect**, not to
+refresh — a warm cache is a side effect, which is why it earns its place where a cache-warming job
+would not. It is the only writer of the consecutive-failure counts that both the notificación
+and Administración → Visión general read, so those two can be incomplete but never contradict each other.
+_Avoid_: sync, actualización, refresco
+
 **Alerta vigente**:
 An oficio MINSAL currently in force, published as a PDF on a curated page. Identified by its URL —
 MINSAL reassigns numeric ids when it republishes.
-_Avoid_: alerta, aviso, circular
+_Avoid_: alerta, aviso, circular — note that *aviso* is avoided for **this document**; the
+thing Nextcloud puts in the bell is a **notificación**, and the two are easy to blur
 
 **Alerta sanitaria ISP**:
 A product-level notice from the Instituto de Salud Pública — recall, falsification, pharmacovigilance,
