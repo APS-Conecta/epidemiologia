@@ -1,8 +1,9 @@
 # Plan — Inicio and the chassis, then REM as a shared source
 
-> **Status: agreed 2026-08-02, not started.** Nothing here has been built. Revised the same day
-> after a grilling session that changed the design substantially — the earlier version treated this
-> as a slot fix plus a mockup; it is now four tracks with a dependency line between them.
+> **Status: agreed 2026-08-02. A1 done, everything else not started.** Revised the same day after
+> a grilling session that changed the design substantially — the earlier version treated this as a
+> slot fix plus a mockup; it is now four tracks with a dependency line between them. A1 then
+> **disproved this document's own diagnosis**; the section below carries the correction.
 > Written in English, matching this repo's code and its PHPUnit test names.
 
 ## Context
@@ -24,7 +25,7 @@ Plus: this app is invisible to `gestion`. `grep -riI epidemiolog` over the track
 - This app is at **0.2.0**, 31 unit tests, 11/11 smoke, clean on `main`. Frontend already on
   `@nextcloud/vue` (built at 9.9.0), data via `IInitialState`, contract on OCS. No database.
 - The wayfinder map is **issue #2**; its 15 original tickets are closed, **#18–#21** remain.
-- Vocabulary is in [`CONTEXT.md`](../CONTEXT.md). Two decisions are in [`adr/`](adr/).
+- Vocabulary is in [`CONTEXT.md`](../CONTEXT.md). Five decisions are in [`adr/`](adr/).
 
 ## The navigation defect — measured, and not what this document first said
 
@@ -121,8 +122,11 @@ the empty column are. Nothing else gets built without the current state on scree
    frosted? Check the console for the `ariaLabel` warning.
 4. Read core's shipped `@nextcloud/vue` version; compare with 9.9.0.
 
-If the slot is the whole story, A3 is a small diff. If the version mismatch is real, that is a
-different and larger problem and gets its own decision.
+**Outcome — neither suspect was the cause.** The version one is dead. The slot is a real deviation
+from the documented API, but Files shares it, so it explains nothing visible. What does: no
+accessible name, and a column with nothing anchoring its bottom. Measurements in the table above
+and in #26. **Calendar was not measured** — Files was enough to settle it, and that is a gap in the
+evidence, not a finding.
 
 ## A2 — Source review
 
