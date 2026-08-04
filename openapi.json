@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "epidemiologia",
-        "version": "0.0.1",
+        "version": "0.4.0",
         "description": "Alertas del MINSAL y del ISP, informes IRAG y tablero nacional",
         "license": {
             "name": "agpl"
@@ -157,7 +157,7 @@
                                                 "meta": {
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
-                                                "data": {}
+                                                "data": []
                                             }
                                         }
                                     }
