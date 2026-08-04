@@ -17,7 +17,7 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')" />
+		<PaneHeader :title="paneName('informe')" />
 
 		<DegradedNotice v-if="reports.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
@@ -64,6 +64,7 @@ import { t, n } from '@nextcloud/l10n'
 import FilePdfBox from 'vue-material-design-icons/FilePdfBox.vue'
 import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
 import { mes, reports } from '../state.js'
 </script>

@@ -50,13 +50,34 @@
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
 
+			<!-- The ISP, in its own list because an <li> loose in this <div> is as
+			     invalid as a nested <ul> — ADR-0005 measured that. No caption, so no
+			     aria-labelledby: the row names its own publisher. -->
+			<NcAppNavigationList>
+				<NcAppNavigationItem v-for="pane in loose"
+					:key="pane.id"
+					:name="pane.name"
+					:active="current === pane.id"
+					@click="current = pane.id">
+					<template #icon>
+						<component :is="pane.icon" :size="20" />
+					</template>
+				</NcAppNavigationItem>
+			</NcAppNavigationList>
+
 			<!--
 				The footer is what gives the column a bottom. #26 measured four items
 				totalling 164px floating in a 562px column, against Files anchoring its
 				own with a search field above and settings below — that emptiness, not
 				the slot, is what read as "not a Nextcloud app". It carries the source
-				attribution, which ADR-0004 says we owe anyway now that we build on
-				state data published under no licence.
+				attribution for BOTH publishers we read.
+
+				It named only MINSAL until 2026-08-03, while half the app was the ISP's,
+				and cited ADR-0004 for the obligation — an ADR about the DEIS REM
+				extracts, which this app never fetches. It reads epi.minsal.cl and
+				ispch.gob.cl and nothing else. The reason to credit them is simply that
+				neither publishes under a licence and both are named on every screen we
+				built out of their work.
 
 				The credit, and not a link beside it: every pane already links to the
 				source it came from, on the row that came from it. A second, permanent
@@ -64,7 +85,7 @@
 			-->
 			<template #footer>
 				<footer class="epi-nav-footer">
-					{{ t('epidemiologia', 'Fuente: Departamento de Epidemiología, MINSAL') }}
+					{{ t('epidemiologia', 'Fuentes: Departamento de Epidemiología (MINSAL) e Instituto de Salud Pública') }}
 				</footer>
 			</template>
 		</NcAppNavigation>
@@ -104,6 +125,7 @@ import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
 import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
+import { paneName } from './panes.js'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
 import ReportPane from './components/ReportPane.vue'
@@ -122,7 +144,16 @@ watch(current, (pane) => {
 })
 
 /**
- * Inicio first and ungrouped; the rest grouped by publisher.
+ * Inicio first, then the MINSAL group, then the ISP on its own row.
+ *
+ * ONE caption, and it groups by publisher. There used to be three, and the third
+ * grouped by function: "Notificación" over EPIVIGILA. EPIVIGILA is
+ * epivigila.minsal.cl, so under the publisher rule it belongs to MINSAL, and moving
+ * it there leaves one rule instead of two. The ISP's row then labels itself — a
+ * caption spending 38px to label a single row is chrome, not structure.
+ *
+ * Names come from panes.js. This file used to hold one wording and each pane
+ * another; see ADR-0008 for why the groups do not collapse.
  *
  * No counters. Nextcloud uses a counter bubble for what needs action, and neither
  * of ours moves: MINSAL's 75 holds until it republishes, and the ISP's is pinned to
@@ -131,35 +162,26 @@ watch(current, (pane) => {
  * real count will one day appear. Each pane states its own count in its toolbar,
  * where it changes as you filter and therefore means something.
  */
-const panes = [
-	{ id: 'inicio', name: t('epidemiologia', 'Inicio'), icon: markRaw(Home) },
-]
+const pane = (id, icon) => ({ id, name: paneName(id), icon: markRaw(icon) })
+
+/** Ungrouped, above the caption. */
+const panes = [pane('inicio', Home)]
 
 const groups = [
 	{
 		id: 'minsal',
 		name: t('epidemiologia', 'MINSAL'),
 		panes: [
-			{ id: 'alertas', name: t('epidemiologia', 'Alertas vigentes'), icon: markRaw(Alert) },
-			{ id: 'informe', name: t('epidemiologia', 'Informe semanal'), icon: markRaw(ChartBellCurve) },
-			{ id: 'tablero', name: t('epidemiologia', 'Tablero MINSAL'), icon: markRaw(ChartBox) },
-		],
-	},
-	{
-		id: 'isp',
-		name: t('epidemiologia', 'ISP'),
-		panes: [
-			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill) },
-		],
-	},
-	{
-		id: 'notificacion',
-		name: t('epidemiologia', 'Notificación'),
-		panes: [
-			{ id: 'epivigila', name: t('epidemiologia', 'EPIVIGILA'), icon: markRaw(ShieldAccount) },
+			pane('alertas', Alert),
+			pane('informe', ChartBellCurve),
+			pane('tablero', ChartBox),
+			pane('epivigila', ShieldAccount),
 		],
 	},
 ]
+
+/** Ungrouped, below it: one row, and it names its own publisher. */
+const loose = [pane('isp', Pill)]
 </script>
 
 <style scoped>

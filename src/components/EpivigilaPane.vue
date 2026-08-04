@@ -11,7 +11,7 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'EPIVIGILA · Notificación de ENO')" />
+		<PaneHeader :title="paneName('epivigila')" />
 
 		<NcNoteCard type="warning">
 			{{ t('epidemiologia', 'Solo ingresan los establecimientos públicos con conexión a Red MINSAL. Si no puedes entrar, notifica con los formularios PDF a la SEREMI.') }}
@@ -46,6 +46,7 @@ import { t } from '@nextcloud/l10n'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import FilePdfBox from 'vue-material-design-icons/FilePdfBox.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 </script>
 
 <style scoped>

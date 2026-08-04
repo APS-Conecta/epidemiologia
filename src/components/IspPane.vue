@@ -16,7 +16,7 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Alertas sanitarias del ISP')" />
+		<PaneHeader :title="paneName('isp')" />
 
 		<DegradedNotice v-if="sanitaryAlerts.degraded"
 			source="el ISP"
@@ -105,6 +105,7 @@ import FilterBar from './FilterBar.vue'
 import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import { sanitaryAlerts, fold, mes, tally } from '../state.js'
 
 /**
@@ -287,13 +288,19 @@ const countLabel = computed(() => {
 
 /* Text, not a pill. Still a button: one click filters to that category. The
    underline appears on hover so the row reads as prose until you reach for it. */
+/* The accent colour, at rest. These filter when clicked, and they used to be
+   pixel-identical to the static date beside them — 13px, weight 400, #6b6b6b,
+   underline transparent — with cursor:pointer the only difference, which is
+   invisible until you are already on it and never visible on a touch screen.
+   Colour rather than a filled pill: 57 alerts carry 154 of these, and the pills
+   outweighed the titles they described. */
 .epi-alert__cat {
 	border: 0;
 	background: none;
 	padding: 0;
 	font: inherit;
 	font-size: var(--font-size-small);
-	color: var(--color-text-maxcontrast);
+	color: var(--color-primary-element);
 	cursor: pointer;
 	text-decoration: underline;
 	text-decoration-color: transparent;

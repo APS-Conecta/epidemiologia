@@ -15,7 +15,7 @@
 -->
 <template>
 	<section class="epi-inicio">
-		<PaneHeader :title="t('epidemiologia', 'Inicio')" />
+		<PaneHeader :title="paneName('inicio')" />
 
 		<!--
 			auto-fit rather than a fixed column count: one source fills the row, two
@@ -76,7 +76,7 @@
 
 		<article class="epi-card">
 			<div class="epi-card__head">
-				<h3>{{ t('epidemiologia', 'Informes ETI/IRAG') }}</h3>
+				<h3>{{ paneName('informe') }}</h3>
 				<NcButton variant="tertiary" @click="$emit('open', 'informe')">
 					{{ t('epidemiologia', 'Ver todos') }}
 				</NcButton>
@@ -123,6 +123,7 @@ import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { getCanonicalLocale, t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import { alerts, degradedText, mes, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
@@ -152,7 +153,7 @@ const PER_CARD_WEEKS = 3
 const sources = computed(() => [
 	{
 		id: 'minsal-alertas',
-		name: t('epidemiologia', 'Alertas vigentes'),
+		name: paneName('alertas'),
 		feed: alerts,
 		pane: 'alertas',
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
@@ -161,7 +162,7 @@ const sources = computed(() => [
 	},
 	{
 		id: 'isp-alertas',
-		name: t('epidemiologia', 'Alertas sanitarias'),
+		name: paneName('isp'),
 		feed: sanitaryAlerts,
 		pane: 'isp',
 		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', sanitaryAlerts.items.length),
@@ -239,13 +240,16 @@ const sources = computed(() => [
 	gap: calc(var(--default-grid-baseline) * 2);
 }
 
+/* Measured on core's own Dashboard, the closest thing to this pane in Nextcloud:
+   20px / 700 / no transform / -0.3px / --color-main-text. Ours was 13px, weight
+   600, UPPERCASE, +0.65px and maxcontrast grey — the opposite on all four axes,
+   which left the alert text outweighing the label that named it. */
 .epi-card__head h3 {
 	margin: 0;
-	font-size: var(--font-size-small);
-	font-weight: var(--font-weight-heading);
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: var(--color-text-maxcontrast);
+	font-size: 20px;
+	font-weight: 700;
+	letter-spacing: -0.3px;
+	color: var(--color-main-text);
 }
 
 .epi-fresh {

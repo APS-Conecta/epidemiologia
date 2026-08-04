@@ -74,6 +74,43 @@ history they describe is unchanged.
   you can open, not labels. Entry height (34px) and label type (15px/500) already
   match it exactly.
 
+- **One name per pane, in `src/panes.js`.** Each pane answered to two or three
+  names written in three files — the navigation said *Informe semanal*, the Inicio
+  card *Informes ETI/IRAG*, the heading *Informe semanal de vigilancia ETI e IRAG*.
+  On a phone the heading is the only thing naming the pane, so a reader tapped one
+  wording and landed on another. Same move `Sources` makes on the PHP side.
+  *Tablero MINSAL* → *Tablero ETI e IRAG* (the caption above it said MINSAL);
+  *Alertas sanitarias* → *Alertas del ISP*.
+- **The navigation groups by publisher, once.** There were three captions and the
+  third grouped by function — *Notificación* over EPIVIGILA, which is
+  `epivigila.minsal.cl` and therefore MINSAL's. Moving it leaves one rule and one
+  caption; the ISP's row sits outside and names its own publisher, because 38px of
+  label for a single row is chrome, not structure.
+- **Counts in the filter menus, visible for the first time.** They were written in
+  #12 and never rendered: `NcActionRadio` takes its label from
+  `ActionGlobalMixin.getText()`, which returns `$slots.default()[0].children` — the
+  first vnode of the slot, and only if its children is a string. The count sat in a
+  second vnode and was dropped in silence. Folded into one string, with the
+  constraint recorded in `FilterMenu.vue` so the markup is not re-added.
+- **Three checks in `scripts/layout.sh`**, each proved by reintroducing the defect
+  it exists to catch: nothing pulsable may be visually identical to static text
+  beside it; every filter option after the "todo" row must show its count; a pane's
+  heading must be a name the navigation also uses.
+
+### Changed
+
+- **Inicio's card titles match core's Dashboard** — 20px/700, no transform,
+  `--color-main-text` — measured on the instance. They were 13px, weight 600,
+  UPPERCASE, +0.65px and maxcontrast grey: the opposite on all four axes, which
+  left the alert text outweighing the label that named it.
+- **The ISP categories carry the accent colour at rest.** They filter when clicked
+  and were pixel-identical to the static date beside them — 13px, weight 400,
+  `#6b6b6b`, underline transparent — with `cursor: pointer` the only difference,
+  which is invisible until the pointer is on it and never visible on a touch screen.
+- **The navigation footer credits both publishers**, not just MINSAL. It cited
+  ADR-0004 for the obligation; that ADR is about the DEIS REM extracts, which this
+  app never fetches — it reads `epi.minsal.cl` and `ispch.gob.cl` and nothing else.
+
 ### Removed
 
 - **Six pieces of decoration and 878 characters of prose that told nobody

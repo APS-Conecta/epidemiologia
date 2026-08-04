@@ -1,6 +1,6 @@
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Alertas epidemiológicas vigentes')" />
+		<PaneHeader :title="paneName('alertas')" />
 
 		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
@@ -64,6 +64,7 @@ import AlertRow from './AlertRow.vue'
 import FilterBar from './FilterBar.vue'
 import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
 import { alerts, fold, mes, tally } from '../state.js'
 

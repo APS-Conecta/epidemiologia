@@ -6,7 +6,7 @@
 			iframe shows that itself), and that the region is chosen inside it, which
 			is where a reader looks anyway.
 		-->
-		<PaneHeader :title="t('epidemiologia', 'Tablero MINSAL · ETI e IRAG')" />
+		<PaneHeader :title="paneName('tablero')" />
 
 		<!--
 			v-if on the iframe, never on the pane: the pane wrapper is v-show in App.vue
@@ -29,6 +29,7 @@
 <script setup>
 import { t } from '@nextcloud/l10n'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import { tablero } from '../state.js'
 
 // Latches true on first open and never resets, so the report paints exactly once.

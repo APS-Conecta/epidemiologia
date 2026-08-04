@@ -38,13 +38,20 @@ const fail = (m, detail = []) => {
 }
 
 /**
- * Runs inside the page. Three families, and the third is the one the other two
- * cannot see: a list with six rows and zero height does not overflow and does not
- * overlap. It is geometrically perfect and the landing pane has no alerts on it.
+ * Runs inside the page. Four families, and each sees what the others cannot.
  *
+ * The third: a list with six rows and zero height does not overflow and does not
+ * overlap. It is geometrically perfect and the landing pane has no alerts on it.
  * Measured before it was written: 0 false positives across all six panes healthy,
  * fires on the real signature (clientH=0, scrollH=204, 6 children), 0 again once
  * restored.
+ *
+ * The fourth is about meaning rather than geometry, and the geometry checks are
+ * blind to it by construction: the ISP categories filter when clicked and were
+ * pixel-identical to the static date beside them — same 13px, same weight 400,
+ * same #6b6b6b, underline transparent — with cursor:pointer the only difference.
+ * That is invisible until the pointer is already on it, and on a touch screen it
+ * is never visible at all. Nothing was overflowing, overlapping or collapsed.
  */
 const INSPECT = (paneIndex) => {
 	const panes = [...document.querySelectorAll('.epi > section')]
@@ -84,7 +91,113 @@ const INSPECT = (paneIndex) => {
 		}
 	}
 
-	return { label, overflow, overlap, collapsed }
+	// 4. nothing that acts like a control looks exactly like the static text
+	//    beside it. Compared only against SIBLINGS, because that is the comparison
+	//    a reader actually makes — two words on one row, one of which does
+	//    something. Compared on everything that could carry the difference, so a
+	//    background, a border or a weight all count as "distinguishable".
+	const affordance = []
+	const ownText = (e) => [...e.childNodes]
+		.filter((n) => n.nodeType === 3)
+		.map((n) => n.textContent)
+		.join('')
+		.trim()
+	const signature = (e) => {
+		const s = getComputedStyle(e)
+		// A transparent underline is not an underline. This is exactly how the
+		// defect hid: text-decoration-line said underline the whole time.
+		const decoration = s.textDecorationLine === 'none' || s.textDecorationColor === 'rgba(0, 0, 0, 0)'
+			? 'none'
+			: s.textDecorationLine
+		return [
+			s.fontSize, s.fontWeight, s.fontStyle, s.color, decoration,
+			s.backgroundColor, s.textTransform,
+			s.borderTopStyle === 'none' ? 'no-border' : s.borderTopWidth + s.borderTopStyle,
+		].join(' · ')
+	}
+	for (const parent of pane.querySelectorAll('*')) {
+		const kids = [...parent.children].filter((e) => ownText(e))
+		if (kids.length < 2) {
+			continue
+		}
+		const clickable = kids.filter((e) => getComputedStyle(e).cursor === 'pointer')
+		const inert = kids.filter((e) => getComputedStyle(e).cursor !== 'pointer')
+		for (const c of clickable) {
+			const twin = inert.find((i) => signature(i) === signature(c))
+			if (twin) {
+				affordance.push(`${describe(c)} "${ownText(c).slice(0, 24)}" is indistinguishable from ${describe(twin)} "${ownText(twin).slice(0, 24)}" beside it — ${signature(c)}`)
+			}
+		}
+	}
+
+	// 5. one name per pane: the heading has to be a name the navigation also uses.
+	//    Every pane used to carry its own wording, so a phone tapped one string and
+	//    landed on another; panes.js is what makes this true, and this is what
+	//    keeps it true.
+	const navNames = [...document.querySelectorAll('.app-navigation-entry__name')]
+		.map((e) => e.textContent.trim())
+	const naming = []
+	const heading = (pane.querySelector('h2, h1') || {}).textContent?.trim()
+	if (heading && navNames.length && !navNames.includes(heading)) {
+		naming.push(`heading "${heading}" is not one of the navigation's names (${navNames.join(', ')})`)
+	}
+
+	return { label, overflow, overlap, collapsed, affordance, naming }
+}
+
+/**
+ * Check 6, which needs a click and therefore cannot live in INSPECT.
+ *
+ * Every option a filter menu offers, apart from its "todo" row, states how many
+ * items it holds. That was written in #12 and had never once appeared: NcActionRadio
+ * takes its label from ActionGlobalMixin.getText(), which returns
+ * `$slots.default()[0].children` — the FIRST vnode of the slot, and only if its
+ * children is a string. The count sat in a second vnode and was dropped in silence.
+ *
+ * So this asserts the rendered text, not the source: it is the only place the
+ * difference between "written" and "shown" is visible.
+ *
+ * @param {import('playwright').Page} page - The page under test.
+ * @param {number} paneIndex - Which `.epi > section` to open.
+ * @return {Promise<string[]>} One complaint per option that shows no count.
+ */
+const inspectMenus = async (page, paneIndex) => {
+	const complaints = []
+	const menus = await page.evaluate((i) => {
+		const panes = [...document.querySelectorAll('.epi > section')]
+		panes.forEach((p, j) => { p.style.display = j === i ? 'block' : 'none' })
+		return panes[i].querySelectorAll('.epi-bar .action-item button').length
+	}, paneIndex)
+
+	for (let m = 0; m < menus; m++) {
+		await page.evaluate(({ i, m: which }) => {
+			const pane = [...document.querySelectorAll('.epi > section')][i]
+			pane.querySelectorAll('.epi-bar .action-item button')[which].click()
+		}, { i: paneIndex, m })
+		await page.waitForFunction(() => !!document.querySelector('.v-popper__popper'), null, { timeout: 5000 })
+
+		const options = await page.evaluate(() => {
+			const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
+			return [...popper.querySelectorAll('.action-radio__text')].map((e) => e.textContent.trim())
+		})
+
+		// The first row is "Todos los años" / "Todos los tipos": no filter, so
+		// nothing to count. Every row after it names a subset and states its size.
+		for (const option of options.slice(1)) {
+			if (!/\(\d+\)$/.test(option)) {
+				complaints.push(`filter option "${option}" shows no count`)
+			}
+		}
+		if (options.length === 1) {
+			complaints.push('a filter menu offers nothing but its "todo" row')
+		}
+
+		await page.keyboard.press('Escape')
+		await page.waitForFunction(() => !document.querySelector('.v-popper__popper'), null, { timeout: 5000 })
+			.catch(() => {})
+	}
+
+	return complaints
 }
 
 const browser = await chromium.launch()
@@ -118,13 +231,26 @@ for (const { w, h } of VIEWPORTS) {
 			...r.overflow.map((d) => ['contenido más ancho que su panel', d]),
 			...r.overlap.map((d) => ['tarjetas dibujadas una sobre otra', d]),
 			...r.collapsed.map((d) => ['contenido con altura cero', d]),
+			...r.affordance.map((d) => ['algo pulsable idéntico al texto de al lado', d]),
+			...r.naming.map((d) => ['el panel se llama de dos maneras', d]),
 		]
 		if (problems.length === 0) {
-			pass(`${r.label.padEnd(26)} desborde·solape·altura`)
+			pass(`${r.label.padEnd(26)} desborde·solape·altura·afordancia·nombres`)
 		} else {
 			for (const [what, detail] of problems) {
 				fail(`${r.label} — ${what}`, [detail])
 			}
+		}
+	}
+
+	// The two panes that carry a toolbar. Done after INSPECT because it leaves the
+	// panes' display attributes set, and this needs to set them again anyway.
+	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [4, 'Alertas del ISP']]) {
+		const complaints = await inspectMenus(page, paneIndex)
+		if (complaints.length === 0) {
+			pass(`${name.padEnd(26)} recuentos en los filtros`)
+		} else {
+			complaints.forEach((c) => fail(`${name} — recuento ausente`, [c]))
 		}
 	}
 }

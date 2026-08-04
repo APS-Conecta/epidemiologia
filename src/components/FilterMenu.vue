@@ -33,12 +33,24 @@
 		<template v-for="group in shownGroups" :key="group.name ?? 'all'">
 			<NcActionSeparator v-if="group.name" />
 			<NcActionCaption v-if="group.name" :name="group.name" />
+			<!--
+				ONE interpolation, never markup. NcActionRadio takes its label from
+				ActionGlobalMixin.getText(), which is
+
+					this.$slots.default?.()[0].children?.trim?.() || ''
+
+				— the first vnode of the slot, and only if its children is a string.
+				This was written as `{{ label }}<template v-if="count"> ({{ count }})</template>`
+				and the count vnode was dropped in silence: no warning, no empty
+				parens, just a menu that had never once shown a number. Anything that
+				has to appear here goes into `optionText`, as one string.
+			-->
 			<NcActionRadio v-for="option in group.options"
 				:key="option.id"
 				:name="radioName"
 				:model-value="modelValue === option.id"
 				@update:model-value="$emit('update:modelValue', option.id)">
-				{{ option.label }}<template v-if="option.count"> ({{ option.count }})</template>
+				{{ optionText(option) }}
 			</NcActionRadio>
 		</template>
 	</NcActions>
@@ -65,6 +77,21 @@ const props = defineProps({
 defineEmits(['update:modelValue'])
 
 const shownGroups = computed(() => props.groups ?? [{ name: null, options: props.options }])
+
+/**
+ * The label with its count, as a single string.
+ *
+ * The count is what makes a long menu usable: the ISP's Tipo has 14 categories
+ * running from 10 alerts down to 1, and the number is what says which are worth
+ * opening. Absent or zero, it is left off rather than printed as "(0)" — an
+ * option nothing matches is not offered in the first place.
+ *
+ * @param {object} option - One entry of `options` or of a group's `options`.
+ * @return {string} Its menu label.
+ */
+const optionText = (option) => (option.count
+	? `${option.label} (${option.count})`
+	: option.label)
 
 /** The button carries the current choice, so a glance at the row says what is filtered. */
 const menuName = computed(() => {
