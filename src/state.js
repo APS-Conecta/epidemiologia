@@ -92,3 +92,41 @@ export function tally(items, key) {
 
 	return [...counts.entries()].map(([id, count]) => ({ id, count }))
 }
+
+/** Ids are `2026` and `2026-07`, so string order is date order. */
+const newestFirst = (a, b) => b.id.localeCompare(a.id)
+
+/**
+ * The año menu's options, newest first.
+ *
+ * `label` is not decoration: FilterMenu renders `${label} (${count})`, so an option
+ * without one reaches a clinician as **"undefined (12)"**. That shipped, because the
+ * ISP pane mapped a label on and Alertas vigentes did not — two panes building the
+ * same menu two ways. They build it here now, so there is one way to build it.
+ *
+ * @param {Array} items - The pane's items.
+ * @param {Function} yearOf - Reads an item's year; the two panes store it differently.
+ * @return {Array} `[{ id, count, label }]`, newest first.
+ */
+export function yearOptions(items, yearOf) {
+	return tally(items, yearOf).sort(newestFirst).map((y) => ({ ...y, label: y.id }))
+}
+
+/**
+ * The mes menu's options for the chosen año, newest first.
+ *
+ * Scoped to the year because offering a month that year does not have lets a reader
+ * build a pair of filters that can only ever return nothing — which reads as a fault
+ * in the data rather than in the filter.
+ *
+ * @param {Array} items - The pane's items.
+ * @param {Function} yearOf - Reads an item's year.
+ * @param {Function} monthOf - Reads an item's month key, `YYYY-MM`.
+ * @param {?string} year - The chosen year, or null for all of them.
+ * @return {Array} `[{ id, count, label }]`, newest first, labelled as a person reads a month.
+ */
+export function monthOptions(items, yearOf, monthOf, year) {
+	const scoped = year ? items.filter((item) => yearOf(item) === year) : items
+
+	return tally(scoped, monthOf).sort(newestFirst).map((m) => ({ ...m, label: mes(m.id) }))
+}

@@ -24,8 +24,19 @@
 			<slot name="icon" />
 		</template>
 
+		<!--
+			`model-value` is the GROUP's current value and `value` is THIS radio's own —
+			NcActionRadio computes `checked` as `model === value`. Passing a boolean to
+			model-value and omitting value left `checked` evaluating `true === ''`, so no
+			option ever filled its circle and `aria-checked` was "false" for every one of
+			them. The filter worked; it just never said what it had filtered (#44).
+
+			ANY is a sentinel because a radio group cannot carry null: `value` defaults to
+			'' and an omitted model-value would match it by accident.
+		-->
 		<NcActionRadio :name="radioName"
-			:model-value="modelValue === null"
+			:model-value="modelValue ?? ANY"
+			:value="ANY"
 			@update:model-value="$emit('update:modelValue', null)">
 			{{ anyLabel }}
 		</NcActionRadio>
@@ -48,7 +59,8 @@
 			<NcActionRadio v-for="option in group.options"
 				:key="option.id"
 				:name="radioName"
-				:model-value="modelValue === option.id"
+				:model-value="modelValue ?? ANY"
+				:value="option.id"
 				@update:model-value="$emit('update:modelValue', option.id)">
 				{{ optionText(option) }}
 			</NcActionRadio>
@@ -75,6 +87,9 @@ const props = defineProps({
 })
 
 defineEmits(['update:modelValue'])
+
+/** Stands in for "no filter": NcActionRadio's value is a string, so null cannot be one. */
+const ANY = '\u0000any'
 
 const shownGroups = computed(() => props.groups ?? [{ name: null, options: props.options }])
 

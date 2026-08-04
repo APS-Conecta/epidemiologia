@@ -106,7 +106,7 @@ import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { sanitaryAlerts, fold, mes, tally } from '../state.js'
+import { sanitaryAlerts, fold, monthOptions, tally, yearOptions } from '../state.js'
 
 /**
  * The ISP's category slugs, in Spanish and with their accents.
@@ -206,24 +206,14 @@ const kindGroups = computed(() => {
 			|| b.options.length - a.options.length)
 })
 
-/** Years present in the data, newest first. Nothing is pre-applied: the pane opens on all of them. */
-const years = computed(() => tally(sanitaryAlerts.items, (a) => (a.date ?? '').slice(0, 4))
-	.sort((a, b) => b.id.localeCompare(a.id))
-	.map((y) => ({ ...y, label: y.id })))
+// The ISP stores a full date where MINSAL stores year and month, so only these two
+// readers differ; the menus themselves are built in state.js by the same code that
+// builds Alertas vigentes'. Nothing is pre-applied: the pane opens on every year.
+const yearOf = (a) => (a.date ?? '').slice(0, 4)
+const monthOf = (a) => (a.date ?? '').slice(0, 7)
 
-/**
- * Months, scoped to the chosen year. Offering a month that year does not have
- * would let a reader build a filter pair that can only ever return nothing.
- */
-const months = computed(() => {
-	const inYear = year.value
-		? sanitaryAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value))
-		: sanitaryAlerts.items
-
-	return tally(inYear, (a) => (a.date ?? '').slice(0, 7))
-		.sort((a, b) => b.id.localeCompare(a.id))
-		.map((m) => ({ ...m, label: mes(m.id) }))
-})
+const years = computed(() => yearOptions(sanitaryAlerts.items, yearOf))
+const months = computed(() => monthOptions(sanitaryAlerts.items, yearOf, monthOf, year.value))
 
 // Changing the year can strand a month that year does not have, which would show
 // zero results and read as a fault in the data rather than in the filter pair.

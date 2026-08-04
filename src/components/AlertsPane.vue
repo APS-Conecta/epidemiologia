@@ -66,23 +66,20 @@ import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, fold, mes, tally } from '../state.js'
+import { alerts, fold, mes, monthOptions, yearOptions } from '../state.js'
 
 const query = ref('')
 const year = ref(null)
 const month = ref(null)
 
-/** Upload year, not the oficio's year — only 28 of 75 titles carry one at all. */
-const years = tally(alerts.items, (a) => a.year).sort((a, b) => b.id.localeCompare(a.id))
+// Upload year, not the oficio's year — only 28 of 75 titles carry one at all.
+// Both menus come from state.js, which is what stops this pane and the ISP's
+// building the same control two ways again (#44).
+const yearOf = (a) => a.year
+const monthOf = (a) => a.month
 
-/**
- * Months of the chosen year. Offering a month the selected year does not have
- * would let a reader build a pair of filters that can only ever return nothing.
- */
-const months = computed(() => tally(
-	year.value ? alerts.items.filter((a) => a.year === year.value) : alerts.items,
-	(a) => a.month,
-).sort((a, b) => b.id.localeCompare(a.id)).map((m) => ({ ...m, label: mes(m.id) })))
+const years = yearOptions(alerts.items, yearOf)
+const months = computed(() => monthOptions(alerts.items, yearOf, monthOf, year.value))
 
 // Changing the year can strand a month that year does not have, which would show
 // zero results and read as a fault in the data rather than in the filter pair.
