@@ -147,6 +147,14 @@ is down rather than like we broke it.
   deleted, and renders the app with stale CSS or none at all, silently. It cost three reloads to
   work out, twice: the first time it was written down here, the second time it was read too late.
   `build.cssCodeSplit: false` in `vite.config.js` is what prevents it.
+- **The theme cannot be switched, and the platform will not say so.** This instance sets
+  `enforce_theme=light` and `disable-user-theming=1` (gestion, `provisioning/phases/15-branding.sh`
+  — light theme only, an owner decision). Writing `occ user:setting <user> theming enabled-themes
+  '["dark"]'` **succeeds and reads back**, and changes nothing: `ThemesService::getEnabledThemes()`
+  prepends the enforced theme to whatever the user chose. Forcing it in the DOM half-works —
+  `data-theme-dark` on `<body>` switches the content area but not the navigation — which looks
+  exactly like a broken dark theme and is not. There is nothing to verify here; see the app's
+  issue #19, closed on the same reasoning.
 - **`opcache.revalidate_freq` is 60 s**, so a PHP change can take a minute to show up.
 - **Adding or changing attribute routes needs a container restart.** `CachingRouter` keeps the
   compiled route collection for **an hour** in the *local* cache (APCu), and APCu is per-SAPI:
