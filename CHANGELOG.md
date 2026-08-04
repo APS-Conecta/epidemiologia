@@ -7,6 +7,18 @@ Written in English, like the rest of this repo outside the UI — see [`AGENTS.m
 Entries up to 0.2.0 were originally written in Spanish and were translated on 2026-08-03; the
 history they describe is unchanged.
 
+## [Unreleased]
+
+### Fixed
+
+- **A body the ISP answers with but that is not RSS no longer wipes the archive** (#42). `reached`
+  is counted before the parse, so a WAF challenge page — which this host is documented to serve —
+  looked identical to 24 legitimately empty feeds: the cache was overwritten with nothing and
+  reported healthy, and the pane said *"Sin alertas"*. An empty parse now degrades and keeps the
+  last good copy **whenever one exists**; a cold cache with genuinely empty feeds is still a normal
+  answer, which is the ISP rule this class exists for. The daily sondeo sees it too, so a human is
+  told.
+
 ## [0.4.0] — 2026-08-03
 
 Design. The panes stopped explaining themselves and started matching the apps beside

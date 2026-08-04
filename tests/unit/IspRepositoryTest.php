@@ -30,6 +30,9 @@ class IspRepositoryTest extends TestCase {
 	/** 2026-08-02T12:00:00Z */
 	private const NOW = 1785672000;
 
+	/** The one cache key this repository writes, as IspRepository::key() builds it. */
+	private const KEY = 'feed-' . IspRepository::ALERTS;
+
 	private array $store = [];
 
 	/** @var list<string> terms requested, in order */
@@ -183,6 +186,28 @@ class IspRepositoryTest extends TestCase {
 		self::assertSame($snapshot, $this->store, 'the last good copy was overwritten');
 	}
 
+	/**
+	 * The failure mode this class documents at the top and did not guard: the host's
+	 * WAF answers 200 with a body that is not RSS. Every feed is *reached*, so the
+	 * reached-count says all is well, and every feed parses to nothing — which used
+	 * to be cached as a legitimately empty archive and reported healthy.
+	 *
+	 * A clinician then reads "no hay alertas" where the truth is "we could not read".
+	 */
+	public function testAnAnswerWeCannotParseNeverOverwritesTheCache(): void {
+		$this->repository()->get();
+		$snapshot = $this->store;
+		self::assertNotEmpty($snapshot[self::KEY]['items'], 'precondition: a good copy exists');
+
+		$wafPage = '<!DOCTYPE html><html><head><title>Attention Required</title></head>'
+			. '<body><h1>Checking your browser…</h1></body></html>';
+		$after = $this->repository(body: $wafPage, now: self::NOW + 7200)->get();
+
+		self::assertTrue($after['degraded'], 'a body we cannot parse is a failure, not an empty archive');
+		self::assertSame($snapshot, $this->store, 'the last good copy was overwritten');
+		self::assertSame($snapshot[self::KEY]['items'], $after['items'], 'the reader still gets the last good copy');
+	}
+
 	public function testWithNothingCachedAndTheIspDownItSaysDegradedRatherThanEmpty(): void {
 		$alerts = $this->repository(offlineAll: true)->get();
 
@@ -214,6 +239,18 @@ class IspRepositoryTest extends TestCase {
 
 	public function testTheProbeReportsFailureWhenNoFeedAnswers(): void {
 		self::assertFalse($this->repository(offlineAll: true)->probe());
+	}
+
+	/**
+	 * The probe is the only thing that tells a human, so it has to see the WAF page
+	 * as a failure too. Before the guard it reported healthy: every feed answered.
+	 */
+	public function testTheProbeReportsFailureWhenTheFeedsAnswerWithSomethingUnparseable(): void {
+		$this->repository()->get();
+
+		$probe = $this->repository(body: '<html><body>Checking your browser…</body></html>', now: self::NOW + 7200);
+
+		self::assertFalse($probe->probe());
 	}
 
 	public function testTheProbeIsHappyWhenTheFeedsAnswer(): void {
