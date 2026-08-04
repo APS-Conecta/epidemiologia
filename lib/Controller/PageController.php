@@ -54,7 +54,9 @@ class PageController extends Controller {
 
 		// The bundle name carries the app id — vite-config prefixes it.
 		Util::addScript(Application::APP_ID, 'epidemiologia-main');
-		Util::addStyle(Application::APP_ID, 'epidemiologia-main');
+		// 'epidemiologia-style', not '-main': with cssCodeSplit off Vite emits one
+		// stylesheet named after the library, not after the entry. See vite.config.js.
+		Util::addStyle(Application::APP_ID, 'epidemiologia-style');
 
 		$response = new TemplateResponse(Application::APP_ID, 'index');
 

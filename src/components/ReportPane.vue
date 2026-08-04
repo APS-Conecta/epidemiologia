@@ -17,14 +17,21 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')"
-			:fetched-at="reports.fetched_at" />
+		<!-- Mobile only, as on the alert panes: above the breakpoint the navigation
+		     names the pane. PaneHeader stopped taking a freshness prop — that line
+		     now sits beside the count, on one row instead of its own. -->
+		<PaneHeader class="epi-head--mobile"
+			:title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')" />
 
 		<DegradedNotice v-if="reports.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
 		<template v-if="reports.items.length">
 			<p class="epi-count">
 				{{ n('epidemiologia', '%n informe', '%n informes', reports.items.length) }}
+				<template v-if="reports.fetched_at">
+					· {{ t('epidemiologia', 'leído') }}
+					<NcDateTime :timestamp="reports.fetched_at * 1000" relative-time="long" />
+				</template>
 			</p>
 
 			<ul class="epi-weeks">
@@ -56,7 +63,7 @@
 </template>
 
 <script setup>
-import { NcEmptyContent } from '@nextcloud/vue'
+import { NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import FilePdfBox from 'vue-material-design-icons/FilePdfBox.vue'
 import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
@@ -70,6 +77,16 @@ import { mes, reports } from '../state.js'
 	margin: 0 0 calc(var(--default-grid-baseline) * 2);
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
+}
+
+.epi-head--mobile {
+	display: none;
+}
+
+@media (max-width: 1024px) {
+	.epi-head--mobile {
+		display: block;
+	}
 }
 
 .epi-weeks {

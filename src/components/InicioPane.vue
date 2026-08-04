@@ -243,10 +243,14 @@ const sources = computed(() => [
 	border-color: var(--color-element-warning);
 }
 
+/* Wraps: the title and the freshness are independent, and at 360px they no
+   longer share a line once the pane clears the navigation toggle. Caught by
+   scripts/layout.sh at +5px rather than by looking. */
 .epi-card__head {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
+	flex-wrap: wrap;
 	gap: calc(var(--default-grid-baseline) * 2);
 }
 

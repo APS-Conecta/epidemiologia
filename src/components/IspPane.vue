@@ -16,68 +16,48 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Alertas sanitarias del ISP')"
-			:fetched-at="sanitaryAlerts.fetched_at">
-			{{ t('epidemiologia', 'Fuente: Instituto de Salud Pública de Chile') }}
-			<template v-if="sanitaryAlerts.fetched_at">
-				· {{ t('epidemiologia', 'actualizado') }}
-				<NcDateTime :timestamp="sanitaryAlerts.fetched_at * 1000" relative-time="long" />
-			</template>
-		</PaneHeader>
+		<!-- Mobile only: above the breakpoint the navigation names the pane. -->
+		<PaneHeader class="epi-head--mobile" :title="t('epidemiologia', 'Alertas sanitarias del ISP')" />
 
-		<DegradedNotice v-if="sanitaryAlerts.degraded" source="el ISP" url="https://www.ispch.gob.cl/categorias-alertas/anamed/" />
+		<DegradedNotice v-if="sanitaryAlerts.degraded"
+			source="el ISP"
+			url="https://www.ispch.gob.cl/categorias-alertas/anamed/" />
 
-		<!--
-			Two controls by default, like the MINSAL pane. The library gives NcTextField
-			a 240px minimum and NcSelect a 260px one, so five of them demand 1280px and
-			overflowed a ~1000px pane sideways. Those minimums are the components'
-			designed usable width, so the fix is fewer controls, not narrower ones.
-		-->
-		<div class="epi-filters">
-			<NcTextField v-model="query"
-				type="search"
-				:label="t('epidemiologia', 'Buscar')"
-				:placeholder="t('epidemiologia', 'amoxicilina, dispositivo, falsificado…')" />
-			<NcSelect v-model="kind"
-				:options="kinds"
-				label="label"
-				:input-label="t('epidemiologia', 'Tipo de alerta')"
-				:placeholder="t('epidemiologia', 'Todos los tipos')" />
-			<NcButton variant="tertiary" @click="more = !more">
+		<FilterBar :query="query"
+			:count="countLabel"
+			:fetched-at="sanitaryAlerts.fetched_at"
+			@update:query="query = $event">
+			<FilterMenu :label="t('epidemiologia', 'Tipo')"
+				radio-name="isp-kind"
+				:any-label="t('epidemiologia', 'Todos los tipos')"
+				:groups="kindGroups"
+				:model-value="kind"
+				@update:model-value="kind = $event">
 				<template #icon>
-					<Tune :size="20" />
+					<TagOutline :size="18" />
 				</template>
-				{{ more ? t('epidemiologia', 'Menos filtros') : t('epidemiologia', 'Más filtros') }}
-				<!-- A hidden filter that is ON must never be invisible, or the list looks
-				     wrong for no reason a reader can see. -->
-				<template v-if="!more && hiddenActive">&nbsp;({{ hiddenActive }})</template>
-			</NcButton>
-		</div>
-
-		<div v-if="more" class="epi-filters">
-			<NcSelect v-model="year"
+			</FilterMenu>
+			<FilterMenu :label="t('epidemiologia', 'Año')"
+				radio-name="isp-year"
+				:any-label="t('epidemiologia', 'Todos los años')"
 				:options="years"
-				label="label"
-				:input-label="t('epidemiologia', 'Año')"
-				:placeholder="t('epidemiologia', 'Todos')" />
-			<NcSelect v-model="month"
+				:model-value="year"
+				@update:model-value="year = $event">
+				<template #icon>
+					<CalendarRange :size="18" />
+				</template>
+			</FilterMenu>
+			<FilterMenu :label="t('epidemiologia', 'Mes')"
+				radio-name="isp-month"
+				:any-label="t('epidemiologia', 'Todos los meses')"
 				:options="months"
-				label="label"
-				:input-label="t('epidemiologia', 'Mes')"
-				:placeholder="t('epidemiologia', 'Todos')" />
-			<NcSelect v-model="sort"
-				:options="SORTS"
-				label="label"
-				:clearable="false"
-				:input-label="t('epidemiologia', 'Ordenar por')" />
-		</div>
-
-		<p class="epi-count">
-			{{ countLabel }}
-			<NcButton v-if="filtered" variant="tertiary" @click="clear">
-				{{ t('epidemiologia', 'Quitar filtros') }}
-			</NcButton>
-		</p>
+				:model-value="month"
+				@update:model-value="month = $event">
+				<template #icon>
+					<CalendarMonthOutline :size="18" />
+				</template>
+			</FilterMenu>
+		</FilterBar>
 
 		<ul v-if="shown.length" class="epi-list">
 			<AlertRow v-for="alert in shown"
@@ -87,12 +67,16 @@
 				<template #meta>
 					<NcDateTime class="epi-alert__date" :timestamp="alert.at * 1000" :relative-time="false" :format="{ dateStyle: 'long' }" />
 					<!-- Every category that carried it, not just the first: an alert
-					     genuinely belongs to all of them. -->
-					<NcChip v-for="category in alert.categories"
+					     genuinely belongs to all of them. Rendered as text rather than
+					     filled pills — 57 alerts carried 154 of those, nearly three per
+					     row, and they outweighed the titles they were describing. Still
+					     buttons, so one click still filters. -->
+					<button v-for="category in alert.categories"
 						:key="category"
-						:text="kindLabel(category)"
-						no-close
-						@click="kind = kinds.find((k) => k.id === category) ?? null" />
+						class="epi-alert__cat"
+						@click="kind = category">
+						{{ kindLabel(category) }}
+					</button>
 				</template>
 			</AlertRow>
 		</ul>
@@ -111,14 +95,18 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { NcButton, NcChip, NcDateTime, NcEmptyContent, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
-import Tune from 'vue-material-design-icons/Tune.vue'
+import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
+import CalendarRange from 'vue-material-design-icons/CalendarRange.vue'
+import TagOutline from 'vue-material-design-icons/TagOutline.vue'
 import AlertRow from './AlertRow.vue'
+import FilterBar from './FilterBar.vue'
+import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
-import { sanitaryAlerts, fold } from '../state.js'
+import { sanitaryAlerts, fold, mes, tally } from '../state.js'
 
 /**
  * The ISP's category slugs, in Spanish and with their accents.
@@ -164,42 +152,86 @@ const kindLabel = (slug) => KIND_LABELS[slug] ?? prettify(slug)
 
 const query = ref('')
 const kind = ref(null)
+const year = ref(null)
 const month = ref(null)
 
 /**
- * The list opens scoped to the most recent year that HAS data, not to
- * `new Date().getFullYear()` — in January the ISP may not have published
- * anything yet, and a default that resolves to an empty list is worse than no
- * default at all. Derived from the data, so it cannot point at nothing.
+ * The families the ISP's OWN naming declares, and one group for the ones it does
+ * not.
  *
- * It is a starting point, not a cage: the year select is clearable and
- * "Quitar filtros" resets everything, and the count line always says
- * "N de 60" so the scoping is never silent.
+ * 16 of its 24 terms name their family in the slug — the `-dp` suffix for
+ * dispositivos, `cosmet…`, `desinfectante…`, and the medicamentos cluster — so
+ * grouping those is reading the ISP's nomenclature. The other eight
+ * (advertencia de seguridad, informe técnico, nota informativa, robo,
+ * actualización de software…) are NOT adscribed by the ISP to anything, and they
+ * stay together under a label that says so.
+ *
+ * Sorting them by resemblance would be inventing a classification the source did
+ * not publish — the same thing PLAN.md forbids for MINSAL disease tags, and for
+ * the same reason: a clinician would read our guess as the ISP's.
  */
-const newestYear = [...new Set(sanitaryAlerts.items.map((a) => (a.date ?? '').slice(0, 4)).filter(Boolean))]
-	.sort()
-	.pop() ?? null
-const year = ref(newestYear ? { id: newestYear, label: newestYear } : null)
+const SIN_FAMILIA = t('epidemiologia', 'Sin familia declarada por el ISP')
+
+function familia(slug) {
+	if (/-dp$|dispositivo/.test(slug)) {
+		return t('epidemiologia', 'Dispositivos médicos')
+	}
+	if (slug.includes('cosmet')) {
+		return t('epidemiologia', 'Cosméticos')
+	}
+	if (slug.includes('desinfectante')) {
+		return t('epidemiologia', 'Desinfectantes')
+	}
+	if (/anamed|farmacovigilancia|retiro-de-mercado|producto-sin-registro|falsificado-producto/.test(slug)) {
+		return t('epidemiologia', 'Medicamentos')
+	}
+	return SIN_FAMILIA
+}
+
+/** Categories present in the data, grouped by family, undeclared ones last. */
+const kindGroups = computed(() => {
+	const counts = tally(sanitaryAlerts.items.flatMap((a) => a.categories ?? []), (c) => c)
+	const byFamily = new Map()
+	for (const { id, count } of counts) {
+		const f = familia(id)
+		if (!byFamily.has(f)) {
+			byFamily.set(f, [])
+		}
+		byFamily.get(f).push({ id, count, label: kindLabel(id) })
+	}
+
+	return [...byFamily.entries()]
+		.map(([name, options]) => ({ name, options: options.sort((a, b) => b.count - a.count) }))
+		.sort((a, b) => (a.name === SIN_FAMILIA) - (b.name === SIN_FAMILIA)
+			|| b.options.length - a.options.length)
+})
+
+/** Years present in the data, newest first. Nothing is pre-applied: the pane opens on all of them. */
+const years = computed(() => tally(sanitaryAlerts.items, (a) => (a.date ?? '').slice(0, 4))
+	.sort((a, b) => b.id.localeCompare(a.id))
+	.map((y) => ({ ...y, label: y.id })))
 
 /**
- * Sorting. "Tipo" needs a single key from a list of categories, so it uses the
- * alphabetically first label — deterministic, and it groups an alert with the
- * category a reader would look for it under. Date breaks every tie, because a
- * list of recalls with no date order is unusable whatever it is grouped by.
+ * Months, scoped to the chosen year. Offering a month that year does not have
+ * would let a reader build a filter pair that can only ever return nothing.
  */
-const SORTS = [
-	{ id: 'recent', label: t('epidemiologia', 'Más recientes') },
-	{ id: 'oldest', label: t('epidemiologia', 'Más antiguas') },
-	{ id: 'kind', label: t('epidemiologia', 'Tipo de alerta') },
-	{ id: 'title', label: t('epidemiologia', 'Título') },
-]
-const sort = ref(SORTS[0])
+const months = computed(() => {
+	const inYear = year.value
+		? sanitaryAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value))
+		: sanitaryAlerts.items
 
-/** The secondary row is collapsed until asked for. */
-const more = ref(false)
+	return tally(inYear, (a) => (a.date ?? '').slice(0, 7))
+		.sort((a, b) => b.id.localeCompare(a.id))
+		.map((m) => ({ ...m, label: mes(m.id) }))
+})
 
-/** How many collapsed filters are currently narrowing the list. */
-const hiddenActive = computed(() => (year.value ? 1 : 0) + (month.value ? 1 : 0))
+// Changing the year can strand a month that year does not have, which would show
+// zero results and read as a fault in the data rather than in the filter pair.
+watch(year, () => {
+	if (month.value && !months.value.some((m) => m.id === month.value)) {
+		month.value = null
+	}
+})
 
 /**
  * Folded ONCE, not per keystroke. The search covers the title AND the category
@@ -209,116 +241,22 @@ const hiddenActive = computed(() => (year.value ? 1 : 0) + (month.value ? 1 : 0)
 const folded = sanitaryAlerts.items.map((a) => ({
 	...a,
 	_fold: fold(a.title + ' ' + (a.categories ?? []).map(kindLabel).join(' ')),
-	_kind: [...(a.categories ?? [])].map(kindLabel).sort()[0] ?? '',
 }))
-
-/** Categories present in the data, with how many alerts each carries. */
-const kinds = computed(() => {
-	const counts = new Map()
-	for (const alert of sanitaryAlerts.items) {
-		for (const category of alert.categories ?? []) {
-			counts.set(category, (counts.get(category) ?? 0) + 1)
-		}
-	}
-
-	return [...counts.entries()]
-		.map(([id, count]) => ({ id, count, label: `${kindLabel(id)} (${count})` }))
-		.sort((a, b) => a.label.localeCompare(b.label, getCanonicalLocale()))
-})
-
-/** Years present in the data, newest first. */
-const years = computed(() => tally(sanitaryAlerts.items, (a) => (a.date ?? '').slice(0, 4))
-	.sort((a, b) => b.id.localeCompare(a.id))
-	.map((y) => ({ ...y, label: `${y.id} (${y.count})` })))
-
-/**
- * Months, scoped to the chosen year. Offering a month that the selected year
- * does not have would let a reader build a filter pair that can only ever
- * return nothing.
- */
-const months = computed(() => {
-	const inYear = year.value
-		? sanitaryAlerts.items.filter((a) => (a.date ?? '').startsWith(year.value.id))
-		: sanitaryAlerts.items
-
-	return tally(inYear, (a) => (a.date ?? '').slice(5, 7))
-		.sort((a, b) => b.id.localeCompare(a.id))
-		.map((m) => ({ ...m, label: `${monthName(m.id)} (${m.count})` }))
-})
-
-// Changing the year can strand a month that year does not have — which would
-// silently show zero results and look like a bug in the data.
-watch(year, () => {
-	if (month.value && !months.value.some((m) => m.id === month.value.id)) {
-		month.value = null
-	}
-})
-
-/** @return {Array<{id: string, count: number}>} non-empty keys with their counts */
-function tally(items, key) {
-	const counts = new Map()
-	for (const item of items) {
-		const k = key(item)
-		if (k) {
-			counts.set(k, (counts.get(k) ?? 0) + 1)
-		}
-	}
-
-	return [...counts.entries()].map(([id, count]) => ({ id, count }))
-}
-
-function monthName(mm) {
-	const name = new Date(2000, Number(mm) - 1, 1)
-		.toLocaleDateString(getCanonicalLocale(), { month: 'long' })
-
-	return `${name.charAt(0).toUpperCase()}${name.slice(1)}`
-}
-
-// Sync the default's label with the real option, so the control does not show a
-// bare "2026" while every other entry shows "2026 (55)".
-watch(years, (list) => {
-	if (year.value) {
-		const match = list.find((y) => y.id === year.value.id)
-		if (match) {
-			year.value = match
-		}
-	}
-}, { immediate: true })
-
-const filtered = computed(() => query.value.trim() !== ''
-	|| kind.value !== null || year.value !== null || month.value !== null)
-
-function clear() {
-	query.value = ''
-	kind.value = null
-	year.value = null
-	month.value = null
-}
 
 const shown = computed(() => {
 	const needle = fold(query.value.trim())
-	const rows = folded.filter((alert) => (!needle || alert._fold.includes(needle))
-		&& (!kind.value || (alert.categories ?? []).includes(kind.value.id))
-		&& (!year.value || (alert.date ?? '').startsWith(year.value.id))
-		&& (!month.value || (alert.date ?? '').slice(5, 7) === month.value.id))
 
-	const by = {
-		recent: (a, b) => b.at - a.at,
-		oldest: (a, b) => a.at - b.at,
-		title: (a, b) => a.title.localeCompare(b.title, getCanonicalLocale()),
-		// Date breaks the tie so each type reads newest-first inside its group.
-		kind: (a, b) => a._kind.localeCompare(b._kind, getCanonicalLocale()) || b.at - a.at,
-	}[sort.value.id]
-
-	return [...rows].sort(by)
+	return folded.filter((a) => (!needle || a._fold.includes(needle))
+		&& (!kind.value || (a.categories ?? []).includes(kind.value))
+		&& (!year.value || (a.date ?? '').startsWith(year.value))
+		&& (!month.value || (a.date ?? '').startsWith(month.value)))
 })
 
 const countLabel = computed(() => {
 	const total = sanitaryAlerts.items.length
 	if (shown.value.length === total) {
-		return n('epidemiologia', '%n alerta del ISP', '%n alertas del ISP', total)
+		return n('epidemiologia', '%n alerta', '%n alertas', total)
 	}
-
 	return t('epidemiologia', '{shown} de {total} alertas', { shown: shown.value.length, total })
 })
 </script>
@@ -329,18 +267,6 @@ const countLabel = computed(() => {
 	minimums fit a ~1000px pane, so nothing overflows sideways and nothing has to
 	be forced narrower than the component was designed for.
 */
-.epi-filters {
-	display: flex;
-	flex-wrap: wrap;
-	gap: calc(var(--default-grid-baseline) * 3);
-	align-items: flex-end;
-	margin-bottom: calc(var(--default-grid-baseline) * 2);
-}
-
-.epi-filters :deep(.input-field) {
-	flex: 1 1 240px;
-}
-
 .epi-count {
 	display: flex;
 	align-items: center;
@@ -360,10 +286,41 @@ const countLabel = computed(() => {
 }
 
 
+/* Text, not a pill. Still a button: one click filters to that category. The
+   underline appears on hover so the row reads as prose until you reach for it. */
+.epi-alert__cat {
+	border: 0;
+	background: none;
+	padding: 0;
+	font: inherit;
+	font-size: var(--font-size-small);
+	color: var(--color-text-maxcontrast);
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-color: transparent;
+	text-underline-offset: 2px;
+}
+
+.epi-alert__cat:hover,
+.epi-alert__cat:focus-visible {
+	color: var(--color-main-text);
+	text-decoration-color: currentColor;
+}
+
 .epi-alert__date {
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
+}
+
+.epi-head--mobile {
+	display: none;
+}
+
+@media (max-width: 1024px) {
+	.epi-head--mobile {
+		display: block;
+	}
 }
 </style>

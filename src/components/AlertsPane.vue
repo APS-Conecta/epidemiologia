@@ -1,23 +1,41 @@
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'Alertas epidemiológicas vigentes')"
-			:fetched-at="alerts.fetched_at" />
+		<!--
+			The heading is mobile-only. On a desktop the navigation already says which
+			pane you are in, and Files and Maps print no heading in their content at all
+			— measured on the instance. On a phone the navigation is a closed drawer, so
+			it is the only thing naming the pane and it stays.
+		-->
+		<PaneHeader class="epi-head--mobile"
+			:title="t('epidemiologia', 'Alertas epidemiológicas vigentes')" />
 
 		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
-		<div class="epi-filters">
-			<NcTextField v-model="query"
-				type="search"
-				:label="t('epidemiologia', 'Buscar por título')"
-				:placeholder="t('epidemiologia', 'sarampión, hantavirus, coqueluche…')" />
-			<NcSelect v-model="year"
-				class="epi-filters__year"
+		<FilterBar :query="query"
+			:count="countLabel"
+			:fetched-at="alerts.fetched_at"
+			@update:query="query = $event">
+			<FilterMenu :label="t('epidemiologia', 'Año')"
+				radio-name="alertas-year"
+				:any-label="t('epidemiologia', 'Todos los años')"
 				:options="years"
-				:input-label="t('epidemiologia', 'Año')"
-				:placeholder="t('epidemiologia', 'Todos los años')" />
-		</div>
-
-		<p class="epi-count">{{ countLabel }}</p>
+				:model-value="year"
+				@update:model-value="year = $event">
+				<template #icon>
+					<CalendarRange :size="18" />
+				</template>
+			</FilterMenu>
+			<FilterMenu :label="t('epidemiologia', 'Mes')"
+				radio-name="alertas-month"
+				:any-label="t('epidemiologia', 'Todos los meses')"
+				:options="months"
+				:model-value="month"
+				@update:model-value="month = $event">
+				<template #icon>
+					<CalendarMonthOutline :size="18" />
+				</template>
+			</FilterMenu>
+		</FilterBar>
 
 		<!-- 75 rows is ~600 DOM nodes, rendered once from initial state with no
 		     images. Virtualising that would be a liability, not an optimisation. -->
@@ -43,20 +61,42 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { NcEmptyContent, NcSelect, NcTextField } from '@nextcloud/vue'
+import { computed, ref, watch } from 'vue'
+import { NcEmptyContent } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
+import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
+import CalendarRange from 'vue-material-design-icons/CalendarRange.vue'
 import AlertRow from './AlertRow.vue'
+import FilterBar from './FilterBar.vue'
+import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, fold, mes } from '../state.js'
+import { alerts, fold, mes, tally } from '../state.js'
 
 const query = ref('')
 const year = ref(null)
+const month = ref(null)
 
 /** Upload year, not the oficio's year — only 28 of 75 titles carry one at all. */
-const years = [...new Set(alerts.items.map((a) => a.year))].sort().reverse()
+const years = tally(alerts.items, (a) => a.year).sort((a, b) => b.id.localeCompare(a.id))
+
+/**
+ * Months of the chosen year. Offering a month the selected year does not have
+ * would let a reader build a pair of filters that can only ever return nothing.
+ */
+const months = computed(() => tally(
+	year.value ? alerts.items.filter((a) => a.year === year.value) : alerts.items,
+	(a) => a.month,
+).sort((a, b) => b.id.localeCompare(a.id)).map((m) => ({ ...m, label: mes(m.id) })))
+
+// Changing the year can strand a month that year does not have, which would show
+// zero results and read as a fault in the data rather than in the filter pair.
+watch(year, () => {
+	if (month.value && !months.value.some((m) => m.id === month.value)) {
+		month.value = null
+	}
+})
 
 // Folded once, not per keystroke: 75 rows x every character typed adds up.
 const folded = alerts.items.map((a) => ({ ...a, _fold: fold(a.title) }))
@@ -64,7 +104,8 @@ const folded = alerts.items.map((a) => ({ ...a, _fold: fold(a.title) }))
 const shown = computed(() => {
 	const needle = fold(query.value.trim())
 	return folded.filter((a) => (!needle || a._fold.includes(needle))
-		&& (!year.value || a.year === year.value))
+		&& (!year.value || a.year === year.value)
+		&& (!month.value || a.month === month.value))
 })
 
 const countLabel = computed(() => {
@@ -77,30 +118,6 @@ const countLabel = computed(() => {
 </script>
 
 <style scoped>
-.epi-filters {
-	display: flex;
-	gap: calc(var(--default-grid-baseline) * 3);
-	flex-wrap: wrap;
-	align-items: flex-end;
-	margin-bottom: calc(var(--default-grid-baseline) * 2);
-}
-
-.epi-filters :deep(.input-field) {
-	flex: 1;
-	min-width: 240px;
-}
-
-.epi-filters__year {
-	min-width: 200px;
-}
-
-.epi-count {
-	margin: 0 0 calc(var(--default-grid-baseline) * 2);
-	color: var(--color-text-maxcontrast);
-	font-size: var(--font-size-small);
-	font-variant-numeric: tabular-nums;
-}
-
 .epi-list {
 	list-style: none;
 	margin: 0;
@@ -113,5 +130,18 @@ const countLabel = computed(() => {
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
 	font-variant-numeric: tabular-nums;
+}
+
+/* Above the breakpoint the navigation names the pane, so the heading is dead
+   weight — 41px of it, plus its provenance line. Below, the navigation is a
+   drawer and this is the only label there is. */
+.epi-head--mobile {
+	display: none;
+}
+
+@media (max-width: 1024px) {
+	.epi-head--mobile {
+		display: block;
+	}
 }
 </style>

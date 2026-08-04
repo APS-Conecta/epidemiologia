@@ -71,3 +71,24 @@ export function mes(monthKey) {
 export function degradedText(fuente) {
 	return t('epidemiologia', 'No hemos podido contactar con %s, así que esta lista puede estar incompleta.', [fuente])
 }
+
+/**
+ * How many items carry each value of `key`, as [{ id, count }].
+ *
+ * Filter options are built from the data rather than declared, so a filter can
+ * never offer a value the list does not contain — and a value the source stops
+ * publishing disappears on its own. Shared because both alert panes build their
+ * año and mes menus this way, and writing it twice is how the two panes' filters
+ * drifted apart in the first place.
+ */
+export function tally(items, key) {
+	const counts = new Map()
+	for (const item of items) {
+		const k = key(item)
+		if (k) {
+			counts.set(k, (counts.get(k) ?? 0) + 1)
+		}
+	}
+
+	return [...counts.entries()].map(([id, count]) => ({ id, count }))
+}

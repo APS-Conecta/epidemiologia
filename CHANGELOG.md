@@ -11,6 +11,16 @@ history they describe is unchanged.
 
 ### Added
 
+- **One toolbar row and one filter model for every list pane.** `FilterBar` holds
+  the search field, the pane's filters and what is on screen — count and freshness
+  — on a single 34px row, the shape Files uses. `FilterMenu` is one filter: a
+  tertiary button that opens its options, carrying the current choice as its label,
+  with a meaningful icon rather than the three-dot overflow glyph. Measured on the
+  ISP pane: the first alert moves from **y=215 to y=76**.
+- The pane heading is now **mobile-only on all three list panes**. Above the
+  breakpoint the navigation already names the pane and Files prints no heading at
+  all; below it the navigation is a closed drawer, so the heading stays.
+
 - **Tests for the two classes that actually decide something**, `SourcesReachable`
   and `AlertProvider` — the two that carried two of the three defects in 0.3.0 and
   had no test at all. They assert what a person sees: the severity of the Visión
@@ -53,6 +63,16 @@ history they describe is unchanged.
   below ~500, which is why #20 shipped measured rather than seen. A headless
   viewport has no such floor, and looking at it there is what found the two
   problems above.
+
+### Fixed
+
+- **The app could render with stale CSS, or none, and say nothing.** The build
+  emitted a stub stylesheet that `@import`ed a content-hashed chunk; Nextcloud
+  versions the stub's URL with `?v=`, but that query does not reach the `@import`,
+  so a cached stub kept importing a chunk the next build had already deleted. It
+  now emits **one** stylesheet, `css/epidemiologia-style.css`
+  (`build.cssCodeSplit: false`). The README had described the symptom since 0.3.0;
+  this removes the cause.
 
 ### Changed
 

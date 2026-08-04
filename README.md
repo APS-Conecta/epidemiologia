@@ -140,13 +140,13 @@ is down rather than like we broke it.
 - **Raising `<version>` in `info.xml` puts the whole instance into "requires upgrade".** `occ` drops
   into limited mode and the web routes stop answering until `occ upgrade` runs. A `git pull` that
   brings a version change needs that step behind it.
-- **After `npm run build`, a browser that already visited the app loses its styles.** The entry file
-  `css/epidemiologia-main.css` only `@import`s the chunk, and the chunk carries a **content hash**
-  that changes on every build. But the entry's URL carries `?v=<cachebuster>`, which does **not**
-  change unless the app version does — so the browser serves a cached entry importing a chunk the
-  build already deleted, and the app appears unstyled. Measured; it costs three reloads to work out.
-  It fixes itself on release (raising `<version>` moves the cachebuster); in development, force-reload
-  the `.css` as well as the `.mjs`.
+- **The build emits ONE stylesheet, `css/epidemiologia-style.css`, and it must stay that way.**
+  Vite's default splits it into a stub that `@import`s a content-hashed chunk. Nextcloud versions the
+  stub's URL with `?v=<cachebuster>`, but that query does not reach the `@import` — so a browser
+  holding a cached stub keeps importing the PREVIOUS chunk name, a file the next build has already
+  deleted, and renders the app with stale CSS or none at all, silently. It cost three reloads to
+  work out, twice: the first time it was written down here, the second time it was read too late.
+  `build.cssCodeSplit: false` in `vite.config.js` is what prevents it.
 - **`opcache.revalidate_freq` is 60 s**, so a PHP change can take a minute to show up.
 - **Adding or changing attribute routes needs a container restart.** `CachingRouter` keeps the
   compiled route collection for **an hour** in the *local* cache (APCu), and APCu is per-SAPI:
