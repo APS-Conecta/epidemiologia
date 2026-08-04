@@ -241,7 +241,9 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
-		self::assertSame($cached, $this->store, 'the cache must not have been touched');
+		// The feed's own key, not the whole store: degrading also arms the cooldown that
+		// stops the outage being retried on every read, which is a second key.
+		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
 	}
 
 	// --- failure: the rule the whole design rests on -------------------------
@@ -261,7 +263,9 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
-		self::assertSame($cached, $this->store, 'the cache must not have been touched');
+		// The feed's own key, not the whole store: degrading also arms the cooldown that
+		// stops the outage being retried on every read, which is a second key.
+		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
 	}
 
 	public function testAnUnreachableMinsalServesTheLastGoodCopyFlaggedDegraded(): void {
@@ -289,6 +293,47 @@ class MinsalRepositoryTest extends TestCase {
 		$repository->get(MinsalRepository::ALERTS);
 
 		self::assertCount(1, $this->requested, 'a fresh cache must not be refetched');
+	}
+
+	/**
+	 * Degrading writes nothing, so the cache stays expired and every subsequent read
+	 * retries. PageController::index() fetches synchronously while someone waits, so
+	 * against a host that blackholes packets this is a gateway timeout rather than the
+	 * degraded banner. The ISP half carries the same rule, per feed.
+	 */
+	public function testAnOutageIsNotRetriedOnEveryRead(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->requested = [];
+
+		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		self::assertNotSame([], $this->requested, 'precondition: the first read after expiry does try');
+		$this->requested = [];
+
+		$this->repository(offline: true, now: self::NOW + 7260)->get(MinsalRepository::ALERTS);
+
+		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
+	}
+
+	public function testTheCooldownStillServesTheLastGoodCopyAndStillSaysDegraded(): void {
+		$good = $this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+
+		$during = $this->repository(offline: true, now: self::NOW + 7260)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($during['degraded'], 'a cooldown must never look like health');
+		self::assertSame($good['items'], $during['items']);
+	}
+
+	/** One feed's outage must not silence another's fetch. */
+	public function testTheCooldownIsPerFeedNotGlobal(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository(missing: ['alertas-epidemiologicas-vigentes'], now: self::NOW + 7200)
+			->get(MinsalRepository::ALERTS);
+		$this->requested = [];
+
+		$this->repository(now: self::NOW + 7260)->get(MinsalRepository::IRAG);
+
+		self::assertNotSame([], $this->requested, 'the IRAG feed was silenced by the alerts outage');
 	}
 
 	// --- search --------------------------------------------------------------

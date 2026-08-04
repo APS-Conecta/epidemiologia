@@ -30,6 +30,12 @@ class MinsalRepository {
 	private const IRAG_SLUG = 'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-%d';
 
 	/** How long a cached copy counts as fresh. */
+	/**
+	 * How long a failed refresh is remembered, so an outage is not retried on every
+	 * page load. Well under FRESH_FOR: recovery stays automatic and needs nobody.
+	 */
+	private const COOLDOWN = 300;
+
 	private const FRESH_FOR = 3600;
 
 	/**
@@ -62,6 +68,17 @@ class MinsalRepository {
 			return $this->present($stored, false);
 		}
 
+		/*
+		 * A failed refresh writes nothing, so the entry stays expired and every read
+		 * retries. PageController::index() fetches synchronously while someone waits,
+		 * so against a host that drops packets rather than refusing them this is a
+		 * gateway timeout instead of the degraded banner. Per feed, so one source's
+		 * outage does not silence the other's.
+		 */
+		if ($this->cache->get($this->cooldownKey($feed)) !== null) {
+			return $this->present($stored, true);
+		}
+
 		return $this->refresh($feed, $stored);
 	}
 
@@ -85,7 +102,7 @@ class MinsalRepository {
 				'feed' => $feed,
 			]);
 
-			return $this->present($stored, true);
+			return $this->degrade($feed, $stored);
 		}
 
 		$fresh = [
@@ -318,7 +335,22 @@ class MinsalRepository {
 		];
 	}
 
+	/**
+	 * Degrade, and remember it briefly so an outage is not re-attempted on every read.
+	 * Every degrade path goes through here, so none can forget to.
+	 */
+	private function degrade(string $feed, ?array $stored): array {
+		$this->cache->set($this->cooldownKey($feed), 1, self::COOLDOWN);
+
+		return $this->present($stored, true);
+	}
+
 	private function key(string $feed): string {
 		return 'feed-' . $feed;
+	}
+
+	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
+	private function cooldownKey(string $feed): string {
+		return 'cooldown-' . $feed;
 	}
 }

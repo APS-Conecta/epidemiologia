@@ -11,6 +11,13 @@ history they describe is unchanged.
 
 ### Fixed
 
+- **An outage no longer costs a fetch on every page load** (#43). Degrading wrote nothing, so the
+  entry stayed expired and every read retried — and `PageController::index()` fetches synchronously,
+  so against a host that drops packets rather than refusing them that was ~405 s per page load, per
+  user: a gateway timeout instead of the degraded banner. A failed refresh is now remembered for five
+  minutes, per feed on both sources, so one source's outage cannot silence the other's. Recovery
+  stays automatic.
+
 - **A body the ISP answers with but that is not RSS no longer wipes the archive** (#42). `reached`
   is counted before the parse, so a WAF challenge page — which this host is documented to serve —
   looked identical to 24 legitimately empty feeds: the cache was overwritten with nothing and
