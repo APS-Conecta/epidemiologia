@@ -7,7 +7,12 @@ Written in English, like the rest of this repo outside the UI — see [`AGENTS.m
 Entries up to 0.2.0 were originally written in Spanish and were translated on 2026-08-03; the
 history they describe is unchanged.
 
-## [Unreleased]
+## [0.4.0] — 2026-08-03
+
+Design. The panes stopped explaining themselves and started matching the apps beside
+them: one toolbar row, one name per pane, one navigation rule, and the platform's own
+weights on the things that lead. No API change — `/ocs/v2.php/apps/epidemiologia/api/v1/sources`
+answers exactly as it did in 0.3.0.
 
 ### Added
 
