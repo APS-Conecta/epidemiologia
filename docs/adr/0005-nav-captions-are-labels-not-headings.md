@@ -56,6 +56,10 @@ component's docs:
   renders an `<li>`, and an `<li>` loose in the body `<div>` is as invalid as `ul > ul`. Putting it
   inside its own list is both valid and where `aria-labelledby` wants it.
 
+> **Reaffirmed 2026-08-03.** Replacing the captions with collapsible
+> `NcAppNavigationItem` parents — the shape Files appears to use — was planned, measured and
+> dropped. See [ADR-0008](0008-nav-groups-do-not-collapse.md); this decision is unchanged.
+
 ## Consequences
 
 - **A screen-reader user loses H-key navigation between nav groups.** That is the price. The group is

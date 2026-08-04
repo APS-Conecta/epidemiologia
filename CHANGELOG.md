@@ -64,6 +64,16 @@ history they describe is unchanged.
   viewport has no such floor, and looking at it there is what found the two
   problems above.
 
+- **[ADR-0008](docs/adr/0008-nav-groups-do-not-collapse.md)**: the navigation
+  groups do not collapse, and this records the measurement rather than the
+  intention. Rewriting the captions as `NcAppNavigationItem` parents with
+  `allowCollapse` was planned and dropped: nothing overflows (442px of content in a
+  506px column), two of the three groups hold one pane, and `allowCollapse` needs
+  the group label to be a destination — ours are publishers. Files, measured beside
+  us, has **17 entries and zero captions**, and its two collapsible items are views
+  you can open, not labels. Entry height (34px) and label type (15px/500) already
+  match it exactly.
+
 ### Removed
 
 - **Six pieces of decoration and 878 characters of prose that told nobody
