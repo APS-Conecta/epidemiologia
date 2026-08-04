@@ -47,11 +47,6 @@
 					<template #icon>
 						<component :is="pane.icon" :size="20" />
 					</template>
-					<!-- raw: NcCounterBubble humanises by default, so 1042 would render
-					     as "1 K". Only shown where the number is actionable. -->
-					<template v-if="pane.count !== undefined" #counter>
-						<NcCounterBubble :count="pane.count" type="highlighted" raw />
-					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
 
@@ -62,13 +57,14 @@
 				the slot, is what read as "not a Nextcloud app". It carries the source
 				attribution, which ADR-0004 says we owe anyway now that we build on
 				state data published under no licence.
+
+				The credit, and not a link beside it: every pane already links to the
+				source it came from, on the row that came from it. A second, permanent
+				link to the site as a whole is the same fact a fifth time.
 			-->
 			<template #footer>
 				<footer class="epi-nav-footer">
-					<span>{{ t('epidemiologia', 'Fuente: Departamento de Epidemiología, MINSAL') }}</span>
-					<a href="https://epi.minsal.cl/" target="_blank" rel="noopener noreferrer">
-						epi.minsal.cl ↗
-					</a>
+					{{ t('epidemiologia', 'Fuente: Departamento de Epidemiología, MINSAL') }}
 				</footer>
 			</template>
 		</NcAppNavigation>
@@ -100,7 +96,6 @@ import {
 	NcAppNavigationItem,
 	NcAppNavigationList,
 	NcContent,
-	NcCounterBubble,
 } from '@nextcloud/vue'
 import { t } from '@nextcloud/l10n'
 import Alert from 'vue-material-design-icons/Alert.vue'
@@ -115,7 +110,6 @@ import ReportPane from './components/ReportPane.vue'
 import TableroPane from './components/TableroPane.vue'
 import IspPane from './components/IspPane.vue'
 import EpivigilaPane from './components/EpivigilaPane.vue'
-import { sanitaryAlerts } from './state.js'
 
 const current = ref('inicio')
 
@@ -130,12 +124,12 @@ watch(current, (pane) => {
 /**
  * Inicio first and ungrouped; the rest grouped by publisher.
  *
- * No counter on "Alertas vigentes": 75 never changes between MINSAL republications,
- * and Nextcloud uses counters for what needs action. A permanent number is decoration
- * that trains people to ignore the one place a real count will appear.
- *
- * The ISP counter IS shown, unlike MINSAL's: it counts what arrived, and what
- * arrived is what needs looking at.
+ * No counters. Nextcloud uses a counter bubble for what needs action, and neither
+ * of ours moves: MINSAL's 75 holds until it republishes, and the ISP's is pinned to
+ * IspRepository::KEEP_ITEMS = 60 — the pane said "60" before and after every fetch.
+ * A permanent number is decoration that trains people to ignore the one place a
+ * real count will one day appear. Each pane states its own count in its toolbar,
+ * where it changes as you filter and therefore means something.
  */
 const panes = [
 	{ id: 'inicio', name: t('epidemiologia', 'Inicio'), icon: markRaw(Home) },
@@ -155,7 +149,7 @@ const groups = [
 		id: 'isp',
 		name: t('epidemiologia', 'ISP'),
 		panes: [
-			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill), count: sanitaryAlerts.items.length },
+			{ id: 'isp', name: t('epidemiologia', 'Alertas sanitarias'), icon: markRaw(Pill) },
 		],
 	},
 	{
@@ -221,9 +215,6 @@ const groups = [
 }
 
 .epi-nav-footer {
-	display: flex;
-	flex-direction: column;
-	gap: calc(var(--default-grid-baseline) / 2);
 	padding: calc(var(--default-grid-baseline) * 3) calc(var(--default-grid-baseline) * 4);
 	border-top: 1px solid var(--color-border);
 	color: var(--color-text-maxcontrast);

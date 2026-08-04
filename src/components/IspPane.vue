@@ -16,8 +16,7 @@
 -->
 <template>
 	<section>
-		<!-- Mobile only: above the breakpoint the navigation names the pane. -->
-		<PaneHeader class="epi-head--mobile" :title="t('epidemiologia', 'Alertas sanitarias del ISP')" />
+		<PaneHeader :title="t('epidemiologia', 'Alertas sanitarias del ISP')" />
 
 		<DegradedNotice v-if="sanitaryAlerts.degraded"
 			source="el ISP"
@@ -312,15 +311,5 @@ const countLabel = computed(() => {
 	font-size: var(--font-size-small);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
-}
-
-.epi-head--mobile {
-	display: none;
-}
-
-@media (max-width: 1024px) {
-	.epi-head--mobile {
-		display: block;
-	}
 }
 </style>

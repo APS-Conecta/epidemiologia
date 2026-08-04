@@ -64,6 +64,22 @@ history they describe is unchanged.
   viewport has no such floor, and looking at it there is what found the two
   problems above.
 
+### Removed
+
+- **Six pieces of decoration and 878 characters of prose that told nobody
+  anything.** The counter bubble on Alertas sanitarias (pinned to
+  `IspRepository::KEEP_ITEMS`, so it read "60" before and after every fetch); the
+  accent edge marking Inicio's first card; Inicio's subtitle *"Lo último que
+  publicaron nuestras fuentes"*, which described the pane to someone already
+  looking at it; the navigation footer's `epi.minsal.cl ↗` link, when every pane
+  already links to the source on the row it came from; the Tablero's three-clause
+  subtitle; and the tint and longer label on Inicio's most recent week, which made
+  one row read as a different kind of object than the two beside it.
+- **EPIVIGILA drops from 878 characters to 256.** It kept the fact that changes
+  what a clinician does — access needs Red MINSAL, and the PDF is the fallback —
+  and the one that is a promise about us: the clave única is typed on MINSAL's
+  site, never here. What it is, and why it is not embedded, went.
+
 ### Fixed
 
 - **The app could render with stale CSS, or none, and say nothing.** The build

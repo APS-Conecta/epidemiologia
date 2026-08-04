@@ -1,13 +1,6 @@
 <template>
 	<section>
-		<!--
-			The heading is mobile-only. On a desktop the navigation already says which
-			pane you are in, and Files and Maps print no heading in their content at all
-			— measured on the instance. On a phone the navigation is a closed drawer, so
-			it is the only thing naming the pane and it stays.
-		-->
-		<PaneHeader class="epi-head--mobile"
-			:title="t('epidemiologia', 'Alertas epidemiológicas vigentes')" />
+		<PaneHeader :title="t('epidemiologia', 'Alertas epidemiológicas vigentes')" />
 
 		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
@@ -132,16 +125,4 @@ const countLabel = computed(() => {
 	font-variant-numeric: tabular-nums;
 }
 
-/* Above the breakpoint the navigation names the pane, so the heading is dead
-   weight — 41px of it, plus its provenance line. Below, the navigation is a
-   drawer and this is the only label there is. */
-.epi-head--mobile {
-	display: none;
-}
-
-@media (max-width: 1024px) {
-	.epi-head--mobile {
-		display: block;
-	}
-}
 </style>

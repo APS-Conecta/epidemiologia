@@ -17,11 +17,7 @@
 -->
 <template>
 	<section>
-		<!-- Mobile only, as on the alert panes: above the breakpoint the navigation
-		     names the pane. PaneHeader stopped taking a freshness prop — that line
-		     now sits beside the count, on one row instead of its own. -->
-		<PaneHeader class="epi-head--mobile"
-			:title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')" />
+		<PaneHeader :title="t('epidemiologia', 'Informe semanal de vigilancia ETI e IRAG')" />
 
 		<DegradedNotice v-if="reports.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
 
@@ -77,16 +73,6 @@ import { mes, reports } from '../state.js'
 	margin: 0 0 calc(var(--default-grid-baseline) * 2);
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
-}
-
-.epi-head--mobile {
-	display: none;
-}
-
-@media (max-width: 1024px) {
-	.epi-head--mobile {
-		display: block;
-	}
 }
 
 .epi-weeks {

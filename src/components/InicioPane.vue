@@ -15,10 +15,7 @@
 -->
 <template>
 	<section class="epi-inicio">
-		<header>
-			<h2>{{ t('epidemiologia', 'Inicio') }}</h2>
-			<p class="epi-inicio__sub">{{ t('epidemiologia', 'Lo último que publicaron nuestras fuentes') }}</p>
-		</header>
+		<PaneHeader :title="t('epidemiologia', 'Inicio')" />
 
 		<!--
 			auto-fit rather than a fixed column count: one source fills the row, two
@@ -29,7 +26,7 @@
 			<article v-for="source in sources"
 				:key="source.id"
 				class="epi-card"
-				:class="{ 'epi-card--lead': source.lead, 'epi-card--degraded': source.feed.degraded }">
+				:class="{ 'epi-card--degraded': source.feed.degraded }">
 				<div class="epi-card__head">
 					<h3>{{ source.name }}</h3>
 					<span class="epi-fresh" :class="{ 'epi-fresh--stale': source.feed.degraded }">
@@ -98,16 +95,20 @@
 			     image ships imagick but no ghostscript, so rasterising is impossible
 			     without a derived production image (ADR-0002). -->
 			<div v-else class="epi-weeks">
-				<a v-for="(report, i) in reports.items.slice(0, PER_CARD_WEEKS)"
+				<!-- Same weight on all three, and the same wording: the order says
+				     which is current, and the card's own title says these are weeks.
+				     The first used to be tinted and spell out "Semana epidemiológica"
+				     while the others said "Semana", which made one row read as a
+				     different kind of object than the two beside it. -->
+				<a v-for="report in reports.items.slice(0, PER_CARD_WEEKS)"
 					:key="report.url"
 					class="epi-week"
-					:class="{ 'epi-week--current': i === 0 }"
 					:href="report.url"
 					target="_blank"
 					rel="noopener noreferrer">
 					<b>{{ report.se || '—' }}</b>
 					<span class="epi-week__meta">
-						<small>{{ i === 0 ? t('epidemiologia', 'Semana epidemiológica') : t('epidemiologia', 'Semana') }}</small>
+						<small>{{ t('epidemiologia', 'Semana') }}</small>
 						<span>{{ t('epidemiologia', 'Influenza · PDF') }} ↗</span>
 					</span>
 				</a>
@@ -121,6 +122,7 @@ import { computed } from 'vue'
 import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
 import { getCanonicalLocale, t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
+import PaneHeader from './PaneHeader.vue'
 import { alerts, degradedText, mes, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
@@ -128,10 +130,9 @@ defineEmits(['open'])
 /**
  * ONE alert per card, shown whole.
  *
- * The pane's own subtitle is "lo último que publicaron nuestras fuentes", and
- * that is literally what this is: the latest thing, complete. Six abbreviated
- * titles were six rows of "OFICIO CP N°15844 / 2026 Actualización de…" — the
- * same prefix repeated, with the disease name cut off every time.
+ * What the pane is for is the latest thing each fuente published, complete. Six
+ * abbreviated titles were six rows of "OFICIO CP N°15844 / 2026 Actualización
+ * de…" — the same prefix repeated, with the disease name cut off every time.
  *
  * The trade is count for completeness, decided 2026-08-03: what an oficio
  * instructs a clinic to do is not something to show a prefix of. The other 74
@@ -154,7 +155,6 @@ const sources = computed(() => [
 		name: t('epidemiologia', 'Alertas vigentes'),
 		feed: alerts,
 		pane: 'alertas',
-		lead: true,
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
 		emptyText: t('epidemiologia', 'MINSAL no tiene alertas vigentes publicadas.'),
 		degradedText: degradedText('MINSAL'),
@@ -164,7 +164,6 @@ const sources = computed(() => [
 		name: t('epidemiologia', 'Alertas sanitarias'),
 		feed: sanitaryAlerts,
 		pane: 'isp',
-		lead: false,
 		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', sanitaryAlerts.items.length),
 		// Not "el ISP no publicó": several of its 24 categories are legitimately
 		// empty in any given week, and saying nothing was published would be false.
@@ -190,16 +189,6 @@ const sources = computed(() => [
 	gap: calc(var(--default-grid-baseline) * 4);
 	height: 100%;
 	min-height: 0;
-}
-
-.epi-inicio__sub {
-	margin: 2px 0 0;
-	color: var(--color-text-maxcontrast);
-	font-size: var(--font-size-small);
-}
-
-.epi-inicio h2 {
-	margin: 0;
 }
 
 .epi-inicio__sources {
@@ -232,10 +221,6 @@ const sources = computed(() => [
 }
 
 /* The primary source, said with an edge rather than a word or a new colour. */
-.epi-card--lead {
-	border-inline-start: 3px solid var(--color-primary-element);
-}
-
 /* --color-warning is a pale cream FILL, not the orange; --color-element-warning
    is the orange. Getting these the wrong way round is what made the old degraded
    banner's border invisible (#14). */
@@ -391,11 +376,6 @@ const sources = computed(() => [
 
 .epi-week:hover {
 	background: var(--color-background-hover);
-}
-
-.epi-week--current {
-	border-color: var(--color-primary-element);
-	background: var(--color-primary-element-light);
 }
 
 .epi-week b {

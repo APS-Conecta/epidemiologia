@@ -1,8 +1,12 @@
 <template>
 	<section class="epi-tablero">
-		<PaneHeader :title="t('epidemiologia', 'Tablero MINSAL · ETI e IRAG')">
-			{{ t('epidemiologia', 'El tablero oficial, incrustado. Lo mantiene MINSAL, no nosotros · tarda unos segundos en cargar · Total País y cada región se eligen dentro del tablero.') }}
-		</PaneHeader>
+		<!--
+			No subtitle. It said three things: that the tablero is official (the
+			navigation group already says MINSAL), that it takes seconds to load (the
+			iframe shows that itself), and that the region is chosen inside it, which
+			is where a reader looks anyway.
+		-->
+		<PaneHeader :title="t('epidemiologia', 'Tablero MINSAL · ETI e IRAG')" />
 
 		<!--
 			v-if on the iframe, never on the pane: the pane wrapper is v-show in App.vue

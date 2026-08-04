@@ -1,13 +1,21 @@
+<!--
+	A door, not a page. Everything here exists to get someone into EPIVIGILA, or —
+	when Red MINSAL will not have them — to the PDF that replaces it.
+
+	The pane carried 878 characters of prose across four blocks: what EPIVIGILA is,
+	who may enter, why it is not embedded, and where that was verified. Three of the
+	four told a clinician something they already know or do not act on. What is left
+	is the one fact that changes what they do (the access restriction and its
+	fallback) and the one that is a promise about us (the password is typed on
+	MINSAL's site, never here).
+-->
 <template>
 	<section>
-		<PaneHeader :title="t('epidemiologia', 'EPIVIGILA · Notificación de ENO')">
-			{{ t('epidemiologia', 'Un enlace al sistema oficial. No se incrusta, y aquí no se guarda nada.') }}
-		</PaneHeader>
+		<PaneHeader :title="t('epidemiologia', 'EPIVIGILA · Notificación de ENO')" />
 
-		<div class="epi-what">
-			<strong>{{ t('epidemiologia', 'Qué es.') }}</strong>
-			{{ t('epidemiologia', 'La plataforma del MINSAL donde se notifican las Enfermedades de Notificación Obligatoria. Cada profesional entra con su clave única personal, y los datos de pacientes viven allá — nunca en esta intranet.') }}
-		</div>
+		<NcNoteCard type="warning">
+			{{ t('epidemiologia', 'Solo ingresan los establecimientos públicos con conexión a Red MINSAL. Si no puedes entrar, notifica con los formularios PDF a la SEREMI.') }}
+		</NcNoteCard>
 
 		<div class="epi-links">
 			<NcButton variant="primary" href="https://epivigila.minsal.cl/" target="_blank">
@@ -26,16 +34,8 @@
 			</NcButton>
 		</div>
 
-		<NcNoteCard type="warning">
-			<strong>{{ t('epidemiologia', 'Acceso restringido.') }}</strong>
-			{{ t('epidemiologia', 'El MINSAL mantiene EPIVIGILA en funcionamiento excepcional: solo ingresan los establecimientos públicos con conexión a Red MINSAL. Si no puedes entrar, notifica con los formularios PDF a la SEREMI de tu región.') }}
-			<p class="epi-source">
-				{{ t('epidemiologia', 'Fuente: Colegio Médico de Chile, 1 de julio de 2026 · verificado el 1 de agosto de 2026') }}
-			</p>
-		</NcNoteCard>
-
 		<p class="epi-source">
-			{{ t('epidemiologia', 'Por qué no va incrustado: EPIVIGILA es un formulario de acceso con credenciales. Mostrarlo dentro de esta intranet le enseñaría al personal a escribir su clave del MINSAL en una ventana que no es del MINSAL.') }}
+			{{ t('epidemiologia', 'Se abre en el sitio del MINSAL: la clave única no se escribe nunca aquí.') }}
 		</p>
 	</section>
 </template>
@@ -49,14 +49,6 @@ import PaneHeader from './PaneHeader.vue'
 </script>
 
 <style scoped>
-.epi-what {
-	padding: calc(var(--default-grid-baseline) * 4);
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-container);
-	background: var(--color-background-hover);
-	line-height: 1.6;
-}
-
 .epi-links {
 	display: flex;
 	gap: calc(var(--default-grid-baseline) * 3);
