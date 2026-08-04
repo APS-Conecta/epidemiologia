@@ -65,6 +65,12 @@ class IspRepository {
 		'actualizacion-de-software', 'robo-de-dispositivos-medicos', 'robo-hurto',
 	];
 
+	/**
+	 * How long a failed refresh is remembered, so an outage is not retried on every
+	 * page load. Well under FRESH_FOR: recovery stays automatic and needs nobody.
+	 */
+	private const COOLDOWN = 300;
+
 	/** Same windows as MinsalRepository: fresh for an hour, kept for thirty days. */
 	private const FRESH_FOR = 3600;
 	private const KEEP_FOR = 30 * 24 * 3600;
@@ -91,6 +97,19 @@ class IspRepository {
 
 		if ($stored !== null && $stored['fetched_at'] + self::FRESH_FOR > $this->time->getTime()) {
 			return $this->present($stored, false);
+		}
+
+		/*
+		 * A failed refresh writes nothing, so without this the cache stays stale and
+		 * EVERY request re-runs all 24 fetches. PageController::index() calls all()
+		 * synchronously, so at 15s a feed that is a gateway timeout per page load, per
+		 * user — the degraded banner never renders because the request never returns.
+		 *
+		 * Remembering the outage for a few minutes costs one stale-by-minutes list and
+		 * turns the outage back into something the app can actually display.
+		 */
+		if ($this->cache->get($this->cooldownKey()) !== null) {
+			return $this->present($stored, true);
 		}
 
 		return $this->refresh($stored);
@@ -142,7 +161,7 @@ class IspRepository {
 				'total' => count(self::TERMS),
 			]);
 
-			return $this->present($stored, true);
+			return $this->degrade($stored);
 		}
 
 		/*
@@ -159,7 +178,7 @@ class IspRepository {
 				'total' => count(self::TERMS),
 			]);
 
-			return $this->present($stored, true);
+			return $this->degrade($stored);
 		}
 
 		$items = array_values($items);
@@ -274,6 +293,16 @@ class IspRepository {
 		return is_array($stored) ? $stored : null;
 	}
 
+	/**
+	 * Degrade, and remember it for a short while so an outage is not re-attempted on
+	 * every page load. Every degrade path goes through here, so none can forget to.
+	 */
+	private function degrade(?array $stored): array {
+		$this->cache->set($this->cooldownKey(), 1, self::COOLDOWN);
+
+		return $this->present($stored, true);
+	}
+
 	private function present(?array $stored, bool $degraded): array {
 		return [
 			'items' => $stored['items'] ?? [],
@@ -285,5 +314,10 @@ class IspRepository {
 
 	private function key(): string {
 		return 'feed-' . self::ALERTS;
+	}
+
+	/** Distinct from key(), or the cooldown flag would be read as the archive. */
+	private function cooldownKey(): string {
+		return 'cooldown-' . self::ALERTS;
 	}
 }

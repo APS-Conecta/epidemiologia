@@ -179,11 +179,13 @@ class IspRepositoryTest extends TestCase {
 
 	public function testTotalFailureNeverOverwritesTheCache(): void {
 		$this->repository()->get();
-		$snapshot = $this->store;
+		$snapshot = $this->store[self::KEY];
 
 		$this->repository(offlineAll: true, now: self::NOW + 7200)->get();
 
-		self::assertSame($snapshot, $this->store, 'the last good copy was overwritten');
+		// The archive key, not the whole store: degrading also arms the cooldown that
+		// stops the outage being retried on every read, which is a second key.
+		self::assertSame($snapshot, $this->store[self::KEY], 'the last good copy was overwritten');
 	}
 
 	/**
@@ -196,16 +198,48 @@ class IspRepositoryTest extends TestCase {
 	 */
 	public function testAnAnswerWeCannotParseNeverOverwritesTheCache(): void {
 		$this->repository()->get();
-		$snapshot = $this->store;
-		self::assertNotEmpty($snapshot[self::KEY]['items'], 'precondition: a good copy exists');
+		$snapshot = $this->store[self::KEY];
+		self::assertNotEmpty($snapshot['items'], 'precondition: a good copy exists');
 
 		$wafPage = '<!DOCTYPE html><html><head><title>Attention Required</title></head>'
 			. '<body><h1>Checking your browser…</h1></body></html>';
 		$after = $this->repository(body: $wafPage, now: self::NOW + 7200)->get();
 
 		self::assertTrue($after['degraded'], 'a body we cannot parse is a failure, not an empty archive');
-		self::assertSame($snapshot, $this->store, 'the last good copy was overwritten');
-		self::assertSame($snapshot[self::KEY]['items'], $after['items'], 'the reader still gets the last good copy');
+		self::assertSame($snapshot, $this->store[self::KEY], 'the last good copy was overwritten');
+		self::assertSame($snapshot['items'], $after['items'], 'the reader still gets the last good copy');
+	}
+
+	/**
+	 * PageController::index() calls all() synchronously, so every failing read is paid
+	 * by someone waiting. Degrading writes nothing, so the cache stays stale and the
+	 * next request misses again: 24 feeds x 15s timeout each, per page load, per user.
+	 * Against a host that blackholes packets rather than refusing them, that is a
+	 * gateway timeout instead of the degraded banner this app exists to show.
+	 */
+	public function testAnOutageIsNotRetriedOnEveryRead(): void {
+		$this->repository()->get();
+		$this->requested = [];
+
+		// Past FRESH_FOR, so get() genuinely tries the network and fails.
+		$this->repository(offlineAll: true, now: self::NOW + 7200)->get();
+		self::assertNotSame([], $this->requested, 'precondition: the first read after expiry does try');
+		$this->requested = [];
+
+		// A second reader, moments later, must not repeat 24 failing fetches.
+		$this->repository(offlineAll: true, now: self::NOW + 7260)->get();
+
+		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
+	}
+
+	public function testTheCooldownStillServesTheLastGoodCopyAndStillSaysDegraded(): void {
+		$before = $this->repository()->get();
+		$this->repository(offlineAll: true, now: self::NOW + 7200)->get();
+
+		$during = $this->repository(offlineAll: true, now: self::NOW + 7260)->get();
+
+		self::assertTrue($during['degraded'], 'a cooldown must never look like health');
+		self::assertSame($before['items'], $during['items']);
 	}
 
 	public function testWithNothingCachedAndTheIspDownItSaysDegradedRatherThanEmpty(): void {
