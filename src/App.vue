@@ -156,11 +156,11 @@ watch(current, (pane) => {
  * another; see ADR-0008 for why the groups do not collapse.
  *
  * No counters. Nextcloud uses a counter bubble for what needs action, and neither
- * of ours moves: MINSAL's 75 holds until it republishes, and the ISP's is pinned to
- * IspRepository::KEEP_ITEMS = 60 — the pane said "60" before and after every fetch.
- * A permanent number is decoration that trains people to ignore the one place a
- * real count will one day appear. Each pane states its own count in its toolbar,
- * where it changes as you filter and therefore means something.
+ * of ours is that: MINSAL's 75 holds until it republishes, and the ISP's now only
+ * grows as the archive accretes. A number that never means "act on me" is
+ * decoration that trains people to ignore the one place a real count will one day
+ * appear. Each pane states its own count in its toolbar, where it changes as you
+ * filter and therefore means something.
  */
 const pane = (id, icon) => ({ id, name: paneName(id), icon: markRaw(icon) })
 

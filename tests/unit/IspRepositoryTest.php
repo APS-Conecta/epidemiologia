@@ -30,9 +30,6 @@ class IspRepositoryTest extends TestCase {
 	/** 2026-08-02T12:00:00Z */
 	private const NOW = 1785672000;
 
-	/** The one cache key this repository writes, as IspRepository::key() builds it. */
-	private const KEY = 'feed-' . IspRepository::ALERTS;
-
 	private array $store = [];
 
 	/** @var list<string> terms requested, in order */
@@ -40,6 +37,15 @@ class IspRepositoryTest extends TestCase {
 
 	/** Terms whose feed should throw instead of answering. */
 	private array $offline = [];
+
+	/** Every entry holding archive data — one per category since #47. */
+	private function archive(): array {
+		return array_filter(
+			$this->store,
+			static fn (string $k): bool => str_starts_with($k, 'feed-' . IspRepository::ALERTS . '-'),
+			ARRAY_FILTER_USE_KEY,
+		);
+	}
 
 	protected function setUp(): void {
 		$this->store = [];
@@ -163,6 +169,125 @@ class IspRepositoryTest extends TestCase {
 		self::assertNotEmpty($alerts['items']);
 	}
 
+	// --- retention -----------------------------------------------------------
+
+	/**
+	 * The defect a per-category store exists to remove.
+	 *
+	 * A global newest-first cut lets the busy categories starve the quiet ones. Measured
+	 * live on 2026-08-04: the cut landed on 2025-12-12 and **10 of the 24 categories held
+	 * nothing newer**, so each would have rendered empty while genuinely holding alerts.
+	 * An ISP alert does not expire — a falsified batch from 2017 is still falsified — so
+	 * the trimmed ones were not stale, merely outnumbered.
+	 */
+	public function testABusyCategoryDoesNotStarveAQuietOne(): void {
+		$alerts = $this->repository(bodies: $this->crowded())->get();
+
+		$titles = array_column($alerts['items'], 'title');
+
+		self::assertContains('AVISO ANTIGUO PERO VIGENTE', $titles, 'the quiet category was crowded out');
+		self::assertGreaterThan(60, count($alerts['items']), 'the archive is still being capped');
+	}
+
+	public function testEveryCategoryKeepsItsOwnEntry(): void {
+		$this->repository(bodies: $this->crowded())->get();
+
+		$keys = array_keys($this->store);
+		self::assertGreaterThan(1, count($keys), 'the whole archive is still in one entry');
+		self::assertNotContains(
+			'feed-' . IspRepository::ALERTS,
+			$keys,
+			'the single merged entry is still being written',
+		);
+		self::assertNotEmpty($this->archive(), 'no per-category entry was written');
+	}
+
+	/**
+	 * A feed is a ten-item window onto an archive of at least 1.423, and an ISP alert
+	 * never expires. Replacing a category with whatever its window shows today would
+	 * throw the rest away on every hourly refresh — so the archive has to accrete.
+	 */
+	public function testACategoryKeepsAlertsThatHaveFallenOutOfItsWindow(): void {
+		$first = ['t' => 'ALERTA DE AYER', 'u' => 'https://www.ispch.gob.cl/alerta/ayer/'];
+		$later = ['t' => 'ALERTA DE HOY', 'u' => 'https://www.ispch.gob.cl/alerta/hoy/'];
+
+		$this->repository(body: $this->rss([$first]))->get();
+		// An hour on, the window has moved and no longer shows the older alert.
+		$after = $this->repository(body: $this->rss([$later]), now: self::NOW + 7200)->get();
+
+		$titles = array_column($after['items'], 'title');
+		self::assertContains('ALERTA DE HOY', $titles);
+		self::assertContains('ALERTA DE AYER', $titles, 'the archive was replaced by the window');
+	}
+
+	/**
+	 * An entry left by an older version must be ignored, never half-read.
+	 *
+	 * Reading one half-way is what turned `$stored['fetched_at'] + FRESH_FOR` into an
+	 * undefined-key warning coerced to 3600 — an entry that quietly claimed an age.
+	 */
+	public function testACacheEntryInTheOldShapeIsIgnoredRatherThanMisread(): void {
+		// The 0.4.x shape: no 'items', and a stamp from long ago. Both halves matter —
+		// the stamp is what a half-read entry would contribute to the archive's age.
+		$this->store['feed-' . IspRepository::ALERTS . '-anamed'] = ['reached' => 24, 'fetched_at' => self::NOW - 999999];
+
+		// anamed stays unreachable, so the malformed entry is not simply overwritten by
+		// the refresh — which is the only situation in which a half-read one can be seen.
+		$alerts = $this->repository(offline: ['anamed'], body: $this->rss([
+			['t' => 'ALERTA NUEVA', 'u' => 'https://www.ispch.gob.cl/alerta/nueva/'],
+		]))->get();
+
+		self::assertFalse($alerts['degraded']);
+		self::assertSame(['ALERTA NUEVA'], array_column($alerts['items'], 'title'));
+		self::assertSame(
+			self::NOW,
+			$alerts['fetched_at'],
+			'a malformed entry was allowed to speak for the archive\'s freshness',
+		);
+	}
+
+	/**
+	 * Seven categories publishing ten alerts each, and one publishing a single old
+	 * one — 71 in total, so a 60-item cut has to drop something.
+	 *
+	 * @return array<string,string>
+	 */
+	private function crowded(): array {
+		$bodies = [];
+		$busy = ['anamed', 'retiro-de-mercado', 'dispositivos-medicos', 'farmacovigilancia',
+			'advertencia-de-seguridad', 'nota-informativa', 'alertas-cosmeticas'];
+		foreach ($busy as $term) {
+			$items = [];
+			for ($i = 0; $i < 10; $i++) {
+				$items[] = ['t' => strtoupper($term) . " $i", 'u' => "https://www.ispch.gob.cl/alerta/$term-$i/"];
+			}
+			$bodies[$term] = $this->rss($items);
+		}
+		// Old, and the only thing this category has ever published.
+		$bodies['informe-tecnico'] = $this->rss([[
+			't' => 'AVISO ANTIGUO PERO VIGENTE',
+			'u' => 'https://www.ispch.gob.cl/alerta/aviso-antiguo/',
+		]], 'Tue, 01 Feb 2017 10:00:00 +0000');
+
+		// Everything else answers with nothing, which for the ISP is normal.
+		foreach (self::EVERY_OTHER_TERM as $term) {
+			$bodies[$term] ??= $this->rss([]);
+		}
+
+		return $bodies;
+	}
+
+	/** The 16 categories this fixture does not give content to. */
+	private const EVERY_OTHER_TERM = [
+		'alerta-falsificado-producto-sin-registro', 'producto-sin-registro',
+		'retiro-del-mercado-dispositivo-medico', 'dispositivo-medico-falsificado',
+		'cese-de-utilizacion-dp', 'nota-informativa-dp',
+		'nota-informativa-cosmetovigilancia', 'vigilancia-de-cosmeticos',
+		'desinfectantes-y-sanitizantes', 'falsificados-sin-registro-sanitario-desinfectantes',
+		'informacion-de-seguridad', 'actualizacion-de-seguridad', 'cese-de-distribucion',
+		'actualizacion-de-software', 'robo-de-dispositivos-medicos', 'robo-hurto',
+	];
+
 	// --- caching and degradation, same contract as MINSAL --------------------
 
 	public function testAnUnreachableIspServesTheLastGoodCopyFlaggedDegraded(): void {
@@ -179,13 +304,13 @@ class IspRepositoryTest extends TestCase {
 
 	public function testTotalFailureNeverOverwritesTheCache(): void {
 		$this->repository()->get();
-		$snapshot = $this->store[self::KEY];
+		$snapshot = $this->archive();
 
 		$this->repository(offlineAll: true, now: self::NOW + 7200)->get();
 
-		// The archive key, not the whole store: degrading also arms the cooldown that
-		// stops the outage being retried on every read, which is a second key.
-		self::assertSame($snapshot, $this->store[self::KEY], 'the last good copy was overwritten');
+		// The archive entries, not the whole store: degrading also arms the cooldown
+		// that stops the outage being retried on every read, which is a second key.
+		self::assertSame($snapshot, $this->archive(), 'the last good copy was overwritten');
 	}
 
 	/**
@@ -198,16 +323,16 @@ class IspRepositoryTest extends TestCase {
 	 */
 	public function testAnAnswerWeCannotParseNeverOverwritesTheCache(): void {
 		$this->repository()->get();
-		$snapshot = $this->store[self::KEY];
-		self::assertNotEmpty($snapshot['items'], 'precondition: a good copy exists');
+		$snapshot = $this->archive();
+		self::assertNotEmpty($snapshot, 'precondition: a good copy exists');
 
 		$wafPage = '<!DOCTYPE html><html><head><title>Attention Required</title></head>'
 			. '<body><h1>Checking your browser…</h1></body></html>';
 		$after = $this->repository(body: $wafPage, now: self::NOW + 7200)->get();
 
 		self::assertTrue($after['degraded'], 'a body we cannot parse is a failure, not an empty archive');
-		self::assertSame($snapshot, $this->store[self::KEY], 'the last good copy was overwritten');
-		self::assertSame($snapshot['items'], $after['items'], 'the reader still gets the last good copy');
+		self::assertSame($snapshot, $this->archive(), 'the last good copy was overwritten');
+		self::assertNotEmpty($after['items'], 'the reader still gets the last good copy');
 	}
 
 	/**
@@ -345,15 +470,22 @@ class IspRepositoryTest extends TestCase {
 	 * @param list<string> $offline    terms that should throw
 	 * @param bool         $offlineAll every term throws
 	 */
+	/**
+	 * @param array<string,string> $bodies Per-term bodies, for the cases where the
+	 *                                     categories must differ from each other —
+	 *                                     a busy one crowding out a quiet one cannot
+	 *                                     be expressed when all 24 answer the same.
+	 */
 	private function repository(
 		?string $body = null,
 		array $offline = [],
 		bool $offlineAll = false,
 		?int $now = null,
+		array $bodies = [],
 	): IspRepository {
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
-			function (string $url) use ($body, $offline, $offlineAll): IResponse {
+			function (string $url) use ($body, $offline, $offlineAll, $bodies): IResponse {
 				$term = $this->termOf($url);
 				$this->requested[] = $term;
 
@@ -362,7 +494,7 @@ class IspRepositoryTest extends TestCase {
 				}
 
 				$response = $this->createMock(IResponse::class);
-				$response->method('getBody')->willReturn($body ?? $this->fixture($term));
+				$response->method('getBody')->willReturn($bodies[$term] ?? $body ?? $this->fixture($term));
 
 				return $response;
 			},
@@ -422,13 +554,14 @@ class IspRepositoryTest extends TestCase {
 	}
 
 	/** @param list<array{t: string, u: string}> $items */
-	private function rss(array $items): string {
+	private function rss(array $items, string $pubDate = 'Tue, 28 Jul 2026 20:38:58 +0000'): string {
 		$body = '';
 		foreach ($items as $item) {
 			$body .= sprintf(
-				'<item><title>%s</title><link>%s</link><pubDate>Tue, 28 Jul 2026 20:38:58 +0000</pubDate></item>',
+				'<item><title>%s</title><link>%s</link><pubDate>%s</pubDate></item>',
 				$item['t'],
 				$item['u'],
+				$pubDate,
 			);
 		}
 

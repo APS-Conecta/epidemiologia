@@ -9,6 +9,26 @@ history they describe is unchanged.
 
 ## [Unreleased]
 
+### Changed
+
+- **The ISP archive is no longer capped, and lives one entry per category** (#47). `KEEP_ITEMS = 60`
+  kept the newest 60 across *all* categories, so the busy ones starved the quiet ones: measured live
+  on 2026-08-04 the cut landed on 2025-12-12 and **10 of the 24 categories held nothing newer**,
+  each of which would have rendered empty while genuinely holding alerts. An ISP alert never expires
+  — a falsified batch from 2017 is still falsified — so those were not stale, merely outnumbered.
+  Each category now has its own cache entry and **accretes**: a feed is a ten-item window onto an
+  archive of at least 1.423, so replacing a category with what its window shows today would discard
+  everything older on every refresh. The whole archive is ~357 KB, no table and no migration.
+- A category nobody could reach is simply not written, so its last good copy stands without needing
+  a rule to protect it — which also closes the partial-fetch risk the review raised.
+
+### Fixed
+
+- **A cache entry in an older shape is ignored rather than half-read.** `stored()` checked only
+  `is_array()`, so an entry without `items`/`fetched_at` turned `$stored['fetched_at'] + FRESH_FOR`
+  into an undefined-key warning coerced to 3600 — an entry that quietly claimed an age.
+  `MinsalRepository` had always checked; this one had not.
+
 ### Added
 
 - **The repository is now checked against itself** (#53). Four assertions in the unit suite, so they
