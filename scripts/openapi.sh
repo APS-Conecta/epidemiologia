@@ -35,6 +35,18 @@ fi
 printf 'Generating openapi.json…\n'
 run sh -c 'php tools/openapi/vendor/bin/generate-spec . openapi.json'
 
+# The extractor reads a version out of composer.json, and this app deliberately has
+# none — so it stamped 0.0.1 and the PUBLISHED contract advertised that while the app
+# shipped 0.4.0. Taking the version from info.xml here keeps it a generated field
+# rather than a hand-edited one: regenerating re-applies it instead of undoing it.
+# tests/unit/MetadataTest.php fails if the two ever disagree again.
+run sh -c 'php -r "
+	\$version = (string)simplexml_load_file(\"appinfo/info.xml\")->version;
+	\$spec = json_decode(file_get_contents(\"openapi.json\"), true);
+	\$spec[\"info\"][\"version\"] = \$version;
+	file_put_contents(\"openapi.json\", json_encode(\$spec, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . PHP_EOL);
+"'
+
 printf '\n'
 run sh -c 'php -r "\$s=json_decode(file_get_contents(\"openapi.json\"),true);
 	printf(\"  %s v%s — %d routes\n\", \$s[\"info\"][\"title\"], \$s[\"info\"][\"version\"], count(\$s[\"paths\"]));

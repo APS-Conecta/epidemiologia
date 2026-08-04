@@ -11,6 +11,15 @@ history they describe is unchanged.
 
 ### Added
 
+- **The repository is now checked against itself** (#53). Four assertions in the unit suite, so they
+  run on every push and need no instance: every file that declares a version declares the *same*
+  one, the licence `info.xml` names is actually shipped, and every `lib/` file carries the same SPDX
+  header. Nothing asserted any of this before, which is the entire reason it drifted.
+- **`LICENSE`** — the app declared AGPL in two places and shipped no licence text. The AGPL requires
+  conveying a copy with the work, so this was a compliance defect rather than an untidiness.
+- SPDX headers on the eight `lib/` files that lacked them. Two of ten carried one, which reads as
+  *"these two are licensed and those eight are unclear"*.
+
 - **A JS test runner, and the frontend logic under it** (#44). Vitest reuses the Vite
   `@nextcloud/vite-config` already installs, so it is a runner rather than a second toolchain — one
   devDependency, no jsdom, no component mounting. It covers the option shapes both alert panes share
@@ -20,6 +29,16 @@ history they describe is unchanged.
   requires the chosen option to be marked. The existing count check passed `undefined (12)` happily.
 
 ### Fixed
+
+- **The version was written in three places and two were wrong** (#53). `info.xml` said 0.4.0,
+  `package.json` 0.3.0, and the **published API contract** 0.0.1 — the extractor's default, because
+  this app deliberately has no `composer.json` for it to read. All three now agree, and a test fails
+  if they ever stop. `scripts/openapi.sh` stamps the real version during generation, so regenerating
+  re-applies it rather than undoing it.
+- **`js/epidemiologia-main.mjs.license` had been shipping the wrong version too**, unnoticed:
+  `@nextcloud/vite-config` reads `package.json` for the attribution block, so the bundle credited
+  *epidemiologia 0.3.0* while the app was 0.4.0. Deleting the field — the first attempt here — makes
+  it emit `version: undefined`, which is how this was found. It has to be synced, not removed.
 
 - **The filters never said what was filtered** (#44). Two defects, one symptom. `NcActionRadio`
   computes `checked` as `model === value`; `FilterMenu` passed a boolean to `model-value` and no
