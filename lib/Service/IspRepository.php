@@ -145,6 +145,23 @@ class IspRepository {
 			return $this->present($stored, true);
 		}
 
+		/*
+		 * Reached is counted before the parse, so "answered with something that is not
+		 * RSS" arrives here looking exactly like "answered with nothing". The WAF above
+		 * does precisely that. Holding a good copy and parsing nothing out of 24 live
+		 * feeds is not an empty archive, it is a failure to read one.
+		 *
+		 * Only when a good copy exists: a cold cache with genuinely empty feeds is still
+		 * a legitimate answer, which is the ISP rule this class exists for.
+		 */
+		if ($items === [] && ($stored['items'] ?? []) !== []) {
+			$this->logger->warning('Los {total} feeds del ISP respondieron sin nada que interpretar', [
+				'total' => count(self::TERMS),
+			]);
+
+			return $this->present($stored, true);
+		}
+
 		$items = array_values($items);
 		usort($items, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
 		$items = array_slice($items, 0, self::KEEP_ITEMS);
