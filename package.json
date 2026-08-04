@@ -7,6 +7,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite --mode production build",
+		"test": "vitest run",
 		"dev": "vite --mode development build",
 		"watch": "vite --mode development build --watch"
 	},
@@ -25,7 +26,8 @@
 		"@nextcloud/vite-config": "^2.5.4",
 		"playwright": "^1.49.0",
 		"typescript": "^5.9.3",
-		"vite": "^7.3.6"
+		"vite": "^7.3.6",
+		"vitest": "^4.1.10"
 	},
 	"engines": {
 		"node": "^24.0.0",

@@ -73,6 +73,14 @@ jobs:
 
       - run: npm ci
 
+      # The pure logic in src/ — the filter options both alert panes share. Three
+      # defects of the same kind have shipped (#12, #44): the wrong shape handed to
+      # a library component, invisible to PHPUnit and to a reviewer. scripts/layout.sh
+      # can see them but needs a provisioned instance, so it has never run here.
+      # Vitest reuses the Vite that @nextcloud/vite-config already installs.
+      - name: Unit-test the frontend logic
+        run: npm test
+
       # js/ and css/ are committed — that IS the deployment, so src/ moving
       # without a rebuild means the running app is not the code in this repo.
       # Rebuilding and requiring a clean tree is the same assertion smoke.sh

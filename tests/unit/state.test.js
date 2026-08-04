@@ -1,0 +1,105 @@
+/**
+ * The filter options both alert panes offer.
+ *
+ * These are here because the two panes built them separately and drifted: the ISP
+ * pane mapped a label onto every year, Alertas vigentes did not, and FilterMenu
+ * interpolated `undefined (12)` into the live menu for weeks (#44). Nothing in
+ * PHP can see that, and the layout gate needs a provisioned instance — so the
+ * shape of an option is pinned here, where it costs milliseconds.
+ */
+import { describe, expect, it } from 'vitest'
+import { monthOptions, tally, yearOptions } from '../../src/state.js'
+
+/**
+ * Shaped like what the panes actually hold: MINSAL carries year/month, the ISP a date.
+ *
+ * Deliberately NOT in newest-first order. With a sorted fixture, tally() preserves
+ * insertion order and every ordering assertion below passes against a function that
+ * does no sorting at all — proved by mutation, which is how this comment came to exist.
+ */
+const MINSAL = [
+	{ title: 'OFICIO D', year: '2025', month: '2025-11' },
+	{ title: 'OFICIO C', year: '2026', month: '2026-06' },
+	{ title: 'OFICIO A', year: '2026', month: '2026-07' },
+	{ title: 'OFICIO B', year: '2026', month: '2026-07' },
+]
+const ISP = [
+	{ title: 'Suturas V-Loc', date: '2025-12-04' },
+	{ title: 'Cápsula Ozono', date: '' },
+	{ title: 'ÁCIDO VALPROICO', date: '2026-08-04' },
+	{ title: 'TELLMI ADVANCE', date: '2026-07-28' },
+]
+const yearOf = (a) => a.year
+const monthOf = (a) => a.month
+const ispYear = (a) => (a.date ?? '').slice(0, 4)
+const ispMonth = (a) => (a.date ?? '').slice(0, 7)
+
+describe('tally', () => {
+	// tally counts; ordering is yearOptions'/monthOptions' job, and asserting it here
+	// would let an unsorted builder pass on a fixture that happened to arrive sorted.
+	it('counts how many items carry each value, in the order it first met them', () => {
+		expect(tally(MINSAL, yearOf)).toEqual([
+			{ id: '2025', count: 1 },
+			{ id: '2026', count: 3 },
+		])
+	})
+
+	it('offers no option for items that carry no value', () => {
+		expect(tally(ISP, ispYear).map((o) => o.id)).not.toContain('')
+	})
+})
+
+describe('yearOptions', () => {
+	// The defect: FilterMenu renders `${option.label} (${option.count})`, so an
+	// option without a label reaches a clinician as "undefined (3)".
+	it('gives every option a label', () => {
+		for (const option of yearOptions(MINSAL, yearOf)) {
+			expect(option.label).toBeDefined()
+			expect(String(option.label)).not.toBe('undefined')
+		}
+	})
+
+	it('labels a year with the year itself', () => {
+		expect(yearOptions(MINSAL, yearOf)).toEqual([
+			{ id: '2026', count: 3, label: '2026' },
+			{ id: '2025', count: 1, label: '2025' },
+		])
+	})
+
+	it('orders newest first', () => {
+		expect(yearOptions(ISP, ispYear).map((o) => o.id)).toEqual(['2026', '2025'])
+	})
+
+	// The whole point of sharing it: both panes get the same shape from one place.
+	it('builds the same shape from a date-carrying item as from a year-carrying one', () => {
+		const fromMinsal = yearOptions(MINSAL, yearOf)
+		const fromIsp = yearOptions(ISP, ispYear)
+
+		expect(Object.keys(fromIsp[0]).sort()).toEqual(Object.keys(fromMinsal[0]).sort())
+	})
+})
+
+describe('monthOptions', () => {
+	it('gives every option a label', () => {
+		for (const option of monthOptions(MINSAL, yearOf, monthOf, null)) {
+			expect(option.label).toBeDefined()
+			expect(String(option.label)).not.toBe('undefined')
+		}
+	})
+
+	// Offering a month the chosen year does not have builds a filter pair that can
+	// only ever return nothing, which reads as broken data rather than a bad filter.
+	it('offers only the months of the chosen year', () => {
+		expect(monthOptions(MINSAL, yearOf, monthOf, '2025').map((o) => o.id)).toEqual(['2025-11'])
+	})
+
+	it('offers every month when no year is chosen', () => {
+		expect(monthOptions(MINSAL, yearOf, monthOf, null).map((o) => o.id))
+			.toEqual(['2026-07', '2026-06', '2025-11'])
+	})
+
+	it('orders newest first', () => {
+		expect(monthOptions(ISP, ispYear, ispMonth, null).map((o) => o.id))
+			.toEqual(['2026-08', '2026-07', '2025-12'])
+	})
+})

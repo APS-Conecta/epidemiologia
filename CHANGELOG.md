@@ -9,7 +9,25 @@ history they describe is unchanged.
 
 ## [Unreleased]
 
+### Added
+
+- **A JS test runner, and the frontend logic under it** (#44). Vitest reuses the Vite
+  `@nextcloud/vite-config` already installs, so it is a runner rather than a second toolchain — one
+  devDependency, no jsdom, no component mounting. It covers the option shapes both alert panes share
+  and runs in CI on every push, which `scripts/layout.sh` never could: that needs a provisioned
+  instance, so it stays manual and keeps its own, wider assertions.
+- `scripts/layout.sh` now also rejects a filter option whose label renders as `undefined`, and
+  requires the chosen option to be marked. The existing count check passed `undefined (12)` happily.
+
 ### Fixed
+
+- **The filters never said what was filtered** (#44). Two defects, one symptom. `NcActionRadio`
+  computes `checked` as `model === value`; `FilterMenu` passed a boolean to `model-value` and no
+  `value` at all, so `checked` evaluated `true === ''` — **no option ever filled its circle, and
+  `aria-checked` was `"false"` for every one of them**. Separately, `tally()` returns no label and
+  only the ISP pane mapped one on, so Alertas vigentes' Año menu rendered **`undefined (12)`** and
+  its button kept reading *"Todos los años"* after a year was chosen. Both panes now build their
+  año and mes menus with the same two functions, so the two cannot drift apart again.
 
 - **An outage no longer costs a fetch on every page load** (#43). Degrading wrote nothing, so the
   entry stayed expired and every read retried — and `PageController::index()` fetches synchronously,

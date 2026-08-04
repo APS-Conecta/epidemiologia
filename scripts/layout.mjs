@@ -187,9 +187,37 @@ const inspectMenus = async (page, paneIndex) => {
 			if (!/\(\d+\)$/.test(option)) {
 				complaints.push(`filter option "${option}" shows no count`)
 			}
+			// `undefined (12)` shipped for weeks: tally() returns no label and one pane
+			// mapped one on while the other did not. It has a count, so the check above
+			// passes it quite happily — which is why this one exists beside it.
+			if (/\bundefined\b/.test(option)) {
+				complaints.push(`filter option "${option}" renders an undefined label`)
+			}
 		}
 		if (options.length === 1) {
 			complaints.push('a filter menu offers nothing but its "todo" row')
+		}
+
+		// Choosing an option must mark it. NcActionRadio computes checked as
+		// `model === value`, so passing a boolean and no value left every circle
+		// empty while the filter itself worked — invisible to every other check here.
+		if (options.length > 1) {
+			const marked = await page.evaluate(() => {
+				const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
+				const radios = [...popper.querySelectorAll('.action-radio input[type="radio"]')]
+				radios[1]?.click()
+				return {
+					total: radios.length,
+					checked: radios.filter((r) => r.checked).length,
+					second: !!radios[1]?.checked,
+				}
+			})
+			if (marked.total > 0 && !marked.second) {
+				complaints.push('choosing a filter option leaves its circle empty')
+			}
+			if (marked.checked > 1) {
+				complaints.push(`${marked.checked} filter options are marked at once`)
+			}
 		}
 
 		await page.keyboard.press('Escape')
