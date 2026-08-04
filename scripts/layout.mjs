@@ -198,25 +198,36 @@ const inspectMenus = async (page, paneIndex) => {
 			complaints.push('a filter menu offers nothing but its "todo" row')
 		}
 
-		// Choosing an option must mark it. NcActionRadio computes checked as
-		// `model === value`, so passing a boolean and no value left every circle
-		// empty while the filter itself worked — invisible to every other check here.
+		// Choosing an option must MARK it, and the mark is the icon — NcActionRadio
+		// renders `checked ? mdiRadioboxMarked : mdiRadioboxBlank`, where checked is
+		// `model === value`.
+		//
+		// Two traps this has already fallen into, both of which made it pass against
+		// the very defect it exists for:
+		//  - asserting the <input>'s .checked proves nothing, because a native radio
+		//    flips itself on click whatever the component thinks;
+		//  - reading the icon in the same evaluate() as the click reads it BEFORE Vue
+		//    re-renders, so it always looks unmarked. Hence waitForFunction below.
 		if (options.length > 1) {
-			const marked = await page.evaluate(() => {
+			await page.evaluate(() => {
 				const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
-				const radios = [...popper.querySelectorAll('.action-radio input[type="radio"]')]
-				radios[1]?.click()
-				return {
-					total: radios.length,
-					checked: radios.filter((r) => r.checked).length,
-					second: !!radios[1]?.checked,
-				}
+				const rows = [...popper.querySelectorAll('.action-radio')]
+				rows[1]?.querySelector('input[type="radio"]')?.click()
 			})
-			if (marked.total > 0 && !marked.second) {
+
+			const marked = await page.waitForFunction(() => {
+				const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
+				if (!popper) {
+					return null
+				}
+				const rows = [...popper.querySelectorAll('.action-radio')]
+				const glyph = (row) => row?.querySelector('.action-radio__icon path')?.getAttribute('d') ?? ''
+				const chosen = glyph(rows[1])
+				return chosen !== '' && chosen !== glyph(rows[0]) ? true : undefined
+			}, null, { timeout: 3000 }).then(() => true).catch(() => false)
+
+			if (!marked) {
 				complaints.push('choosing a filter option leaves its circle empty')
-			}
-			if (marked.checked > 1) {
-				complaints.push(`${marked.checked} filter options are marked at once`)
 			}
 		}
 
