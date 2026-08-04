@@ -24,9 +24,11 @@ use Throwable;
  * the ISP is 24 feeds of which several are legitimately empty. Folding that
  * disagreement into one class would give it two jobs and one confused rule.
  *
- * ponytail: the shared "zero items never overwrites the cache" mechanic is
- * duplicated from MinsalRepository, not extracted. Ten lines across two classes
- * does not earn a base class; extract one when a third source arrives.
+ * ponytail: the "zero items never overwrites the cache" rule is stated in both
+ * classes rather than extracted, and they have since diverged further — MINSAL
+ * keeps one entry per feed and always degrades on empty, this one keeps an entry
+ * per category and accretes. What is shared is a sentence, not a mechanism; a base
+ * class would now have more abstract hooks than shared lines.
  *
  * Two facts about the ISP, both measured 2026-08-02 and neither guessable:
  *
@@ -75,9 +77,6 @@ class IspRepository {
 	private const FRESH_FOR = 3600;
 	private const KEEP_FOR = 30 * 24 * 3600;
 
-	/** How many items the app ever shows. Fetching all 24 feeds already costs the round trips. */
-	private const KEEP_ITEMS = 60;
-
 	private ICache $cache;
 
 	public function __construct(
@@ -93,9 +92,10 @@ class IspRepository {
 	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(): array {
-		$stored = $this->stored();
+		$stored = $this->storedAll();
+		$oldest = $this->oldestFetch($stored);
 
-		if ($stored !== null && $stored['fetched_at'] + self::FRESH_FOR > $this->time->getTime()) {
+		if ($oldest !== null && $oldest + self::FRESH_FOR > $this->time->getTime()) {
 			return $this->present($stored, false);
 		}
 
@@ -116,10 +116,12 @@ class IspRepository {
 	}
 
 	/**
+	 * @param ?array<string, array> $stored
 	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
 	public function refresh(?array $stored = null): array {
-		$items = [];
+		$stored ??= $this->storedAll();
+		$fetched = [];
 		$reached = 0;
 
 		foreach (self::TERMS as $term) {
@@ -128,23 +130,7 @@ class IspRepository {
 				continue;
 			}
 			$reached++;
-			foreach ($this->parse($body) as $item) {
-				$url = $item['url'];
-
-				// Dedupe by link — the same alert is filed under several categories.
-				// The categories are MERGED rather than the first feed winning: an
-				// alert genuinely belongs to all of them, and they are the only facet
-				// a reader can filter by. The feed's own <category> elements are
-				// empty, so which feed carried it is the ONLY place this comes from;
-				// keeping just the first would throw the filter away before it exists.
-				if (isset($items[$url])) {
-					$items[$url]['categories'][] = $term;
-					continue;
-				}
-
-				$item['categories'] = [$term];
-				$items[$url] = $item;
-			}
+			$fetched[$term] = $this->parse($body);
 		}
 
 		/*
@@ -173,7 +159,8 @@ class IspRepository {
 		 * Only when a good copy exists: a cold cache with genuinely empty feeds is still
 		 * a legitimate answer, which is the ISP rule this class exists for.
 		 */
-		if ($items === [] && ($stored['items'] ?? []) !== []) {
+		$parsedSomething = array_filter($fetched, static fn (array $items): bool => $items !== []);
+		if ($parsedSomething === [] && $this->merge($stored) !== []) {
 			$this->logger->warning('Los {total} feeds del ISP respondieron sin nada que interpretar', [
 				'total' => count(self::TERMS),
 			]);
@@ -181,23 +168,32 @@ class IspRepository {
 			return $this->degrade($stored);
 		}
 
-		$items = array_values($items);
-		usort($items, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
-		$items = array_slice($items, 0, self::KEEP_ITEMS);
+		/*
+		 * One entry per category, and each one ACCRETES.
+		 *
+		 * A feed is a ten-item window onto an archive of at least 1.423, and an ISP
+		 * alert never expires — so replacing a category with what its window happens
+		 * to show today would throw away everything older on every refresh. Union
+		 * instead, keyed by link, and the archive assembles itself from the fetch the
+		 * app already makes hourly. Nothing is capped: the whole thing is ~357 KB.
+		 *
+		 * A category nobody could reach this round is simply not written, so its last
+		 * good copy stands on its own rather than needing a rule to protect it.
+		 */
+		$now = $this->time->getTime();
+		foreach ($fetched as $term => $items) {
+			$this->cache->set($this->key($term), [
+				'items' => $this->union($stored[$term]['items'] ?? [], $items),
+				'fetched_at' => $now,
+			], self::KEEP_FOR);
+		}
 
-		$fresh = [
-			'items' => $items,
-			'reached' => $reached,
-			'fetched_at' => $this->time->getTime(),
-		];
-		$this->cache->set($this->key(), $fresh, self::KEEP_FOR);
-
-		return $this->present($fresh, false);
+		return $this->present($this->storedAll(), false);
 	}
 
 	/** Cheap liveness signal for the daily probe. False means a human has to look. */
 	public function probe(): bool {
-		return $this->refresh($this->stored())['degraded'] === false;
+		return $this->refresh()['degraded'] === false;
 	}
 
 	/**
@@ -215,14 +211,14 @@ class IspRepository {
 	 */
 	public function search(string $term): array {
 		$needle = MinsalRepository::fold($term);
-		$stored = $this->stored();
+		$items = $this->merge($this->storedAll());
 
-		if ($needle === '' || $stored === null) {
+		if ($needle === '' || $items === []) {
 			return [];
 		}
 
 		return array_values(array_filter(
-			$stored['items'] ?? [],
+			$items,
 			static fn (array $item): bool => str_contains(
 				MinsalRepository::fold($item['title'] . ' ' . implode(' ', $item['categories'] ?? [])),
 				$needle,
@@ -287,33 +283,134 @@ class IspRepository {
 		}
 	}
 
-	private function stored(): ?array {
-		$stored = $this->cache->get($this->key());
+	/**
+	 * Every category's entry, keyed by category.
+	 *
+	 * Reading one category is one cache read of a few KB — the whole point of the
+	 * split. This reads all 24 because get() still hands the merged archive to the
+	 * page; the per-category route is #51's.
+	 *
+	 * @return array<string, array{items: list<array<string, string>>, fetched_at: int}>
+	 */
+	private function storedAll(): array {
+		$stored = [];
+		foreach (self::TERMS as $term) {
+			$entry = $this->stored($term);
+			if ($entry !== null) {
+				$stored[$term] = $entry;
+			}
+		}
 
-		return is_array($stored) ? $stored : null;
+		return $stored;
+	}
+
+	/**
+	 * One category's entry, or null when there is nothing usable there.
+	 *
+	 * Shape-checked rather than merely is_array(): an entry written by an older
+	 * version has no 'items' and no 'fetched_at', and reading it half-way turned
+	 * `$stored['fetched_at'] + FRESH_FOR` into an undefined-key warning coerced to
+	 * 3600 — a cache entry that quietly claimed to be an hour old. MinsalRepository
+	 * has always checked; this one did not.
+	 */
+	private function stored(string $term): ?array {
+		$entry = $this->cache->get($this->key($term));
+
+		return is_array($entry) && isset($entry['items'], $entry['fetched_at']) && is_array($entry['items'])
+			? $entry
+			: null;
+	}
+
+	/**
+	 * The archive as one list: deduped by link, newest first, every category an
+	 * alert was filed under carried on it.
+	 *
+	 * The categories come from the KEYS rather than from anything in the feed — the
+	 * <category> elements are empty, so which entry holds an alert is the only place
+	 * that fact exists, and it is the one facet a reader can filter by.
+	 *
+	 * @param array<string, array> $stored
+	 * @return list<array<string, string>>
+	 */
+	private function merge(array $stored): array {
+		$items = [];
+		foreach ($stored as $term => $entry) {
+			foreach ($entry['items'] as $item) {
+				$url = $item['url'];
+				if (isset($items[$url])) {
+					$items[$url]['categories'][] = $term;
+					continue;
+				}
+				$item['categories'] = [$term];
+				$items[$url] = $item;
+			}
+		}
+
+		$items = array_values($items);
+		usort($items, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+
+		return $items;
+	}
+
+	/**
+	 * Stored items plus freshly fetched ones, keyed by link, the fetched copy winning
+	 * so an edited title replaces the one we held.
+	 *
+	 * @param list<array<string, string>> $stored
+	 * @param list<array<string, string>> $fetched
+	 * @return list<array<string, string>>
+	 */
+	private function union(array $stored, array $fetched): array {
+		$byUrl = [];
+		foreach ($stored as $item) {
+			$byUrl[$item['url']] = $item;
+		}
+		foreach ($fetched as $item) {
+			$byUrl[$item['url']] = $item;
+		}
+
+		return array_values($byUrl);
+	}
+
+	/**
+	 * The age of the STALEST category, so freshness never claims more than the whole
+	 * archive can back. Null when nothing is cached at all.
+	 *
+	 * @param array<string, array> $stored
+	 */
+	private function oldestFetch(array $stored): ?int {
+		$times = array_column($stored, 'fetched_at');
+
+		return $times === [] ? null : min($times);
 	}
 
 	/**
 	 * Degrade, and remember it for a short while so an outage is not re-attempted on
 	 * every page load. Every degrade path goes through here, so none can forget to.
+	 *
+	 * @param array<string, array> $stored
 	 */
-	private function degrade(?array $stored): array {
+	private function degrade(array $stored): array {
 		$this->cache->set($this->cooldownKey(), 1, self::COOLDOWN);
 
 		return $this->present($stored, true);
 	}
 
-	private function present(?array $stored, bool $degraded): array {
+	/** @param array<string, array> $stored */
+	private function present(array $stored, bool $degraded): array {
+		$items = $this->merge($stored);
+
 		return [
-			'items' => $stored['items'] ?? [],
-			'updated_at' => $stored['items'][0]['date'] ?? null,
-			'fetched_at' => $stored['fetched_at'] ?? null,
+			'items' => $items,
+			'updated_at' => $items[0]['date'] ?? null,
+			'fetched_at' => $this->oldestFetch($stored),
 			'degraded' => $degraded,
 		];
 	}
 
-	private function key(): string {
-		return 'feed-' . self::ALERTS;
+	/** One entry per category — see refresh(). */
+	private function key(string $term): string {
+		return 'feed-' . self::ALERTS . '-' . $term;
 	}
 
 	/** Distinct from key(), or the cooldown flag would be read as the archive. */
