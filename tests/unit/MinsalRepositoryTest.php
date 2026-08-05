@@ -314,6 +314,22 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
 	}
 
+	/**
+	 * The other half, and the one the old double could not express: the cooldown has to
+	 * END. Only "it was set" was ever asserted, so recovery being automatic rested on a
+	 * TTL nothing checked — raising COOLDOWN to a week would have kept the suite green and
+	 * pinned both feeds to degraded until someone flushed Redis.
+	 */
+	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->requested = [];
+
+		$this->repository(offline: true, now: self::NOW + 7200 + 301)->get(MinsalRepository::ALERTS);
+
+		self::assertNotSame([], $this->requested, 'past COOLDOWN the feed must be asked again');
+	}
+
 	public function testTheCooldownStillServesTheLastGoodCopyAndStillSaysDegraded(): void {
 		$good = $this->repository()->get(MinsalRepository::ALERTS);
 		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
@@ -453,17 +469,36 @@ class MinsalRepositoryTest extends TestCase {
 		$time->method('getTime')->willReturn($now ?? self::NOW);
 
 		$cacheFactory = $this->createMock(ICacheFactory::class);
-		$cacheFactory->method('createDistributed')->willReturn($this->cache());
+		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
 		return new MinsalRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
 	}
 
-	/** An in-memory cache shared across repositories, so "last good copy" is real. */
-	private function cache(): ICache {
+	/**
+	 * An in-memory cache shared across repositories, so "last good copy" is real.
+	 *
+	 * TTLs are honoured. A store that ignored them proved COOLDOWN and KEEP_FOR were SET
+	 * and never that they EXPIRE — raise COOLDOWN to a week and every test still passed,
+	 * while production would pin both feeds to degraded until someone flushed Redis. The
+	 * ISP suite learned this and wrote down why; this is the same double.
+	 */
+	private function cache(int $now): ICache {
 		$cache = $this->createMock(ICache::class);
-		$cache->method('get')->willReturnCallback(fn (string $key) => $this->store[$key] ?? null);
-		$cache->method('set')->willReturnCallback(function (string $key, $value): bool {
-			$this->store[$key] = $value;
+		$cache->method('get')->willReturnCallback(function (string $key) use ($now) {
+			$e = $this->store[$key] ?? null;
+			if ($e === null) {
+				return null;
+			}
+			if ($e['exp'] !== null && $now >= $e['exp']) {
+				unset($this->store[$key]);
+
+				return null;
+			}
+
+			return $e['v'];
+		});
+		$cache->method('set')->willReturnCallback(function (string $key, $value, $ttl = 0) use ($now): bool {
+			$this->store[$key] = ['v' => $value, 'exp' => $ttl > 0 ? $now + $ttl : null];
 
 			return true;
 		});
