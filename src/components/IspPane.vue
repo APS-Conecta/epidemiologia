@@ -99,9 +99,12 @@
 						@click="kind = category">
 						{{ kindLabel(category) }}
 					</button>
-					<!-- Only when the pane is showing everything. Inside a family the tag
-					     would repeat the heading on every row. -->
-					<span v-if="family === null" class="epi-alert__fam">{{ familiaName(familiaOf(alert.categories[0])) }}</span>
+					<!-- Only when the pane is showing everything: inside a family the tag
+					     would repeat the heading on every row. And only when it ADDS
+					     something — "Dispositivos médicos · Retiro — dispositivo médico ·
+					     Dispositivos médicos" is one row saying the same words twice,
+					     which is what shipped in #64. -->
+					<span v-if="familyTag(alert)" class="epi-alert__fam">{{ familyTag(alert) }}</span>
 				</template>
 			</AlertRow>
 		</ul>
@@ -130,6 +133,7 @@ import FilterBar from './FilterBar.vue'
 import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
+import { paneName } from '../panes.js'
 import { sanitaryAlerts, fold, monthOptions, yearOptions } from '../state.js'
 import { categoriesIn, familiaName, familiaOf } from '../familias.js'
 
@@ -185,11 +189,34 @@ const kind = ref(null)
 
 /** The heading, and the rail's own "all" chip, both named after the navigation row. */
 const familyName = computed(() =>
-	props.family === null ? t('epidemiologia', 'Todas') : familiaName(props.family))
+	props.family === null ? paneName('isp') : familiaName(props.family))
 const railAllLabel = computed(() =>
 	props.family === null
 		? t('epidemiologia', 'Todas las categorías')
 		: t('epidemiologia', 'Todas las de {familia}', { familia: familiaName(props.family) }))
+
+/**
+ * The family to tag a row with, or '' to tag nothing.
+ *
+ * Empty inside a family (the heading already says it) and empty when one of the
+ * row's own category buttons already carries the same words — an alert filed under
+ * "Dispositivos médicos" does not need a tag reading "Dispositivos médicos".
+ *
+ * @param {object} alert - one alert, with its categories
+ * @return {string} the family label, or ''
+ */
+function familyTag(alert) {
+	if (props.family !== null) {
+		return ''
+	}
+	const cats = alert.categories ?? []
+	if (!cats.length) {
+		return ''
+	}
+	const label = familiaName(familiaOf(cats[0]))
+
+	return cats.some((c) => kindLabel(c) === label) ? '' : label
+}
 
 /** Categories carrying alerts in the shown family, busiest first, counted from the data. */
 const rail = computed(() => categoriesIn(sanitaryAlerts.items, props.family))

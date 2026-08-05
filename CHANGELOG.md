@@ -43,6 +43,16 @@ in #54.
 
 ### Fixed
 
+- **The ISP pane had three names for one destination.** Inicio said "Alertas del ISP", the navigation
+  row and the heading said "Todas". `panes.js` exists to stop exactly that, and `layout.mjs` check 5
+  passed throughout — "Todas" *was* a nav name, so the check held while the property it stands for
+  did not. On a phone the heading is the only name shown, so it named nothing. The row and the
+  heading read `paneName('isp')` again.
+- **`Alertas vigentes` blamed the reader for an outage**, telling them nothing matched their search
+  when MINSAL had simply returned nothing and they had not searched. It now distinguishes the two
+  emptinesses, as the ISP pane always did.
+- **A row could say the same words twice** — "Dispositivos médicos · Retiro — dispositivo médico ·
+  *Dispositivos médicos*". The family tag now appears only when it adds something.
 - **A MINSAL narrowing was answered with confident nonsense.** `page()` filtered on `categories` and
   `at`, which only ISP items carry, so `category` matched nothing and returned an empty archive while
   `olderThan` compared against a defaulted `0` and returned everything — both labelled as if filtered.

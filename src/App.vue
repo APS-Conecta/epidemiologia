@@ -203,7 +203,13 @@ const groups = [
  * by resemblance.
  */
 const ispEntries = [
-	{ id: null, name: t('epidemiologia', 'Todas'), icon: markRaw(Pill) },
+	// The pane's own name, from panes.js — NOT "Todas". #64 named this row for what
+	// it filters to instead of what it opens, and the app immediately had three names
+	// for one destination: Inicio said "Alertas del ISP", the row and the heading said
+	// "Todas". layout.mjs check 5 passed throughout, because "Todas" WAS a nav name —
+	// the check held while the property it stands for did not. On a phone the heading
+	// is the only name shown, so it named nothing at all.
+	{ id: null, name: paneName('isp'), icon: markRaw(Pill) },
 	...FAMILIAS.map((f) => ({ id: f.id, name: f.name(), icon: markRaw(Pill) })),
 ]
 

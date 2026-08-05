@@ -43,9 +43,18 @@
 			</AlertRow>
 		</ul>
 
+		<!--
+			Two different emptinesses, and telling them apart is the whole point. With
+			MINSAL degraded or genuinely empty this pane said "nothing matched your
+			search" to a reader who had not searched — blaming them for an outage.
+			IspPane branched on this from the start; this one did not, which is what
+			two panes drifting apart looks like.
+		-->
 		<NcEmptyContent v-else
-			:name="t('epidemiologia', 'Sin coincidencias')"
-			:description="t('epidemiologia', 'Ninguna alerta vigente coincide con esa búsqueda.')">
+			:name="alerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
+			:description="alerts.items.length
+				? t('epidemiologia', 'Ninguna alerta vigente coincide con esa búsqueda.')
+				: t('epidemiologia', 'MINSAL no trae alertas vigentes en este momento.')">
 			<template #icon>
 				<Magnify :size="20" />
 			</template>
