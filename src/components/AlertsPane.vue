@@ -54,7 +54,7 @@
 			:name="alerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
 			:description="alerts.items.length
 				? t('epidemiologia', 'Ninguna alerta vigente coincide con esa búsqueda.')
-				: t('epidemiologia', 'MINSAL no trae alertas vigentes en este momento.')">
+				: emptyText('MINSAL')">
 			<template #icon>
 				<Magnify :size="20" />
 			</template>
@@ -75,7 +75,7 @@ import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, fold, mes, monthOptions, yearOptions } from '../state.js'
+import { alerts, emptyText, fold, mes, monthOptions, yearOptions } from '../state.js'
 
 const query = ref('')
 const year = ref(null)

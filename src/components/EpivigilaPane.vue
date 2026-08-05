@@ -18,7 +18,8 @@
 		</NcNoteCard>
 
 		<div class="epi-links">
-			<NcButton variant="primary" href="https://epivigila.minsal.cl/" target="_blank">
+			<NcButton variant="primary" href="https://epivigila.minsal.cl/" target="_blank"
+				rel="noopener noreferrer">
 				<template #icon>
 					<OpenInNew :size="20" />
 				</template>
@@ -26,7 +27,8 @@
 			</NcButton>
 			<NcButton variant="secondary"
 				href="https://epi.minsal.cl/formularios-de-notificacion-obligatoria/"
-				target="_blank">
+				target="_blank"
+				rel="noopener noreferrer">
 				<template #icon>
 					<FilePdfBox :size="20" />
 				</template>

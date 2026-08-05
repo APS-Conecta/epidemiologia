@@ -126,7 +126,7 @@
 			:name="sanitaryAlerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
 			:description="sanitaryAlerts.items.length
 				? t('epidemiologia', 'Ninguna alerta del ISP coincide con esos filtros.')
-				: t('epidemiologia', 'Sus categorías no traen alertas en este momento.')">
+				: emptyText(t('epidemiologia', 'El ISP'))">
 			<template #icon>
 				<Magnify :size="20" />
 			</template>
@@ -147,7 +147,7 @@ import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { fecha, sanitaryAlerts, fold, monthOptions, yearOptions } from '../state.js'
+import { emptyText, fecha, fold, monthOptions, sanitaryAlerts, yearOptions } from '../state.js'
 import { categoriesIn, familiaName, familiaOf } from '../familias.js'
 
 /**
