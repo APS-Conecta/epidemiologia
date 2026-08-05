@@ -16,7 +16,10 @@
 -->
 <template>
 	<section>
-		<PaneHeader :title="paneName('isp')" />
+		<!-- The heading is the navigation row that opened it, verbatim. layout.mjs
+		     asserts that and it is not a formality: a reader used to tap one wording
+		     and land on another, which is why panes.js exists at all. -->
+		<PaneHeader :title="familyName" />
 
 		<DegradedNotice v-if="sanitaryAlerts.degraded"
 			source="el ISP"
@@ -26,16 +29,6 @@
 			:count="countLabel"
 			:fetched-at="sanitaryAlerts.fetched_at"
 			@update:query="query = $event">
-			<FilterMenu :label="t('epidemiologia', 'Tipo')"
-				radio-name="isp-kind"
-				:any-label="t('epidemiologia', 'Todos los tipos')"
-				:groups="kindGroups"
-				:model-value="kind"
-				@update:model-value="kind = $event">
-				<template #icon>
-					<TagOutline :size="18" />
-				</template>
-			</FilterMenu>
 			<FilterMenu :label="t('epidemiologia', 'Año')"
 				radio-name="isp-year"
 				:any-label="t('epidemiologia', 'Todos los años')"
@@ -57,6 +50,29 @@
 				</template>
 			</FilterMenu>
 		</FilterBar>
+
+		<!--
+			The rail, and it FILTERS rather than files. An alert belongs to 1,76
+			categories on average and 43 % of memberships are duplicates, so giving each
+			one a single home would assert a classification the ISP never published.
+			Chips toggle: clicking the active one clears it, so the way out is the way in.
+			Counts come from the loaded data, so a category the ISP stops publishing
+			leaves the rail on its own rather than sitting at zero.
+		-->
+		<div v-if="rail.length > 1" class="epi-rail" role="group" :aria-label="t('epidemiologia', 'Categorías')">
+			<button class="epi-rail__chip"
+				:class="{ 'epi-rail__chip--on': kind === null }"
+				@click="kind = null">
+				{{ railAllLabel }}
+			</button>
+			<button v-for="c in rail"
+				:key="c.slug"
+				class="epi-rail__chip"
+				:class="{ 'epi-rail__chip--on': kind === c.slug }"
+				@click="kind = kind === c.slug ? null : c.slug">
+				{{ kindLabel(c.slug) }} ({{ c.count }})
+			</button>
+		</div>
 
 		<ul v-if="shown.length" class="epi-list">
 			<AlertRow v-for="alert in shown"
@@ -83,6 +99,9 @@
 						@click="kind = category">
 						{{ kindLabel(category) }}
 					</button>
+					<!-- Only when the pane is showing everything. Inside a family the tag
+					     would repeat the heading on every row. -->
+					<span v-if="family === null" class="epi-alert__fam">{{ familiaName(familiaOf(alert.categories[0])) }}</span>
 				</template>
 			</AlertRow>
 		</ul>
@@ -106,14 +125,13 @@ import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
 import CalendarRange from 'vue-material-design-icons/CalendarRange.vue'
-import TagOutline from 'vue-material-design-icons/TagOutline.vue'
 import AlertRow from './AlertRow.vue'
 import FilterBar from './FilterBar.vue'
 import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
-import { paneName } from '../panes.js'
-import { sanitaryAlerts, fold, monthOptions, tally, yearOptions } from '../state.js'
+import { sanitaryAlerts, fold, monthOptions, yearOptions } from '../state.js'
+import { categoriesIn, familiaName, familiaOf } from '../familias.js'
 
 /**
  * The ISP's category slugs, in Spanish and with their accents.
@@ -157,8 +175,30 @@ const prettify = (slug) => {
 
 const kindLabel = (slug) => KIND_LABELS[slug] ?? prettify(slug)
 
+const props = defineProps({
+	/** Which ISP family to show; null is the whole archive. Set by the navigation. */
+	family: { type: String, default: null },
+})
+
 const query = ref('')
 const kind = ref(null)
+
+/** The heading, and the rail's own "all" chip, both named after the navigation row. */
+const familyName = computed(() =>
+	props.family === null ? t('epidemiologia', 'Todas') : familiaName(props.family))
+const railAllLabel = computed(() =>
+	props.family === null
+		? t('epidemiologia', 'Todas las categorías')
+		: t('epidemiologia', 'Todas las de {familia}', { familia: familiaName(props.family) }))
+
+/** Categories carrying alerts in the shown family, busiest first, counted from the data. */
+const rail = computed(() => categoriesIn(sanitaryAlerts.items, props.family))
+
+// Switching family must clear a chip from the previous one, or the pane shows an
+// empty list filtered by a category the rail no longer offers.
+watch(() => props.family, () => {
+	kind.value = null
+})
 const year = ref(null)
 const month = ref(null)
 
@@ -177,41 +217,12 @@ const month = ref(null)
  * not publish — the same thing PLAN.md forbids for MINSAL disease tags, and for
  * the same reason: a clinician would read our guess as the ISP's.
  */
-const SIN_FAMILIA = t('epidemiologia', 'Sin familia declarada por el ISP')
-
-function familia(slug) {
-	if (/-dp$|dispositivo/.test(slug)) {
-		return t('epidemiologia', 'Dispositivos médicos')
-	}
-	if (slug.includes('cosmet')) {
-		return t('epidemiologia', 'Cosméticos')
-	}
-	if (slug.includes('desinfectante')) {
-		return t('epidemiologia', 'Desinfectantes')
-	}
-	if (/anamed|farmacovigilancia|retiro-de-mercado|producto-sin-registro|falsificado-producto/.test(slug)) {
-		return t('epidemiologia', 'Medicamentos')
-	}
-	return SIN_FAMILIA
-}
-
-/** Categories present in the data, grouped by family, undeclared ones last. */
-const kindGroups = computed(() => {
-	const counts = tally(sanitaryAlerts.items.flatMap((a) => a.categories ?? []), (c) => c)
-	const byFamily = new Map()
-	for (const { id, count } of counts) {
-		const f = familia(id)
-		if (!byFamily.has(f)) {
-			byFamily.set(f, [])
-		}
-		byFamily.get(f).push({ id, count, label: kindLabel(id) })
-	}
-
-	return [...byFamily.entries()]
-		.map(([name, options]) => ({ name, options: options.sort((a, b) => b.count - a.count) }))
-		.sort((a, b) => (a.name === SIN_FAMILIA) - (b.name === SIN_FAMILIA)
-			|| b.options.length - a.options.length)
-})
+/*
+ * `familia()` and `kindGroups` used to live here, duplicating what the navigation
+ * needed too. Both now read src/familias.js, which is the whole point of #52: a
+ * filter and the menu that offers it cannot drift into disagreeing about what a
+ * family contains if there is only one of them.
+ */
 
 // The ISP stores a full date where MINSAL stores year and month, so only these two
 // readers differ; the menus themselves are built in state.js by the same code that
@@ -244,6 +255,10 @@ const shown = computed(() => {
 	const needle = fold(query.value.trim())
 
 	return folded.filter((a) => (!needle || a._fold.includes(needle))
+		// The family narrows before anything else. An alert is in it if ANY of its
+		// categories is — memberships are not exclusive, and requiring all of them
+		// would hide the 43 % of alerts that straddle two.
+		&& (props.family === null || (a.categories ?? []).some((c) => familiaOf(c) === props.family))
 		&& (!kind.value || (a.categories ?? []).includes(kind.value))
 		&& (!year.value || (a.date ?? '').startsWith(year.value))
 		&& (!month.value || (a.date ?? '').startsWith(month.value)))
@@ -321,6 +336,44 @@ const countLabel = computed(() => {
    where re-reading something already read is the point. Not a colour on its own —
    --color-primary-element on --color-primary-element-text is the pair the theme
    guarantees contrast for, and a tinted word on the row background is not. */
+/* Horizontal, scrollable, and never wrapping into a wall: at 360px a family's
+   categories are more than fit, and a rail that wraps to four rows pushes the
+   alerts themselves off the first screen. */
+.epi-rail {
+	display: flex;
+	gap: var(--default-grid-baseline);
+	overflow-x: auto;
+	padding: var(--default-grid-baseline) 0;
+	scrollbar-width: thin;
+}
+
+.epi-rail__chip {
+	flex: 0 0 auto;
+	background-color: var(--color-background-hover);
+	color: var(--color-main-text);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-pill, 100px);
+	padding: 0 calc(var(--default-grid-baseline) * 2);
+	height: 34px;
+	font-size: var(--font-size-small);
+	white-space: nowrap;
+}
+
+.epi-rail__chip--on {
+	background-color: var(--color-primary-element);
+	color: var(--color-primary-element-text);
+	border-color: var(--color-primary-element);
+}
+
+/* The family an alert's first category belongs to, shown only in Todas. Quieter
+   than the category buttons beside it: it is context, not a control. */
+.epi-alert__fam {
+	color: var(--color-text-maxcontrast);
+	font-size: var(--font-size-small);
+	font-style: italic;
+	white-space: nowrap;
+}
+
 .epi-alert__updated {
 	background-color: var(--color-primary-element);
 	color: var(--color-primary-element-text);
