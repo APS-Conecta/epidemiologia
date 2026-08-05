@@ -47,6 +47,10 @@ in #54.
 
 ### Removed
 
+- Nothing, from the freno and the backfill: [ADR-0010](docs/adr/0010-the-freno-and-the-backfill-stay-inside.md)
+  records why an architecture review's proposal to extract them was rejected — the deletion test
+  fails for both, and the review's sharpest claim (that `probe()` starves the backfill budget) was
+  simply wrong, since the budget is per call.
 - 1.072 lines of prose (#54): a stale 401-line plan doc, a 74-line REM glossary for data this app
   never fetches, 158 lines of agent-skill boilerplate, and a CHANGELOG that had become a design diary.
 
