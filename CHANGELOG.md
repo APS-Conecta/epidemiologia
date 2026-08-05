@@ -12,6 +12,15 @@ in #54.
 
 ## [Unreleased]
 
+### Fixed
+
+- The ISP archive could stop accreting for good: a flush left the cursor claiming a walk whose data
+  was gone, one unreadable 200 retired a category permanently, and a failing backfill page braked
+  the hourly feed (#74).
+- The backfill cursor moved into its category's own cache entry, so it cannot outlive the archive it
+  describes. `IspRepository` no longer takes `IAppConfig`, and the old `backfill-*` app config keys
+  are orphans that can be deleted.
+
 ## [0.5.0] — 2026-08-05
 
 ### Added

@@ -7,7 +7,6 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
@@ -99,7 +98,6 @@ class IspRepository {
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
 		ICacheFactory $cacheFactory,
-		private IAppConfig $config,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 	}
@@ -167,6 +165,7 @@ class IspRepository {
 					'etag' => $stored[$term]['etag'] ?? '',
 					'modified' => $stored[$term]['modified'] ?? '',
 					'fetched_at' => $this->time->getTime(),
+					'backfill' => $stored[$term]['backfill'] ?? 2,
 				], self::KEEP_FOR);
 				continue;
 			}
@@ -238,6 +237,7 @@ class IspRepository {
 				'etag' => $answer['etag'],
 				'modified' => $answer['modified'],
 				'fetched_at' => $now,
+				'backfill' => $stored[$term]['backfill'] ?? 2,
 			], self::KEEP_FOR);
 		}
 
@@ -258,8 +258,12 @@ class IspRepository {
 	 * cannot set degraded, and does not touch freshness — which is why it runs after the
 	 * decisions above are made and its result is never consulted by them.
 	 *
-	 * The cursor lives in IAppConfig, NOT the cache: a Redis flush would otherwise
-	 * silently restart every walk at page 2 and pay the whole archive again.
+	 * The cursor lives IN the category's own cache entry, beside the alerts it is a claim
+	 * about. It used to live in IAppConfig, to stop a Redis flush restarting every walk
+	 * and paying the archive again — which had it exactly backwards: a flush takes the
+	 * ARCHIVE, and a bookmark that survives the book says "already read" about ~1.180
+	 * alerts nothing will ever fetch again. Re-paying is not the cost of a flush, it is
+	 * the only cure for one. Together they cannot disagree; apart, they silently did.
 	 *
 	 * @param array<string, array> $stored
 	 */
@@ -278,7 +282,9 @@ class IspRepository {
 		for ($i = 0; $i < $count && $budget > 0; $i++) {
 			$term = self::TERMS[($offset + $i) % $count];
 
-			$page = (int)$this->config->getAppValueString('backfill-' . $term, '2');
+			$entry = $stored[$term] ?? [];
+			$page = (int)($entry['backfill'] ?? 2);
+
 			if ($page === 0 || $this->braked($term)) {
 				continue;   // exhausted, or already backing off — never spend budget on it
 			}
@@ -286,21 +292,27 @@ class IspRepository {
 
 			$items = $this->page($term, $page);
 
-			// Unreachable: the cursor does NOT advance, so the page is retried next run
-			// rather than skipped forever. Same freno as the hourly pass.
+			/*
+			 * Could not read it: the cursor does NOT advance, so the page is retried next
+			 * run rather than skipped forever.
+			 *
+			 * No brake. The freno gates the HOURLY fetch, and a deep page is the expensive
+			 * uncached query while the front feed is the cached one — so braking here let
+			 * the archive walk silence a healthy category for 2 h, then 4, then 24. That
+			 * is the ordering this method's docblock promises it does not break, and
+			 * `continue` alone already leaves the page to be retried.
+			 */
 			if ($items === null) {
-				$this->brake($term);
 				continue;
 			}
 
 			// Past the end. Retire the cursor: this category is fully walked and must
 			// never be re-walked, which is the difference between a backfill and a loop.
 			if ($items === []) {
-				$this->config->setAppValueString('backfill-' . $term, '0');
+				$this->cache->set($this->key($term), [...$entry, 'backfill' => 0], self::KEEP_FOR);
 				continue;
 			}
 
-			$entry = $stored[$term] ?? [];
 			$this->cache->set($this->key($term), [
 				'items' => $this->union($entry['items'] ?? [], $items),
 				'etag' => $entry['etag'] ?? '',
@@ -309,9 +321,8 @@ class IspRepository {
 				// hear from this feed about NEW alerts". A backfill page is old news, and
 				// stamping it would make a stale category look fresh.
 				'fetched_at' => $entry['fetched_at'] ?? $this->time->getTime(),
+				'backfill' => $page + 1,
 			], self::KEEP_FOR);
-
-			$this->config->setAppValueString('backfill-' . $term, (string)($page + 1));
 		}
 	}
 
@@ -319,7 +330,7 @@ class IspRepository {
 	 * One older page of a category. Unconditional — every page is different bytes, so
 	 * validators would only ever miss.
 	 *
-	 * @return ?list<array<string, string>> null unreachable · [] past the last page
+	 * @return ?list<array<string, string>> null could not read it · [] past the last page
 	 */
 	private function page(string $term, int $page): ?array {
 		try {
@@ -341,7 +352,16 @@ class IspRepository {
 			return null;
 		}
 
-		return $this->parse((string)$response->getBody());
+		/*
+		 * Empty means "could not read it", NOT "past the end". WordPress 404s past the
+		 * last page and that is caught above; a 200 parsing to nothing is the ISP's WAF,
+		 * a soft-404 theme page, a truncated body or a redirect to HTML — all of which
+		 * arrive here as []. refresh() has guarded exactly this since the class was
+		 * written. This path had not, so one WAF answer retired a category permanently.
+		 */
+		$items = $this->parse((string)$response->getBody());
+
+		return $items === [] ? null : $items;
 	}
 
 	/** Cheap liveness signal for the daily probe. False means a human has to look. */
