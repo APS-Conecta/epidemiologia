@@ -192,6 +192,14 @@ const inspectMenus = async (page, paneIndex) => {
 		return panes[i].querySelectorAll('.epi-bar .action-item button').length
 	}, paneIndex)
 
+	// No menus is a FAILURE, not a pass. This check pointed at pane 4 for months —
+	// Tablero, which has no toolbar — so the loop below never ran and the check printed
+	// ok about the pane it never opened. A check that reports success on finding nothing
+	// to check is worse than no check: it occupies the slot.
+	if (menus === 0) {
+		complaints.push('this pane has no filter menus at all — wrong pane index?')
+	}
+
 	for (let m = 0; m < menus; m++) {
 		await page.evaluate(({ i, m: which }) => {
 			const pane = [...document.querySelectorAll('.epi > section')][i]
@@ -308,7 +316,7 @@ for (const { w, h } of VIEWPORTS) {
 
 	// The two panes that carry a toolbar. Done after INSPECT because it leaves the
 	// panes' display attributes set, and this needs to set them again anyway.
-	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [4, 'Alertas del ISP']]) {
+	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [2, 'Alertas del ISP']]) {
 		const complaints = await inspectMenus(page, paneIndex)
 		if (complaints.length === 0) {
 			pass(`${name.padEnd(26)} recuentos en los filtros`)
