@@ -314,6 +314,52 @@ for (const { w, h } of VIEWPORTS) {
 		}
 	}
 
+	// Check 8. The only check that CLICKS, and the only one that could have caught
+	// this: opening a family and then following Inicio's "Ver las N alertas del ISP"
+	// landed on a pane headed with the family's name, not the one the link said. Check
+	// 5 reads the heading once, in the app's initial state, and never navigates — so a
+	// destination that lies only after you have been somewhere else is invisible to it.
+	//
+	// Done on a fresh load, because everything above leaves display attributes set.
+	await page.goto(`${baseUrl}/apps/epidemiologia/`, { waitUntil: 'load' })
+	await page.waitForFunction(() => document.querySelectorAll('.epi > section').length === 6, null, { timeout: 20000 })
+
+	const landed = await page.evaluate(async () => {
+		const nav = [...document.querySelectorAll('.app-navigation-entry__name')]
+		const click = (el) => el.closest('a, button')?.click()
+		const settle = () => new Promise((r) => setTimeout(r, 150))
+
+		// A family, then Inicio, then the card's own link back to the ISP.
+		const family = nav.find((e) => e.textContent.trim() === 'Cosméticos')
+		const inicio = nav.find((e) => e.textContent.trim() === 'Inicio')
+		if (!family || !inicio) {
+			return { error: 'navigation has no Cosméticos or no Inicio row' }
+		}
+		click(family); await settle()
+		click(inicio); await settle()
+
+		const more = [...document.querySelectorAll('.epi-card__more')]
+			.find((b) => /ISP/.test(b.textContent))
+		if (!more) {
+			return { error: 'Inicio has no link back to the ISP' }
+		}
+		more.click(); await settle()
+
+		const pane = [...document.querySelectorAll('.epi > section')]
+			.find((p) => getComputedStyle(p).display !== 'none')
+		return { heading: pane?.querySelector('h2, h1')?.textContent.trim() ?? '' }
+	})
+
+	if (landed.error) {
+		fail(`Inicio — ${landed.error}`)
+	} else if (landed.heading !== 'Alertas del ISP') {
+		fail('Inicio — el enlace lleva a otro sitio del que nombra', [
+			`"Ver las … alertas del ISP" landed on a pane headed "${landed.heading}"`,
+		])
+	} else {
+		pass('Inicio'.padEnd(26) + ' el enlace lleva a donde dice')
+	}
+
 	// The two panes that carry a toolbar. Done after INSPECT because it leaves the
 	// panes' display attributes set, and this needs to set them again anyway.
 	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [2, 'Alertas del ISP']]) {
