@@ -173,6 +173,52 @@ class IspRepositoryTest extends TestCase {
 		self::assertNotEmpty($alerts['items']);
 	}
 
+	// --- freno ---------------------------------------------------------------
+
+	/**
+	 * The point of the freno: a category that failed is not asked again on the very
+	 * next hourly refresh. Without this, one dead category is 24 requests an hour
+	 * forever, which is how this app walked into a WAF block (#45).
+	 */
+	public function testAFailedCategoryIsNotRequestedOnTheNextRefresh(): void {
+		$this->repository(offline: ['anamed'])->get();
+
+		$this->requested = [];
+		$this->repository(now: self::NOW + 3601)->get();
+
+		self::assertNotContains('anamed', $this->requested);
+		self::assertContains('retiro-de-mercado', $this->requested, 'only the failing one is braked');
+	}
+
+	public function testAnsweringClearsTheFreno(): void {
+		$this->repository(offline: ['anamed'])->get();
+		$this->repository(now: self::NOW + 3601 + 7200)->get();   // freno expired, anamed answers
+
+		$this->requested = [];
+		$this->repository(now: self::NOW + 3601 + 7200 + 3601)->get();
+
+		self::assertContains('anamed', $this->requested, 'a success must reset the count, not halve it');
+	}
+
+	/**
+	 * CONTEXT.md, Freno: a braked request is not an unreachable one. If every
+	 * category is braked the app has learned nothing this round — that is not an
+	 * outage, and reporting one would make the banner lie.
+	 */
+	public function testEveryCategoryBrakedIsNotAnOutage(): void {
+		$this->repository()->get();                                   // a good archive first
+		$this->repository(offlineAll: true, now: self::NOW + 3601)->get();  // all fail -> all braked
+
+		// Past the 300s outage cooldown that get() short-circuits on, still inside the
+		// 2h frenos. Testing the freno means reaching refresh() at all.
+		$this->requested = [];
+		$alerts = $this->repository(now: self::NOW + 3601 + 400)->get();
+
+		self::assertSame([], $this->requested, 'every category should be braked');
+		self::assertFalse($alerts['degraded']);
+		self::assertNotEmpty($alerts['items'], 'the archive still stands');
+	}
+
 	// --- retention -----------------------------------------------------------
 
 	/**
@@ -233,7 +279,8 @@ class IspRepositoryTest extends TestCase {
 	public function testACacheEntryInTheOldShapeIsIgnoredRatherThanMisread(): void {
 		// The 0.4.x shape: no 'items', and a stamp from long ago. Both halves matter —
 		// the stamp is what a half-read entry would contribute to the archive's age.
-		$this->store['feed-' . IspRepository::ALERTS . '-anamed'] = ['reached' => 24, 'fetched_at' => self::NOW - 999999];
+		$this->store['feed-' . IspRepository::ALERTS . '-anamed'] =
+			['v' => ['reached' => 24, 'fetched_at' => self::NOW - 999999], 'exp' => null];
 
 		// anamed stays unreachable, so the malformed entry is not simply overwritten by
 		// the refresh — which is the only situation in which a half-read one can be seen.
@@ -597,16 +644,40 @@ class IspRepositoryTest extends TestCase {
 		$time->method('getTime')->willReturn($now ?? self::NOW);
 
 		$cacheFactory = $this->createMock(ICacheFactory::class);
-		$cacheFactory->method('createDistributed')->willReturn($this->cache());
+		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
 		return new IspRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
 	}
 
-	private function cache(): ICache {
+	/**
+	 * Honours TTL and remove(), because the code under test relies on both: the outage
+	 * cooldown and the freno are expressed AS expiry, and a success clears a freno by
+	 * removing its key. A store that ignored them let a test pass for the wrong reason
+	 * — testAnsweringClearsTheFreno went green against a freno that was never cleared,
+	 * only outlived. Entries carry an absolute expiry, since $now is per-repository.
+	 */
+	private function cache(int $now): ICache {
 		$cache = $this->createMock(ICache::class);
-		$cache->method('get')->willReturnCallback(fn (string $key) => $this->store[$key] ?? null);
-		$cache->method('set')->willReturnCallback(function (string $key, $value): bool {
-			$this->store[$key] = $value;
+		$cache->method('get')->willReturnCallback(function (string $key) use ($now) {
+			$e = $this->store[$key] ?? null;
+			if ($e === null) {
+				return null;
+			}
+			if ($e['exp'] !== null && $now >= $e['exp']) {
+				unset($this->store[$key]);
+
+				return null;
+			}
+
+			return $e['v'];
+		});
+		$cache->method('set')->willReturnCallback(function (string $key, $value, $ttl = 0) use ($now): bool {
+			$this->store[$key] = ['v' => $value, 'exp' => $ttl > 0 ? $now + $ttl : null];
+
+			return true;
+		});
+		$cache->method('remove')->willReturnCallback(function (string $key): bool {
+			unset($this->store[$key]);
 
 			return true;
 		});
