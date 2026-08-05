@@ -124,13 +124,33 @@ class IspRepository {
 		$fetched = [];
 		$reached = 0;
 
+		$confirmed = 0;
+
 		foreach (self::TERMS as $term) {
-			$body = $this->fetch($term);
-			if ($body === null) {
+			$answer = $this->fetch($term, $stored[$term] ?? null);
+			if ($answer === null) {
 				continue;
 			}
 			$reached++;
-			$fetched[$term] = $this->parse($body);
+
+			// Unchanged: the copy we hold is current, so stamp it fresh and move on.
+			// Nothing to parse, and NOT an empty answer — see the guard below.
+			if ($answer['unchanged']) {
+				$confirmed++;
+				$this->cache->set($this->key($term), [
+					'items' => $stored[$term]['items'] ?? [],
+					'etag' => $stored[$term]['etag'] ?? '',
+					'modified' => $stored[$term]['modified'] ?? '',
+					'fetched_at' => $this->time->getTime(),
+				], self::KEEP_FOR);
+				continue;
+			}
+
+			$fetched[$term] = [
+				'items' => $this->parse($answer['body']),
+				'etag' => $answer['etag'],
+				'modified' => $answer['modified'],
+			];
 		}
 
 		/*
@@ -159,8 +179,8 @@ class IspRepository {
 		 * Only when a good copy exists: a cold cache with genuinely empty feeds is still
 		 * a legitimate answer, which is the ISP rule this class exists for.
 		 */
-		$parsedSomething = array_filter($fetched, static fn (array $items): bool => $items !== []);
-		if ($parsedSomething === [] && $this->merge($stored) !== []) {
+		$parsedSomething = array_filter($fetched, static fn (array $f): bool => $f['items'] !== []);
+		if ($confirmed === 0 && $parsedSomething === [] && $this->merge($stored) !== []) {
 			$this->logger->warning('Los {total} feeds del ISP respondieron sin nada que interpretar', [
 				'total' => count(self::TERMS),
 			]);
@@ -181,9 +201,11 @@ class IspRepository {
 		 * good copy stands on its own rather than needing a rule to protect it.
 		 */
 		$now = $this->time->getTime();
-		foreach ($fetched as $term => $items) {
+		foreach ($fetched as $term => $answer) {
 			$this->cache->set($this->key($term), [
-				'items' => $this->union($stored[$term]['items'] ?? [], $items),
+				'items' => $this->union($stored[$term]['items'] ?? [], $answer['items']),
+				'etag' => $answer['etag'],
+				'modified' => $answer['modified'],
 				'fetched_at' => $now,
 			], self::KEEP_FOR);
 		}
@@ -268,12 +290,31 @@ class IspRepository {
 		return $items;
 	}
 
-	/** @return string|null the feed body, or null when this one could not be reached */
-	private function fetch(string $term): ?string {
+	/**
+	 * One feed, asked conditionally once we have seen it before.
+	 *
+	 * Measured 2026-08-04: the host serves both `ETag` and `Last-Modified` and honours
+	 * them, answering `304` with an empty body — 9.708 bytes down to nothing. The app
+	 * used to re-download all 24 every hour, almost all of it identical to what it held.
+	 *
+	 * @param ?array $stored this category's entry, for its validators
+	 * @return ?array{unchanged: bool, body: string, etag: string, modified: string}
+	 *         null when the feed could not be reached at all
+	 */
+	private function fetch(string $term, ?array $stored): ?array {
+		$headers = [];
+		if (($stored['etag'] ?? '') !== '') {
+			$headers['If-None-Match'] = $stored['etag'];
+		}
+		if (($stored['modified'] ?? '') !== '') {
+			$headers['If-Modified-Since'] = $stored['modified'];
+		}
+
 		try {
-			return $this->clients->newClient()->get(sprintf(self::FEED, $term), [
+			$response = $this->clients->newClient()->get(sprintf(self::FEED, $term), [
 				'timeout' => 15,
-			])->getBody();
+				'headers' => $headers,
+			]);
 		} catch (Throwable $e) {
 			// Per-feed failure is not reported: with 24 feeds a single blip would be
 			// noise, and refresh() judges the set. Only reaching none of them is news.
@@ -281,6 +322,13 @@ class IspRepository {
 
 			return null;
 		}
+
+		return [
+			'unchanged' => $response->getStatusCode() === 304,
+			'body' => (string)$response->getBody(),
+			'etag' => $response->getHeader('ETag'),
+			'modified' => $response->getHeader('Last-Modified'),
+		];
 	}
 
 	/**

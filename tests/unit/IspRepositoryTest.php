@@ -38,6 +38,9 @@ class IspRepositoryTest extends TestCase {
 	/** Terms whose feed should throw instead of answering. */
 	private array $offline = [];
 
+	/** @var array<string, array<string, string>> request headers seen, per term */
+	private array $sentHeaders = [];
+
 	/** Every entry holding archive data — one per category since #47. */
 	private function archive(): array {
 		return array_filter(
@@ -51,6 +54,7 @@ class IspRepositoryTest extends TestCase {
 		$this->store = [];
 		$this->requested = [];
 		$this->offline = [];
+		$this->sentHeaders = [];
 	}
 
 	// --- what the ISP actually publishes -------------------------------------
@@ -288,6 +292,72 @@ class IspRepositoryTest extends TestCase {
 		'actualizacion-de-software', 'robo-de-dispositivos-medicos', 'robo-hurto',
 	];
 
+	// --- conditional requests ------------------------------------------------
+
+	/**
+	 * Measured against the live host on 2026-08-04: the feeds serve both validators
+	 * and honour them, answering `304` with an empty body — 9.708 bytes to nothing.
+	 * The app re-downloaded all 24 every hour, almost all of it byte-identical to
+	 * what it already held.
+	 */
+	public function testAsksOnlyForWhatChangedOnceItHasSeenAFeed(): void {
+		$this->repository(validators: ['etag' => '"abc"', 'last-modified' => 'Tue, 04 Aug 2026 16:12:54 GMT'])->get();
+
+		$this->repository(now: self::NOW + 7200)->get();
+
+		$headers = $this->sentHeaders['anamed'];
+		self::assertSame('"abc"', $headers['If-None-Match'] ?? null);
+		self::assertSame('Tue, 04 Aug 2026 16:12:54 GMT', $headers['If-Modified-Since'] ?? null);
+	}
+
+	public function testTheFirstEverRequestForAFeedIsNotConditional(): void {
+		$this->repository()->get();
+
+		$headers = $this->sentHeaders['anamed'];
+		self::assertArrayNotHasKey('If-None-Match', $headers);
+		self::assertArrayNotHasKey('If-Modified-Since', $headers);
+	}
+
+	/** A 304 is "still valid", which is neither an empty feed nor a failure. */
+	public function testAnUnchangedFeedKeepsItsAlertsAndStaysHealthy(): void {
+		$before = $this->repository(validators: ['etag' => '"abc"'])->get();
+		self::assertNotEmpty($before['items']);
+
+		$after = $this->repository(now: self::NOW + 7200, unchanged: ['*'])->get();
+
+		self::assertFalse($after['degraded'], 'every feed answering 304 is the healthy steady state');
+		self::assertSame(
+			array_column($before['items'], 'url'),
+			array_column($after['items'], 'url'),
+			'a 304 lost the alerts it was confirming',
+		);
+	}
+
+	/**
+	 * The interaction that is easy to get wrong: #42's guard degrades when every feed
+	 * answered with something unparseable. A 304 answers with NOTHING, on purpose, and
+	 * must not be counted as unparseable — or the healthy steady state reports an outage.
+	 */
+	public function testEveryFeedAnsweringUnchangedIsNotReadAsAWafPage(): void {
+		$this->repository(validators: ['etag' => '"abc"'])->get();
+
+		$after = $this->repository(now: self::NOW + 7200, unchanged: ['*'])->get();
+
+		self::assertFalse($after['degraded']);
+		self::assertNotEmpty($after['items']);
+	}
+
+	public function testAConfirmedFeedCountsAsFreshSoItIsNotRefetchedForAnotherHour(): void {
+		$this->repository(validators: ['etag' => '"abc"'])->get();
+		$this->repository(now: self::NOW + 7200, unchanged: ['*'])->get();
+		$this->requested = [];
+
+		// A minute later: the 304 confirmed the copy, so nothing is due.
+		$this->repository(now: self::NOW + 7260)->get();
+
+		self::assertSame([], $this->requested, 'a confirmed copy was treated as stale');
+	}
+
 	// --- caching and degradation, same contract as MINSAL --------------------
 
 	public function testAnUnreachableIspServesTheLastGoodCopyFlaggedDegraded(): void {
@@ -482,19 +552,39 @@ class IspRepositoryTest extends TestCase {
 		bool $offlineAll = false,
 		?int $now = null,
 		array $bodies = [],
+		array $validators = [],
+		array $unchanged = [],
 	): IspRepository {
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
-			function (string $url) use ($body, $offline, $offlineAll, $bodies): IResponse {
+			function (string $url, array $options = []) use (
+				$body, $offline, $offlineAll, $bodies, $validators, $unchanged,
+			): IResponse {
 				$term = $this->termOf($url);
 				$this->requested[] = $term;
+				$this->sentHeaders[$term] = $options['headers'] ?? [];
 
 				if ($offlineAll || in_array($term, $offline, true)) {
 					throw new RuntimeException('cURL error 60: SSL certificate problem');
 				}
 
 				$response = $this->createMock(IResponse::class);
+
+				// A 304 carries no body at all — returning one would let a test pass
+				// against code that parsed it anyway.
+				if ($unchanged === ['*'] || in_array($term, $unchanged, true)) {
+					$response->method('getStatusCode')->willReturn(304);
+					$response->method('getBody')->willReturn('');
+					$response->method('getHeader')->willReturn('');
+
+					return $response;
+				}
+
+				$response->method('getStatusCode')->willReturn(200);
 				$response->method('getBody')->willReturn($bodies[$term] ?? $body ?? $this->fixture($term));
+				$response->method('getHeader')->willReturnCallback(
+					static fn (string $h): string => $validators[strtolower($h)] ?? '',
+				);
 
 				return $response;
 			},

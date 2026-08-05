@@ -11,6 +11,17 @@ history they describe is unchanged.
 
 ### Changed
 
+- **The ISP feeds are asked conditionally** (#48). Measured against the live host on 2026-08-04: they
+  serve both `ETag` and `Last-Modified` and honour them, answering **`304` with an empty body**. The
+  app re-downloaded all 24 every hour, almost all of it byte-identical to what it already held —
+  **9.708 bytes to nothing** per unchanged feed. It is still 24 round trips, so the wall-clock gain
+  is smaller than the byte one: measured on the instance, a cold refresh takes 15,9 s and a
+  fully-confirmed one 11,5 s.
+- A `304` is *"still valid"* — neither an empty feed nor a failure. It stamps the copy fresh and is
+  explicitly excluded from the guard added in #42, which would otherwise read the healthy steady
+  state (every feed unchanged) as **every feed answering with something unparseable**, and report an
+  outage that is not happening.
+
 - **The ISP archive is no longer capped, and lives one entry per category** (#47). `KEEP_ITEMS = 60`
   kept the newest 60 across *all* categories, so the busy ones starved the quiet ones: measured live
   on 2026-08-04 the cut landed on 2025-12-12 and **10 of the 24 categories held nothing newer**,
