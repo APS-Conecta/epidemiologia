@@ -15,9 +15,8 @@ repository. It is the unit everything outside a repository counts in — payload
 count, the name a notificación carries. Conflating fuente with institución made an ISP outage report
 itself as MINSAL. The **tablero** and **EPIVIGILA** are *not* fuentes: nothing about them is fetched,
 parsed, cached or capable of going stale — they are links.
-_Avoid_: feed, canal, origen — and **institución as a synonym for fuente**. Naming the institution
-is correct and necessary; a result that does not say which one it came from is the defect this
-distinction prevents.
+_Avoid_: feed, canal, origen — and **institución as a synonym for fuente**. Naming the institution is
+correct; a result that does not say which one it came from is the defect this distinction prevents.
 
 **Sondeo** — the daily check that each fuente can still be read and still parses. It exists to
 **detect**, not to refresh; a warm cache is a side effect. Sole writer of the consecutive-failure
@@ -28,11 +27,11 @@ _Avoid_: sync, actualización, refresco
 **Freno** — how long a repository declines to re-request one thing it fetches, after that thing
 failed. Its grain is **what is requested** — one categoría of the ISP feed, one MINSAL page — finer
 than a fuente: the ISP is one fuente behind 24 requests. Read by nothing outside its own repository,
-and **not** the sondeo's failure count, which is per fuente and written by the sondeo alone. A
-**frenada request is not an unreachable one**: if every request is braked the app has learned
-nothing, which is not an outage — but the *detector* asks through the freno anyway, because reusing
-the reader's rule made the sondeo report a week-long outage as silence (#75). A freno never makes a
-stale fuente look fresh, staleness being measured from the last fetch.
+and **not** the sondeo's failure count, which is per fuente and **written by the sondeo alone**. A **frenada request is not an unreachable one**:
+if every request is braked the app has learned nothing, which is not an outage — but the *detector*
+asks through the freno anyway, because reusing the reader's rule made the sondeo report a week-long
+outage as silence (#75). A freno never makes a stale fuente look fresh, staleness being measured
+from the last fetch.
 _Avoid_: cooldown, backoff, reintento — and **fuente as its grain**
 
 **Alerta vigente** — an oficio MINSAL currently in force, published as a PDF on a curated page.
@@ -59,10 +58,9 @@ _Avoid_: reporte, boletín, informe semanal
 **Semana epidemiológica (SE)** — the numbered week an informe reports on. It does not map to the
 calendar month the PDF is filed under: SE 29 sits in the July folder, SE 24 in June.
 
-**Tablero MINSAL** — the domain term for the Power BI report MINSAL publishes to the web and this
-app embeds; the pane that shows it is named **Tablero ETI e IRAG** by `src/panes.js`, which is
-authoritative for what a reader sees. Always
-current; it has no "latest".
+**Tablero MINSAL** — the domain term for the Power BI report MINSAL publishes to the web and this app
+embeds; the pane is named **Tablero ETI e IRAG** by `src/panes.js`, authoritative for what a reader
+sees. Always current; it has no "latest".
 _Avoid_: **Tablero** unqualified, dashboard, panel — all collide with Nextcloud's own Dashboard
 
 **EPIVIGILA** — MINSAL's credentialed system for notifying Enfermedades de Notificación Obligatoria.
