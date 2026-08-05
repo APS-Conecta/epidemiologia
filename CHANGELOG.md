@@ -14,6 +14,12 @@ in #54.
 
 ### Fixed
 
+- Global search bypassed `present()`, so it shipped the internal revision fingerprint and showed a
+  different day than the pane for the same alert (#78).
+- A stored URL that is not `https://` no longer leaves the repository. The scheme guard was
+  ingest-only, on a store that never evicts (#78).
+- A narrowing MINSAL cannot express is refused while the fuente is empty too. The guard read the
+  keys off `items[0]`, so during an outage it answered 200 with an empty list instead of 400 (#78).
 - One ISP walk at a time. Every stale page load used to start its own 24-feed fan-out at 15 s a
   feed, holding a worker for minutes; eight tabs exhausted the PHP-FPM pool for the whole instance.
   A cold cache still fetches, because "no alerts" is not an answer we may invent (#76).

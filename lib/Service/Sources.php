@@ -44,6 +44,15 @@ class Sources {
 	public const ALL = [self::ALERTS, self::REPORTS, self::SANITARY_ALERTS];
 
 	/**
+	 * What each fuente can be narrowed by. Absent means "nothing" — MINSAL publishes a
+	 * year and a month, so neither a category nor a cursor means anything to it.
+	 *
+	 * A constant and not a sample of the data: see page(). Adding a narrowing to a fuente
+	 * is a deliberate act, and this is the one line it takes.
+	 */
+	private const NARROWABLE = [self::SANITARY_ALERTS => ['categories', 'at']];
+
+	/**
 	 * The two that carry alerts somebody would search for by subject. An informe
 	 * is a weekly PDF identified by its semana epidemiológica, so matching
 	 * "sarampión" against its title finds nothing a reader wanted.
@@ -99,16 +108,22 @@ class Sources {
 	public function page(string $id, ?string $category = null, ?int $olderThan = null): ?array {
 		$source = $this->get($id);
 
-		// Judged on the data, not on a list of ids: a fuente that grows an `at` later
-		// starts being narrowable without anyone remembering to update a constant.
-		$first = $source['items'][0] ?? null;
-		if ($first !== null) {
-			if ($category !== null && !array_key_exists('categories', $first)) {
-				return null;
-			}
-			if ($olderThan !== null && !array_key_exists('at', $first)) {
-				return null;
-			}
+		/*
+		 * Judged on the FUENTE, not on a sample of its contents.
+		 *
+		 * This used to read the keys off `items[0]`, so that a fuente growing an `at`
+		 * later would start being narrowable with no constant to remember. The cost was
+		 * that the guard disappeared exactly when there was nothing to sample: during a
+		 * MINSAL outage the same unanswerable narrowing that gets 400 on a good day came
+		 * back 200 with an empty list. What a fuente can express is a fact about the
+		 * fuente, and an empty one has not stopped being MINSAL.
+		 */
+		$narrowable = self::NARROWABLE[$id] ?? [];
+		if ($category !== null && !in_array('categories', $narrowable, true)) {
+			return null;
+		}
+		if ($olderThan !== null && !in_array('at', $narrowable, true)) {
+			return null;
 		}
 
 		$source['items'] = array_values(array_filter(
