@@ -39,6 +39,23 @@ export function fold(text) {
 }
 
 /**
+ * A day, written the way a person reads one.
+ *
+ * Takes the ISO day the repository already derived in the PUBLISHER's zone, and never
+ * a timestamp: rendering `at` in the browser put the ISP pane in the reader's zone
+ * while its own Año and Mes menus filtered on this ISO day. An alert published
+ * 2026-07-31 21:30 in Santiago then showed "1 de agosto" and filed under *julio*, so
+ * filtering to agosto hid the row that said agosto.
+ *
+ * `T00:00:00` makes it local midnight, so no offset can move the day the string names.
+ */
+export function fecha(iso) {
+	return /^\d{4}-\d{2}-\d{2}$/.test(iso ?? '')
+		? new Intl.DateTimeFormat(getCanonicalLocale(), { dateStyle: 'long' }).format(new Date(iso + 'T00:00:00'))
+		: ''
+}
+
+/**
  * A month, written the way a person reads one.
  *
  * MINSAL publishes no day: the month comes from the upload path, and PLAN.md is

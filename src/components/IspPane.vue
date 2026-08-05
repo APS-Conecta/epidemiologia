@@ -80,13 +80,13 @@
 				:title="alert.title"
 				:url="alert.url">
 				<template #meta>
-					<NcDateTime class="epi-alert__date" :timestamp="alert.at * 1000" :relative-time="false" :format="{ dateStyle: 'long' }" />
+					<span class="epi-alert__date">{{ fecha(alert.date) }}</span>
 					<!-- The ISP edits an alert in place to add affected lots, and those
 					     lots are the part that changes what a clinician does. Beside the
 					     publication date, not replacing it: the alert is still from its
 					     original day, it just says more now. -->
 					<span v-if="alert.updated" class="epi-alert__updated">
-						{{ t('epidemiologia', 'actualizada {fecha}', { fecha: alert.updated }) }}
+						{{ t('epidemiologia', 'actualizada {dia}', { dia: fecha(alert.updated) }) }}
 					</span>
 					<!-- Every category that carried it, not just the first: an alert
 					     genuinely belongs to all of them. Rendered as text rather than
@@ -123,8 +123,8 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { NcDateTime, NcEmptyContent } from '@nextcloud/vue'
-import { t, n, getCanonicalLocale } from '@nextcloud/l10n'
+import { NcEmptyContent } from '@nextcloud/vue'
+import { t, n } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
 import CalendarRange from 'vue-material-design-icons/CalendarRange.vue'
@@ -134,7 +134,7 @@ import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { sanitaryAlerts, fold, monthOptions, yearOptions } from '../state.js'
+import { fecha, sanitaryAlerts, fold, monthOptions, yearOptions } from '../state.js'
 import { categoriesIn, familiaName, familiaOf } from '../familias.js'
 
 /**

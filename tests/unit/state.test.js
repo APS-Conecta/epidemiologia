@@ -8,7 +8,7 @@
  * shape of an option is pinned here, where it costs milliseconds.
  */
 import { describe, expect, it } from 'vitest'
-import { monthOptions, tally, yearOptions } from '../../src/state.js'
+import { fecha, monthOptions, tally, yearOptions } from '../../src/state.js'
 
 /**
  * Shaped like what the panes actually hold: MINSAL carries year/month, the ISP a date.
@@ -101,5 +101,21 @@ describe('monthOptions', () => {
 	it('orders newest first', () => {
 		expect(monthOptions(ISP, ispYear, ispMonth, null).map((o) => o.id))
 			.toEqual(['2026-08', '2026-07', '2025-12'])
+	})
+})
+
+describe('fecha', () => {
+	it('renders the ISO day the repository derived, without moving it', () => {
+		// Local midnight, so no offset can push the day the string names. Rendering
+		// `at` in the browser instead put the pane in the reader's zone while its own
+		// filters used this day, and the two disagreed for anything published late.
+		expect(fecha('2026-07-31')).toContain('31')
+		expect(fecha('2026-07-31')).not.toContain('1 de agosto')
+	})
+
+	it('says nothing when there is no day, rather than Invalid Date', () => {
+		expect(fecha(null)).toBe('')
+		expect(fecha('')).toBe('')
+		expect(fecha('2026-07')).toBe('')
 	})
 })

@@ -455,8 +455,7 @@ class IspRepository {
 				 * reader's zone either: Chile spans three, and a recall does not change
 				 * date because the clinic is in Punta Arenas.
 				 */
-				'date' => $at === false ? '' : (new \DateTimeImmutable('@' . $at))
-					->setTimezone(new \DateTimeZone(self::PUBLISHER_TZ))->format('Y-m-d'),
+				'date' => $at === false ? '' : $this->publisherDay($at),
 				'at' => $at === false ? 0 : $at,
 				/*
 				 * A fingerprint of the content, so a revision can be SEEN. The ISP edits
@@ -628,7 +627,7 @@ class IspRepository {
 				...$item,
 				'date' => $was['date'],
 				'at' => $was['at'],
-				'updated' => date('Y-m-d', $this->time->getTime()),
+				'updated' => $this->publisherDay($this->time->getTime()),
 			];
 		}
 
@@ -681,8 +680,7 @@ class IspRepository {
 				 * every item is corrected on the way out at no cost.
 				 */
 				if (($i['at'] ?? 0) > 0) {
-					$i['date'] = (new \DateTimeImmutable('@' . $i['at']))
-						->setTimezone(new \DateTimeZone(self::PUBLISHER_TZ))->format('Y-m-d');
+					$i['date'] = $this->publisherDay((int)$i['at']);
 				}
 
 				return $i;
@@ -736,6 +734,21 @@ class IspRepository {
 			'n' => $n,
 			'until' => $this->time->getTime() + $wait,
 		], 86400 + $wait);
+	}
+
+	/**
+	 * An instant, as the day it was in Chile.
+	 *
+	 * The one place that turns a moment into a calendar day. It was written out three
+	 * times and one of the three used `date()`, which reads the container's zone — so the
+	 * revision marker ran a day ahead for anything seen after 20:00 in Santiago, in the
+	 * pill beside two dates that were right. Not the reader's zone either: Chile spans
+	 * three, and a recall does not change date because the clinic is in Punta Arenas.
+	 */
+	private function publisherDay(int $at): string {
+		return (new \DateTimeImmutable('@' . $at))
+			->setTimezone(new \DateTimeZone(self::PUBLISHER_TZ))
+			->format('Y-m-d');
 	}
 
 	private function frenoKey(string $term): string {
