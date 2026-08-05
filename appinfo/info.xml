@@ -35,12 +35,13 @@ no guarda datos en base de datos y no contiene información de pacientes.
         <navigation>
             <name>Epidemiología</name>
             <route>epidemiologia.page.index</route>
-            <!-- Sin <icon> el menú cae a places/default-app-icon.svg, el marcador
-                 genérico. img/app-dark.svg existe aparte y sólo lo usa la
-                 notificación: la navegación nunca pide la variante oscura. -->
+            <!-- Without <icon> the menu falls back to places/default-app-icon.svg,
+                 the generic placeholder. img/app-dark.svg exists separately and is
+                 used only by the notification: the navigation never asks for the
+                 dark variant. -->
             <icon>epidemiologia.svg</icon>
-            <!-- Deliberado: por delante de las apps sin <order>, que quedan en 100.
-                 Las alertas vigentes son de consulta diaria en el CESFAM. -->
+            <!-- Deliberate: ahead of the apps with no <order>, which land at 100.
+                 Alertas vigentes is consulted daily in the CESFAM. -->
             <order>5</order>
         </navigation>
     </navigations>

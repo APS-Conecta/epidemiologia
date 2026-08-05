@@ -1,11 +1,13 @@
-# Sólo js/, css/ e img/ tienen que ser alcanzables por HTTP. El resto de este
-# directorio es fuente y herramientas de desarrollo: node_modules pesa ~300 MB de
-# JavaScript de terceros, y el .htaccess que trae Nextcloud pone `js` y `mjs` en
-# su lista blanca de extensiones estáticas, así que sin esto node_modules queda
-# servido entero a cualquier usuario autenticado.
+# Only js/, css/ and img/ need to be reachable over HTTP. The rest of this directory
+# is source and dev tooling: node_modules is ~300 MB of third-party JavaScript, and
+# the .htaccess Nextcloud ships whitelists `js` and `mjs` as static extensions, so
+# without this node_modules is served whole.
 #
-# Es defensa en profundidad, no la solución: depende de Apache y de AllowOverride.
-# Un despliegue que no compile aquí no debería tener node_modules en el webroot.
+# To ANYONE, not to any authenticated user: measured against the running instance
+# with no credentials, these paths answer before Nextcloud is involved at all.
+#
+# Defence in depth, not the solution: it depends on Apache and on AllowOverride. A
+# deployment that does not build here should not have node_modules in the webroot.
 <IfModule mod_authz_core.c>
 	<FilesMatch "^(package(-lock)?\.json|vite\.config\.js|openapi\.json|phpunit\.xml)$">
 		Require all denied

@@ -14,6 +14,8 @@ in #54.
 
 ### Fixed
 
+- `scripts/layout.mjs` reports in English, and the two Spanish comments in `appinfo/info.xml` and
+  the ones in `.htaccess` are English. Nothing a clinician reads changed (#82).
 - Seven accessibility and wording defects: a bare green dot asserting health nothing had measured;
   `h3`s following `h1` on desktop, where the only `h2` is `display: none`; the semana epidemiológica
   printed with no word naming it, so "29 · julio de 2026" read as a date; an `aria-label` that

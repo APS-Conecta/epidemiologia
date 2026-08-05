@@ -282,7 +282,7 @@ const context = await browser.newContext({
 })
 const page = await context.newPage()
 
-console.log(`\nEpidemiología — maquetación en ${baseUrl}\n`)
+console.log(`\nEpidemiología — layout at ${baseUrl}\n`)
 
 for (const { w, h } of VIEWPORTS) {
 	await page.setViewportSize({ width: w, height: h })
@@ -298,15 +298,15 @@ for (const { w, h } of VIEWPORTS) {
 	for (let i = 0; i < count; i++) {
 		const r = await page.evaluate(INSPECT, i)
 		const problems = [
-			...r.overflow.map((d) => ['contenido más ancho que su panel', d]),
-			...r.overlap.map((d) => ['tarjetas dibujadas una sobre otra', d]),
-			...r.collapsed.map((d) => ['contenido con altura cero', d]),
-			...r.affordance.map((d) => ['algo pulsable idéntico al texto de al lado', d]),
-			...r.naming.map((d) => ['el panel se llama de dos maneras', d]),
-			...r.fit.map((d) => ['la navegación no cabe en su columna', d]),
+			...r.overflow.map((d) => ['content wider than its pane', d]),
+			...r.overlap.map((d) => ['cards drawn on top of each other', d]),
+			...r.collapsed.map((d) => ['content collapsed to zero height', d]),
+			...r.affordance.map((d) => ['something clickable identical to the text beside it', d]),
+			...r.naming.map((d) => ['the pane goes by two names', d]),
+			...r.fit.map((d) => ['the navigation does not fit its column', d]),
 		]
 		if (problems.length === 0) {
-			pass(`${r.label.padEnd(26)} desborde·solape·altura·afordancia·nombres·columna`)
+			pass(`${r.label.padEnd(26)} overflow·overlap·height·affordance·names·column`)
 		} else {
 			for (const [what, detail] of problems) {
 				fail(`${r.label} — ${what}`, [detail])
@@ -353,11 +353,11 @@ for (const { w, h } of VIEWPORTS) {
 	if (landed.error) {
 		fail(`Inicio — ${landed.error}`)
 	} else if (landed.heading !== 'Alertas del ISP') {
-		fail('Inicio — el enlace lleva a otro sitio del que nombra', [
+		fail('Inicio — the link goes somewhere it did not name', [
 			`"Ver las … alertas del ISP" landed on a pane headed "${landed.heading}"`,
 		])
 	} else {
-		pass('Inicio'.padEnd(26) + ' el enlace lleva a donde dice')
+		pass('Inicio'.padEnd(26) + ' the link goes where it says')
 	}
 
 	// The two panes that carry a toolbar. Done after INSPECT because it leaves the
@@ -365,9 +365,9 @@ for (const { w, h } of VIEWPORTS) {
 	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [2, 'Alertas del ISP']]) {
 		const complaints = await inspectMenus(page, paneIndex)
 		if (complaints.length === 0) {
-			pass(`${name.padEnd(26)} recuentos en los filtros`)
+			pass(`${name.padEnd(26)} counts in the filter menus`)
 		} else {
-			complaints.forEach((c) => fail(`${name} — recuento ausente`, [c]))
+			complaints.forEach((c) => fail(`${name} — count missing`, [c]))
 		}
 	}
 }
@@ -375,8 +375,8 @@ for (const { w, h } of VIEWPORTS) {
 await browser.close()
 
 if (failures === 0) {
-	console.log('\nTodo correcto.\n')
+	console.log('\nAll good.\n')
 } else {
-	console.log(`\n${failures} comprobación(es) fallida(s)\n`)
+	console.log(`\n${failures} check(s) failed\n`)
 	process.exit(1)
 }
