@@ -8,7 +8,6 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Service\IspRepository;
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -51,9 +50,6 @@ class IspRepositoryTest extends TestCase {
 		);
 	}
 
-	/** @var array<string, string> the IAppConfig double's contents — backfill cursors */
-	private array $appConfig = [];
-
 	/** @var list<string> "term:page" for every backfill page requested */
 	private array $pagesRequested = [];
 
@@ -68,7 +64,6 @@ class IspRepositoryTest extends TestCase {
 		$this->requested = [];
 		$this->offline = [];
 		$this->sentHeaders = [];
-		$this->appConfig = [];
 		$this->pagesRequested = [];
 		$this->pagesOffline = false;
 		$this->pagesExhausted = false;
@@ -364,9 +359,8 @@ class IspRepositoryTest extends TestCase {
 	public function testASuccessfulPageAdvancesThatCategorysCursor(): void {
 		$this->repository()->get();
 
-		$walked = array_keys($this->appConfig);
-		self::assertNotEmpty($walked);
-		self::assertSame('3', $this->appConfig[$walked[0]], 'page 2 fetched -> cursor now 3');
+		self::assertNotEmpty($this->pagesRequested);
+		self::assertSame(3, $this->cursor($this->pagesRequested[0]), 'page 2 fetched -> cursor now 3');
 	}
 
 	/**
@@ -378,7 +372,8 @@ class IspRepositoryTest extends TestCase {
 
 		$this->repository()->get();
 
-		self::assertSame([], $this->appConfig, 'no cursor written at all');
+		self::assertNotEmpty($this->pagesRequested);
+		self::assertSame(2, $this->cursor($this->pagesRequested[0]), 'still page 2, to be retried');
 	}
 
 	/**
@@ -389,14 +384,21 @@ class IspRepositoryTest extends TestCase {
 		$this->pagesExhausted = true;
 
 		$this->repository()->get();
-		$retired = array_keys($this->appConfig);
-		self::assertNotEmpty($retired);
-		self::assertSame('0', $this->appConfig[$retired[0]]);
+		$retired = $this->pagesRequested[0];
+		self::assertSame(0, $this->cursor($retired));
 
+		/*
+		 * Twenty-four passes, not one. Checking only the next hour passed against a
+		 * cursor that was NOT retired at all: the rotation moves one category per hour,
+		 * so the category walked this hour is not due again for a day either way. A
+		 * mutation dropping the cursor from the hourly write went green on it.
+		 */
 		$this->pagesRequested = [];
-		$this->repository(now: self::NOW + 3601)->get();
+		for ($h = 1; $h <= 24; $h++) {
+			$this->repository(now: self::NOW + $h * 3601)->get();
+		}
 
-		self::assertNotContains(str_replace('backfill-', '', $retired[0]), $this->pagesRequested);
+		self::assertNotContains($retired, $this->pagesRequested);
 	}
 
 	/**
@@ -424,12 +426,69 @@ class IspRepositoryTest extends TestCase {
 		 * Per-category membership is what union() decides, and merge() is exactly what
 		 * hides it. So the entry is the surface to assert on.
 		 */
-		$walked = str_replace('backfill-', '', array_key_first($this->appConfig));
-		$entry = $this->store['feed-' . IspRepository::ALERTS . '-' . $walked]['v'];
+		$entry = $this->store['feed-' . IspRepository::ALERTS . '-' . $this->pagesRequested[0]]['v'];
 		$urls = array_column($entry['items'], 'url');
 
 		self::assertContains('https://www.ispch.gob.cl/alerta-2019/', $urls, 'the older page is added');
 		self::assertGreaterThan(1, count($urls), 'and does not take the hourly window\'s place');
+	}
+
+	/**
+	 * A bookmark must not outlive the book.
+	 *
+	 * The cursor used to live in IAppConfig so a flush would not re-pay the walk. But a
+	 * flush takes the ARCHIVE: every completed category then read "already done" while
+	 * holding only the ten items the hourly pass refilled, and no path ever fetched the
+	 * other ~1.180 again. Nothing logged it and nothing degraded — the Año menu simply
+	 * stopped offering the years it had lost.
+	 */
+	public function testACompletedWalkWhoseArchiveIsGoneStartsOver(): void {
+		$this->pagesExhausted = true;
+		$this->repository()->get();
+		$retired = $this->pagesRequested[0];
+		self::assertSame(0, $this->cursor($retired), 'precondition: fully walked');
+
+		$this->store = [];   // the flush
+		$this->pagesExhausted = false;
+		$this->pagesRequested = [];
+
+		// The rotation moves ONE category per hour and walks two, so consecutive runs
+		// overlap: N runs reach N+1 categories, not 2N. Twenty-four to be sure of
+		// covering all of them whichever one this run happened to start on.
+		for ($h = 1; $h <= 24; $h++) {
+			$this->repository(now: self::NOW + $h * 3601)->get();
+		}
+
+		self::assertContains($retired, $this->pagesRequested, 'the walk starts over');
+	}
+
+	/**
+	 * The ISP's WAF answers 200 with a page that is not RSS — the class docblock records
+	 * it and refresh() guards it. backfill() read the same answer as "past the last page"
+	 * and retired the category FOREVER; twenty-four such answers over half a day stop the
+	 * archive for good, recoverable only with occ.
+	 */
+	public function testAnUnreadablePageDoesNotRetireTheCategory(): void {
+		$this->repository(paged: '<html><body>Attention Required</body></html>')->get();
+
+		self::assertNotEmpty($this->pagesRequested);
+		self::assertSame(2, $this->cursor($this->pagesRequested[0]), 'unreadable is not exhausted');
+	}
+
+	/**
+	 * backfill()'s docblock promises it "cannot empty a category, cannot set degraded, and
+	 * does not touch freshness", and ADR-0010 leans on that ordering. The freno broke it
+	 * across runs, not within one: a deep page is the uncached, slow query, so the archive
+	 * walk timing out silenced the cached front feed the hourly pass depends on.
+	 */
+	public function testAFailingBackfillPageDoesNotSilenceTheHourlyFeed(): void {
+		$this->pagesOffline = true;
+		$this->repository()->get();
+
+		$this->requested = [];
+		$this->repository(now: self::NOW + 3601)->get();
+
+		self::assertCount(24, $this->requested, 'every category still asked the next hour');
 	}
 
 	public function testBackfillNeverDegradesAndNeverLosesAnAlert(): void {
@@ -901,7 +960,7 @@ class IspRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
 		return new IspRepository(
-			$clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory, $this->appConfig(),
+			$clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory,
 		);
 	}
 
@@ -909,18 +968,9 @@ class IspRepositoryTest extends TestCase {
 	 * The backfill cursor lives here rather than in the cache precisely so a flush
 	 * cannot reset it, so the double must survive independently of $this->store.
 	 */
-	private function appConfig(): IAppConfig {
-		$config = $this->createMock(IAppConfig::class);
-		$config->method('getAppValueString')
-			->willReturnCallback(fn (string $k, string $default = '') => $this->appConfig[$k] ?? $default);
-		$config->method('setAppValueString')
-			->willReturnCallback(function (string $k, string $v): bool {
-				$this->appConfig[$k] = $v;
-
-				return true;
-			});
-
-		return $config;
+	/** The walk's position for one category, where it now lives: beside its own alerts. */
+	private function cursor(string $term): int {
+		return (int)($this->store['feed-' . IspRepository::ALERTS . '-' . $term]['v']['backfill'] ?? 2);
 	}
 
 	/**
