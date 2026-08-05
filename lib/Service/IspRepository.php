@@ -126,11 +126,20 @@ class IspRepository {
 
 		$confirmed = 0;
 
+		$attempted = 0;
+
 		foreach (self::TERMS as $term) {
-			$answer = $this->fetch($term, $stored[$term] ?? null);
-			if ($answer === null) {
+			if ($this->braked($term)) {
 				continue;
 			}
+			$attempted++;
+
+			$answer = $this->fetch($term, $stored[$term] ?? null);
+			if ($answer === null) {
+				$this->brake($term);
+				continue;
+			}
+			$this->cache->remove($this->frenoKey($term));
 			$reached++;
 
 			// Unchanged: the copy we hold is current, so stamp it fresh and move on.
@@ -162,7 +171,13 @@ class IspRepository {
 		 * could not ask, and that is a failure. If they answered and had nothing
 		 * between them, that is an answer.
 		 */
-		if ($reached === 0) {
+		/*
+		 * `$attempted`, not `count(self::TERMS)`. A braked category is not an unreachable
+		 * one (CONTEXT.md, Freno): if every category is braked we asked nothing and
+		 * learned nothing, which is not an outage. Degrading on that would let the freno
+		 * manufacture the very banner it exists to prevent.
+		 */
+		if ($attempted > 0 && $reached === 0) {
 			$this->logger->warning('No se pudo contactar ningún feed del ISP ({total} intentos)', [
 				'total' => count(self::TERMS),
 			]);
@@ -180,7 +195,7 @@ class IspRepository {
 		 * a legitimate answer, which is the ISP rule this class exists for.
 		 */
 		$parsedSomething = array_filter($fetched, static fn (array $f): bool => $f['items'] !== []);
-		if ($confirmed === 0 && $parsedSomething === [] && $this->merge($stored) !== []) {
+		if ($attempted > 0 && $confirmed === 0 && $parsedSomething === [] && $this->merge($stored) !== []) {
 			$this->logger->warning('Los {total} feeds del ISP respondieron sin nada que interpretar', [
 				'total' => count(self::TERMS),
 			]);
@@ -457,6 +472,37 @@ class IspRepository {
 	}
 
 	/** One entry per category — see refresh(). */
+	/**
+	 * Is this category still braked? The stored value IS the moment it expires, so
+	 * asking is a comparison and there is no sweep to run.
+	 */
+	private function braked(string $term): bool {
+		$until = $this->cache->get($this->frenoKey($term));
+
+		return $until !== null && $this->time->getTime() < (int)$until['until'];
+	}
+
+	/**
+	 * Doubling from two hours, capped at a day. Two hours because refreshes are
+	 * hourly (FRESH_FOR): anything shorter is not a freno, it is a rounding error —
+	 * the category would be asked again on the very next pass. The count outlives
+	 * the wait it caused, which is what makes the next failure cost more; a success
+	 * removes the key outright, so recovery is one step and not a slow unwind.
+	 */
+	private function brake(string $term): void {
+		$n = (int)($this->cache->get($this->frenoKey($term))['n'] ?? 0) + 1;
+		$wait = min(2 * self::FRESH_FOR * (2 ** ($n - 1)), 86400);
+
+		$this->cache->set($this->frenoKey($term), [
+			'n' => $n,
+			'until' => $this->time->getTime() + $wait,
+		], 86400 + $wait);
+	}
+
+	private function frenoKey(string $term): string {
+		return 'freno-' . self::ALERTS . '-' . $term;
+	}
+
 	private function key(string $term): string {
 		return 'feed-' . self::ALERTS . '-' . $term;
 	}

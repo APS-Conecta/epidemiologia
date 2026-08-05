@@ -42,6 +42,24 @@ would not. It is the only writer of the consecutive-failure counts that both the
 and Administración → Visión general read, so those two can be incomplete but never contradict each other.
 _Avoid_: sync, actualización, refresco
 
+**Freno**:
+How long a repository declines to re-request one thing it fetches, after that thing has failed. Its
+grain is **what is requested** — one categoría of the ISP feed, or a MINSAL page — which is finer
+than a fuente: the ISP is one fuente behind 24 requests. It counts *fetch* failures, it is written on
+every read, and it decides one thing only: skip this request now.
+
+It is **not** the sondeo's failure count and must never be merged with it. That count is per fuente,
+counts daily probe failures, is written by the sondeo alone, and is read by the notificación and by
+Administración → Visión general. The freno is read by nothing outside its own repository and reaches
+no screen. Keeping them apart is what lets the sondeo remain the only writer of the count two
+surfaces agree on — the invariant above — while a single category can still back off on its own.
+
+Two consequences follow and are load-bearing. A **frenada request is not an unreachable one**: if
+every request were braked the app has learned nothing, which is not an outage, and it must not report
+one on that basis. And a freno never makes a stale fuente look fresh — staleness is measured from
+when data was last fetched, so a braked fuente still reports itself degraded once it ages out.
+_Avoid_: cooldown, backoff, reintento — and **fuente as its grain**
+
 **Alerta vigente**:
 An oficio MINSAL currently in force, published as a PDF on a curated page. Identified by its URL —
 MINSAL reassigns numeric ids when it republishes.

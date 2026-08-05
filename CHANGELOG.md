@@ -9,6 +9,27 @@ history they describe is unchanged.
 
 ## [Unreleased]
 
+### Added
+
+- **A failing ISP category backs off instead of being asked every hour** (#60). Doubling from two
+  hours to a cap of one day; a success clears the count outright rather than unwinding it. Two hours
+  because refreshes are hourly — anything shorter is not a brake, the category would simply be asked
+  again on the next pass. This is what keeps one dead category from being 24 requests an hour
+  forever, which is how the app walked into a WAF block on 2026-08-04.
+- The concept is named **freno** in [`CONTEXT.md`](CONTEXT.md) and is deliberately *not* the sondeo's
+  failure count: different grain (one request, not one fuente), different writer, and read by nothing
+  outside its repository. That keeps the sondeo the only writer of the count the notificación and
+  Administración → Visión general agree on.
+- **A braked request is not an unreachable one.** Degradation is now judged on what was actually
+  attempted, so a round in which every category is braked reports no outage — the app learned
+  nothing, which is not the same as failing. Without this the freno would manufacture the very
+  banner it exists to prevent.
+
+### Fixed
+
+- The unit tests' cache double now honours TTL and `remove()`. It ignored both, which let
+  `testAnsweringClearsTheFreno` pass against a freno that was never cleared, only outlived.
+
 ### Changed
 
 - **The ISP feeds are asked conditionally** (#48). Measured against the live host on 2026-08-04: they
