@@ -59,6 +59,13 @@ A product-level notice from the Instituto de Salud Pública — recall, falsific
 device withdrawal. A different kind of object from an alerta vigente and never merged with one.
 _Avoid_: alerta ISP, alerta ANAMED
 
+**Día de publicación**:
+The day a fuente says it published something, rendered in **the publisher's** timezone — the ISP's
+is `America/Santiago`. Not the server's, which is UTC here and moved anything published after 20:00
+in Chile to the next day (one alert of 173, measured 2026-08-05). Not the reader's either: Chile
+spans three timezones, and a recall does not change date because the clinic is in Punta Arenas.
+_Avoid_: fecha del sistema, fecha local
+
 **Informe ETI/IRAG**:
 The MINSAL surveillance report on influenza-like illness and severe acute respiratory infection,
 published weekly as a PDF and identified by its semana epidemiológica.
