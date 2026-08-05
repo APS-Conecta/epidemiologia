@@ -32,11 +32,20 @@
 
 			<ul class="epi-weeks">
 				<li v-for="report in reports.items" :key="report.url">
+					<!-- The full title as HIDDEN text, not as aria-label. An aria-label
+					     REPLACES the accessible name, so the row's visible words —
+					     "29", "julio de 2026", "PDF" — appeared nowhere in it: a voice
+					     user saying "click 29" activated nothing (WCAG 2.5.3). As a
+					     visually-hidden span it is added to the name instead. -->
 					<a class="epi-week"
 						:href="report.url"
-						:aria-label="report.title"
 						target="_blank"
 						rel="noopener noreferrer">
+						<span class="hidden-visually">{{ report.title }}</span>
+						<!-- The number needs the word. Alone beside a month it reads as a
+						     day: "29 · julio de 2026" is not the 29th of July, it is SE 29.
+						     Inicio has labelled it since #33. -->
+						<span class="epi-week__label">{{ t('epidemiologia', 'Semana') }}</span>
 						<b class="epi-week__se">{{ report.se || '—' }}</b>
 						<span class="epi-week__when">{{ mes(report.month) }}</span>
 						<span class="epi-week__pdf">
@@ -103,6 +112,13 @@ import { mes, reports } from '../state.js'
 
 /* The number carries the identity, so it is the only thing given weight — and
    tabular figures so 9 and 29 line up down the column. */
+/* The word that keeps the number from reading as a day. Sized down and greyed so
+   the number stays the row's identity, as it is on Inicio. */
+.epi-week__label {
+	color: var(--color-text-maxcontrast);
+	font-size: var(--font-size-small);
+}
+
 .epi-week__se {
 	font-size: 1.2em;
 	font-weight: var(--font-weight-heading);

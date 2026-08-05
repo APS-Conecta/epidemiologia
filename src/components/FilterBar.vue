@@ -27,7 +27,11 @@
 
 		<slot />
 
-		<p class="epi-bar__count">
+		<!-- A live region: this is the only feedback that a filter or a search changed
+		     anything, and it updates on every keystroke while the list below re-renders.
+		     Without it a screen-reader user typing in Buscar is told nothing at all, not
+		     even that the result count fell to zero. -->
+		<p class="epi-bar__count" role="status" aria-live="polite">
 			{{ count }}
 			<template v-if="fetchedAt">
 				· {{ t('epidemiologia', 'leído') }}

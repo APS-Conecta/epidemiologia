@@ -90,6 +90,21 @@ export function degradedText(fuente) {
 }
 
 /**
+ * The one sentence for "the fuente answered, and had nothing".
+ *
+ * Beside degradedText for the same reason it exists: this state had FOUR wordings for
+ * two facts — "MINSAL no tiene alertas vigentes publicadas" on Inicio against "MINSAL no
+ * trae alertas vigentes en este momento" in the pane, and "esta semana" against "en este
+ * momento" for the ISP. Nothing about the state differs between the two surfaces.
+ *
+ * "Las categorías del ISP", never "Sus categorías": the reader has no categories, so the
+ * possessive named something that does not exist.
+ */
+export function emptyText(fuente) {
+	return t('epidemiologia', '%s no trae alertas en este momento.', [fuente])
+}
+
+/**
  * How many items carry each value of `key`, as [{ id, count }].
  *
  * Filter options are built from the data rather than declared, so a filter can

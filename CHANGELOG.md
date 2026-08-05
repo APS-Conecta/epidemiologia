@@ -14,6 +14,12 @@ in #54.
 
 ### Fixed
 
+- Seven accessibility and wording defects: a bare green dot asserting health nothing had measured;
+  `h3`s following `h1` on desktop, where the only `h2` is `display: none`; the semana epidemiológica
+  printed with no word naming it, so "29 · julio de 2026" read as a date; an `aria-label` that
+  erased the visible label, leaving voice control unable to open any informe; the two EPIVIGILA
+  links without `rel="noopener noreferrer"`; a result count with no live region; and four wordings
+  for two facts, one claiming novelty the app says it cannot construct (#81).
 - Inicio's "Ver las N alertas del ISP" landed on whatever family the navigation had last selected,
   under a heading that named it. Opening a pane by name now shows that pane whole (#80).
 - The ISP navigation lists the families that carry alerts, not all five, so the "no alert matches

@@ -28,8 +28,14 @@
 				class="epi-card"
 				:class="{ 'epi-card--degraded': source.feed.degraded }">
 				<div class="epi-card__head">
-					<h3>{{ source.name }}</h3>
-					<span class="epi-fresh" :class="{ 'epi-fresh--stale': source.feed.degraded }">
+					<h2 class="epi-card__title">{{ source.name }}</h2>
+					<!-- Only when there is something to report. With neither a degraded flag
+					     nor a fetched_at, this rendered a bare 6px green dot and no text:
+					     colour asserting health nothing had measured, and silence to a
+					     screen reader. -->
+					<span v-if="source.feed.degraded || source.feed.fetched_at"
+						class="epi-fresh"
+						:class="{ 'epi-fresh--stale': source.feed.degraded }">
 						<span class="epi-fresh__dot" />
 						<template v-if="source.feed.degraded">{{ t('epidemiologia', 'sin contacto') }}</template>
 						<template v-else-if="source.feed.fetched_at">
@@ -48,7 +54,7 @@
 				     like the warning above, or the warning stops meaning anything. -->
 				<NcEmptyContent v-if="!source.feed.items.length && !source.feed.degraded"
 					class="epi-card__empty"
-					:name="t('epidemiologia', 'Sin alertas nuevas')"
+					:name="t('epidemiologia', 'Sin alertas')"
 					:description="source.emptyText">
 					<template #icon>
 						<CheckCircle :size="20" />
@@ -76,7 +82,7 @@
 
 		<article class="epi-card">
 			<div class="epi-card__head">
-				<h3>{{ paneName('informe') }}</h3>
+				<h2 class="epi-card__title">{{ paneName('informe') }}</h2>
 				<NcButton variant="tertiary" @click="$emit('open', 'informe')">
 					{{ t('epidemiologia', 'Ver todos') }}
 				</NcButton>
@@ -124,7 +130,7 @@ import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { alerts, degradedText, fecha, mes, sanitaryAlerts, reports } from '../state.js'
+import { alerts, degradedText, emptyText, fecha, mes, reports, sanitaryAlerts } from '../state.js'
 
 defineEmits(['open'])
 
@@ -153,7 +159,7 @@ const sources = computed(() => [
 		feed: alerts,
 		pane: 'alertas',
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
-		emptyText: t('epidemiologia', 'MINSAL no tiene alertas vigentes publicadas.'),
+		emptyText: emptyText('MINSAL'),
 		degradedText: degradedText('MINSAL'),
 	},
 	{
@@ -164,7 +170,7 @@ const sources = computed(() => [
 		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', sanitaryAlerts.items.length),
 		// Not "el ISP no publicó": several of its 24 categories are legitimately
 		// empty in any given week, and saying nothing was published would be false.
-		emptyText: t('epidemiologia', 'Sus categorías no traen alertas esta semana.'),
+		emptyText: emptyText(t('epidemiologia', 'El ISP')),
 		degradedText: degradedText('el ISP'),
 	},
 ])
@@ -240,7 +246,7 @@ const sources = computed(() => [
    20px / 700 / no transform / -0.3px / --color-main-text. Ours was 13px, weight
    600, UPPERCASE, +0.65px and maxcontrast grey — the opposite on all four axes,
    which left the alert text outweighing the label that named it. */
-.epi-card__head h3 {
+.epi-card__title {
 	margin: 0;
 	font-size: 20px;
 	font-weight: 700;
