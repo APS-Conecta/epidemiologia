@@ -66,16 +66,41 @@ class ApiController extends OCSController {
 	}
 
 	/**
-	 * Everything this app publishes, keyed by source
+	 * Everything this app publishes, keyed by source — or one source, narrowed
 	 *
-	 * @return DataResponse<Http::STATUS_OK, array<string, array{updated_at: ?string, fetched_at: ?int, degraded: bool, items: list<array<string, string>>}>, array{}>
+	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
+	 * @param ?string $category A category slug of that source; omit for all of them
+	 * @param ?int $olderThan Only items published strictly before this epoch
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND, array<string, array{updated_at: ?string, fetched_at: ?int, degraded: bool, items: list<array<string, string>>}>, array{}>
 	 *
-	 * 200: Each source with its items, its freshness and its own degraded flag
+	 * 200: Each source asked for, with its items, its freshness and its own degraded flag
+	 * 404: No such source
 	 */
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: self::LIMIT, period: self::PERIOD)]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/sources')]
-	public function sources(): DataResponse {
-		return new DataResponse($this->sources->all());
+	public function sources(
+		?string $source = null,
+		?string $category = null,
+		?int $olderThan = null,
+	): DataResponse {
+		/*
+		 * No parameters is the route ADR-0006 describes, unchanged and byte-identical:
+		 * every source, whole. The narrowing below is additive (ADR-0006 amendment), so
+		 * an existing consumer keeps its exact meaning and response shape.
+		 */
+		if ($source === null) {
+			return new DataResponse($this->sources->all());
+		}
+
+		// An unknown id would reach Sources::get()'s deliberately default-less match and
+		// throw UnhandledMatchError — a 500 for what is a caller's typo. Answering 404
+		// keeps that loudness where it belongs (an id added to ALL and nowhere else) and
+		// off the path a URL can reach.
+		if (!in_array($source, Sources::ALL, true)) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+
+		return new DataResponse([$source => $this->sources->page($source, $category, $olderThan)]);
 	}
 }
