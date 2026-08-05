@@ -78,19 +78,13 @@ Reading through here beats reading MINSAL directly: a shared cache, an already-p
 
 ### Why OCS and not a plain route
 
-The manual calls `OCSController` the current approach, but the concrete reason is the web page /
-information centre that is coming: **a browser on another origin cannot be served any other way**.
-Enabling CORS on a plain `Controller` is *"generally and highly discouraged"* — the CSRF check then
-fails unless security is disabled.
+Because a browser on another origin cannot be served any other way — enabling CORS on a plain
+`Controller` breaks the CSRF check. Rate limit: 120 requests per minute per user. No `#[CORS]` yet;
+it needs a concrete origin. Full reasoning, and what the route replaced, in
+[ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md).
 
-There is still **no `#[CORS]`**: it needs a concrete origin and the dashboard does not have one.
-Adding it blind would widen the surface for nobody. There is a rate limit: 120 requests per minute
-per user, a ceiling against a runaway consumer rather than a quota.
-
-> The previous routes **no longer exist**. They are not deprecated, they are gone:
-> `/apps/epidemiologia/api/v1/…` in 0.2.0, and `/ocs/…/api/v1/alerts` and `…/reports` in 0.3.0.
-> Nobody was consuming them, and keeping two contracts would have cost more than breaking an empty
-> one.
+**The routes before it are gone, not deprecated:** `/apps/epidemiologia/api/v1/…` since 0.2.0, and
+`/ocs/…/api/v1/alerts` and `…/reports` since 0.3.0.
 
 ## Development
 
@@ -162,6 +156,18 @@ is down rather than like we broke it.
   `998 Invalid query` from OCS while `occ` lists the route quite happily.
 - **Do not pipe `docker exec … | grep -q`**: `grep` closes the pipe on its first match, the writer
   dies of SIGPIPE, and under `pipefail` a passing check reports as a failure.
+
+## The two traps this app pays for
+
+Both measured, both look like something they are not, and both have cost a wrong diagnosis.
+
+- **`www.ispch.gob.cl` serves only its leaf certificate.** `ssl_verify_result=20` — Nextcloud's HTTP
+  client, curl and Python all fail; browsers hide it by chasing the AIA. The fix is importing the
+  intermediate, which `gestion`'s provisioning phase `07-certs` does. Without that phase this app is
+  a no-op that reads as an outage. **Never `verify=False`.**
+- **The ISP's WAF answers a literal `curl/*` User-Agent with an empty reply**, and 200 to anything
+  else. That reads exactly like a TLS fault. `IClientService` sends its own UA, so the app is fine —
+  but do not "simplify" a reproduction down to curl and conclude the host is down.
 
 ## Installation
 
