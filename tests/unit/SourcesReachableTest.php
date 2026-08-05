@@ -7,9 +7,10 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
-use OCA\Epidemiologia\BackgroundJob\ProbeJob;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\ProbeRecord;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCA\Epidemiologia\Service\Sources;
 use OCA\Epidemiologia\SetupCheck\SourcesReachable;
 use OCP\SetupCheck\SetupResult;
@@ -93,7 +94,7 @@ class SourcesReachableTest extends TestCase {
 	// --- "and since when", which is the whole point of a row over a bell ------
 
 	public function testTheRowSaysSinceWhenTheFuenteStoppedBeingReadable(): void {
-		$this->failing(Sources::ALERTS, days: 5, since: self::NOW);
+		$this->failing(Sources::ALERTS, days: 5);
 
 		// The l10n double renders a date as `date:<timestamp>`, so this asserts that
 		// the stamp reached the sentence — not how it is formatted, which is the
@@ -106,11 +107,20 @@ class SourcesReachableTest extends TestCase {
 	 * state that should not exist. If it does, saying nothing beats inventing a
 	 * date: an administrator acts on "since the 14th".
 	 */
-	public function testWithNoRecordedStartTheRowClaimsNoDate(): void {
-		$this->failing(Sources::ALERTS, days: 5, since: null);
-
-		self::assertStringNotContainsString('date:', (string)$this->check()->run()->getDescription());
-	}
+	/*
+	 * testWithNoRecordedStartTheRowClaimsNoDate lived here and is gone.
+	 *
+	 * It drove the row with failures but no start stamp, and asserted the row said
+	 * no date rather than "since 1970". That state was only reachable because the
+	 * count and the stamp were two config keys a test could set apart; ProbeRecord
+	 * stamps on the first failure, so it can no longer be built through the
+	 * interface. The invariant it protected is now asserted where it belongs, in
+	 * ProbeRecordTest::testAFailingFuenteAlwaysKnowsWhenItStarted.
+	 *
+	 * The null branch in SourcesReachable stays: a hand-edited config can still
+	 * delete one key, and a row claiming an outage began at the epoch is worse than
+	 * one that declines to say.
+	 */
 
 	// --- the property that stops a fourth fuente going unnoticed --------------
 
@@ -162,10 +172,13 @@ class SourcesReachableTest extends TestCase {
 
 	// -----------------------------------------------------------------------
 
-	private function failing(string $source, int $days, ?int $since = self::NOW): void {
-		$this->store[ProbeJob::FAILURES . $source] = $days;
-		if ($since !== null) {
-			$this->store[ProbeJob::FAILING_SINCE . $source] = $since;
+	private function failing(string $source, int $days): void {
+		// Through the record, not by writing its keys. This helper used to import
+		// ProbeJob for two string prefixes and set them by hand — the test agreeing
+		// with production only because both spelled the same string.
+		$record = $this->probeRecord();
+		for ($i = 0; $i < $days; $i++) {
+			$record->record($source, false);
 		}
 	}
 
@@ -180,7 +193,15 @@ class SourcesReachableTest extends TestCase {
 			}
 		}
 
-		return new SourcesReachable($this->appConfig(), new Sources($minsal, $isp), $this->l10n());
+		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $isp), $this->l10n());
+	}
+
+	/** Real, over the shared config double — see ProbeJobTest for why it is not a mock. */
+	private function probeRecord(?int $now = null): ProbeRecord {
+		$time = $this->createMock(ITimeFactory::class);
+		$time->method('getTime')->willReturn($now ?? self::NOW);
+
+		return new ProbeRecord($this->appConfig(), $time);
 	}
 
 

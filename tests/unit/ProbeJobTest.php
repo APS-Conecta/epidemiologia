@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\BackgroundJob\ProbeJob;
+use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IGroup;
@@ -44,7 +45,7 @@ class ProbeJobTest extends TestCase {
 		$this->runDays(5, healthy: true);
 
 		self::assertSame([], $this->notified);
-		self::assertSame(0, $this->store['probe_failures_alerts'] ?? 0);
+		self::assertSame(0, $this->probeRecord()->consecutive('alerts'));
 	}
 
 	public function testTheFirstFailedProbeIsNotWorthWakingAnyoneFor(): void {
@@ -53,8 +54,8 @@ class ProbeJobTest extends TestCase {
 		$this->runDays(1, healthy: false);
 
 		self::assertSame([], $this->notified);
-		self::assertSame(1, $this->store['probe_failures_alerts']);
-		self::assertSame(self::NOW, $this->store['probe_failing_since_alerts']);
+		self::assertSame(1, $this->probeRecord()->consecutive('alerts'));
+		self::assertSame(self::NOW, $this->probeRecord()->failingSince('alerts'));
 	}
 
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
@@ -69,14 +70,14 @@ class ProbeJobTest extends TestCase {
 
 		// days 2, 7 and 30, for each of the three sources — not 90 notifications
 		self::assertCount(9, $this->notified);
-		self::assertSame(30, $this->store['probe_failures_alerts']);
+		self::assertSame(30, $this->probeRecord()->consecutive('alerts'));
 	}
 
 	public function testTheFailingSinceStampIsSetOnceAndNotMovedEveryDay(): void {
 		$this->runDays(9, healthy: false);
 
 		// It is the answer to "since when", so it must be the FIRST failure, not the last.
-		self::assertSame(self::NOW, $this->store['probe_failing_since_alerts']);
+		self::assertSame(self::NOW, $this->probeRecord()->failingSince('alerts'));
 	}
 
 	public function testEveryAlarmClearsTheOldOneFirst(): void {
@@ -92,8 +93,8 @@ class ProbeJobTest extends TestCase {
 		$this->cleared = 0;
 		$this->runDays(1, healthy: true);
 
-		self::assertSame(0, $this->store['probe_failures_alerts']);
-		self::assertArrayNotHasKey('probe_failing_since_alerts', $this->store);
+		self::assertSame(0, $this->probeRecord()->consecutive('alerts'));
+		self::assertNull($this->probeRecord()->failingSince('alerts'));
 		self::assertSame(3, $this->cleared, 'one per source');
 	}
 
@@ -111,7 +112,7 @@ class ProbeJobTest extends TestCase {
 		// If the counter had not been reset this would already be the second failure
 		// and would have alarmed. A recovery has to genuinely clear the slate.
 		self::assertSame([], $this->notified);
-		self::assertSame(1, $this->store['probe_failures_alerts']);
+		self::assertSame(1, $this->probeRecord()->consecutive('alerts'));
 	}
 
 	/**
@@ -126,9 +127,9 @@ class ProbeJobTest extends TestCase {
 	public function testEachSourceKeepsItsOwnFailureCount(): void {
 		$this->runDays(3, healthy: false);
 
-		self::assertSame(3, $this->store['probe_failures_alerts']);
-		self::assertSame(3, $this->store['probe_failures_reports']);
-		self::assertSame(3, $this->store['probe_failures_sanitary_alerts']);
+		self::assertSame(3, $this->probeRecord()->consecutive('alerts'));
+		self::assertSame(3, $this->probeRecord()->consecutive('reports'));
+		self::assertSame(3, $this->probeRecord()->consecutive('sanitary_alerts'));
 	}
 
 	public function testTheNotifiedGroupIsConfigurable(): void {
@@ -194,7 +195,19 @@ class ProbeJobTest extends TestCase {
 			},
 		);
 
-		return new ProbeJob($time, $sources, $notifications, $groups, $this->appConfig());
+		return new ProbeJob($time, $sources, $notifications, $groups, $this->probeRecord($now), $this->appConfig());
+	}
+
+	/**
+	 * The real ProbeRecord over the shared config double, not a mock. It is the thing
+	 * whose answers these assertions are about, and stubbing it would leave them
+	 * asserting that this job calls a collaborator — which ADR-0007 rejects.
+	 */
+	private function probeRecord(?int $now = null): ProbeRecord {
+		$time = $this->createMock(ITimeFactory::class);
+		$time->method('getTime')->willReturn($now ?? self::NOW);
+
+		return new ProbeRecord($this->appConfig(), $time);
 	}
 
 	private string $lastUid = '';

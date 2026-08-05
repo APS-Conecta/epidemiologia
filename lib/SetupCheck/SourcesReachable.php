@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\SetupCheck;
 
-use OCA\Epidemiologia\BackgroundJob\ProbeJob;
+use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\IL10N;
@@ -38,7 +38,7 @@ use OCP\SetupCheck\SetupResult;
  */
 class SourcesReachable implements ISetupCheck {
 	public function __construct(
-		private IAppConfig $config,
+		private ProbeRecord $record,
 		private Sources $sources,
 		private IL10N $l,
 	) {
@@ -58,7 +58,7 @@ class SourcesReachable implements ISetupCheck {
 	public function run(): SetupResult {
 		$broken = [];
 		foreach (Sources::ALL as $source) {
-			if ($this->config->getAppValueInt(ProbeJob::FAILURES . $source) > 0) {
+			if ($this->record->consecutive($source) > 0) {
 				$broken[] = $this->describe($source);
 			}
 		}
@@ -78,9 +78,9 @@ class SourcesReachable implements ISetupCheck {
 
 	private function describe(string $source): string {
 		$what = $this->sources->name($source, $this->l);
-		$since = $this->config->getAppValueInt(ProbeJob::FAILING_SINCE . $source);
+		$since = $this->record->failingSince($source);
 
-		if ($since === 0) {
+		if ($since === null) {
 			return $this->l->t('No se pudo leer %s.', [$what]);
 		}
 
