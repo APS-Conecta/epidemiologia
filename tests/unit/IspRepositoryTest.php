@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Service\IspRepository;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -50,11 +51,27 @@ class IspRepositoryTest extends TestCase {
 		);
 	}
 
+	/** @var array<string, string> the IAppConfig double's contents — backfill cursors */
+	private array $appConfig = [];
+
+	/** @var list<string> "term:page" for every backfill page requested */
+	private array $pagesRequested = [];
+
+	/** Backfill pages throw (unreachable) rather than answering. */
+	private bool $pagesOffline = false;
+
+	/** Backfill pages 404 the way WordPress does past the last page. */
+	private bool $pagesExhausted = false;
+
 	protected function setUp(): void {
 		$this->store = [];
 		$this->requested = [];
 		$this->offline = [];
 		$this->sentHeaders = [];
+		$this->appConfig = [];
+		$this->pagesRequested = [];
+		$this->pagesOffline = false;
+		$this->pagesExhausted = false;
 	}
 
 	// --- what the ISP actually publishes -------------------------------------
@@ -217,6 +234,62 @@ class IspRepositoryTest extends TestCase {
 		self::assertSame([], $this->requested, 'every category should be braked');
 		self::assertFalse($alerts['degraded']);
 		self::assertNotEmpty($alerts['items'], 'the archive still stands');
+	}
+
+	// --- backfill ------------------------------------------------------------
+
+	public function testBackfillWalksAtMostTheBudgetPerRun(): void {
+		$this->repository()->get();
+
+		self::assertCount(2, $this->pagesRequested, 'BACKFILL_PAGES is the whole leash');
+	}
+
+	public function testASuccessfulPageAdvancesThatCategorysCursor(): void {
+		$this->repository()->get();
+
+		$walked = array_keys($this->appConfig);
+		self::assertNotEmpty($walked);
+		self::assertSame('3', $this->appConfig[$walked[0]], 'page 2 fetched -> cursor now 3');
+	}
+
+	/**
+	 * The criterion that keeps a blip from skipping a page forever: a failed page is
+	 * retried next run, so the cursor must not move.
+	 */
+	public function testAFailedPageDoesNotAdvanceTheCursor(): void {
+		$this->pagesOffline = true;
+
+		$this->repository()->get();
+
+		self::assertSame([], $this->appConfig, 'no cursor written at all');
+	}
+
+	/**
+	 * WordPress 404s past the last page. That is exhaustion, not failure — braking a
+	 * healthy feed at the end of its own archive would be the opposite of the point.
+	 */
+	public function testAnExhaustedCategoryRetiresItsCursorAndIsNeverWalkedAgain(): void {
+		$this->pagesExhausted = true;
+
+		$this->repository()->get();
+		$retired = array_keys($this->appConfig);
+		self::assertNotEmpty($retired);
+		self::assertSame('0', $this->appConfig[$retired[0]]);
+
+		$this->pagesRequested = [];
+		$this->repository(now: self::NOW + 3601)->get();
+
+		self::assertNotContains(str_replace('backfill-', '', $retired[0]), $this->pagesRequested);
+	}
+
+	public function testBackfillNeverDegradesAndNeverLosesAnAlert(): void {
+		$before = $this->repository()->get();
+
+		$this->pagesOffline = true;
+		$after = $this->repository(now: self::NOW + 3601)->get();
+
+		self::assertFalse($after['degraded'], 'a failed backfill page is not an outage');
+		self::assertGreaterThanOrEqual(count($before['items']), count($after['items']));
 	}
 
 	// --- retention -----------------------------------------------------------
@@ -608,6 +681,30 @@ class IspRepositoryTest extends TestCase {
 				$body, $offline, $offlineAll, $bodies, $validators, $unchanged,
 			): IResponse {
 				$term = $this->termOf($url);
+
+				// A backfill page is a different request with different rules: no
+				// validators, and 404 past the end means exhausted rather than broken.
+				// Kept out of $this->requested so the hourly-pass assertions stay about
+				// the hourly pass.
+				if (str_contains($url, '?paged=')) {
+					$this->pagesRequested[] = $term;
+					if ($this->pagesOffline) {
+						throw new RuntimeException('cURL error 60: SSL certificate problem');
+					}
+					if ($this->pagesExhausted) {
+						throw new RuntimeException('Client error: 404 Not Found');
+					}
+					$page = $this->createMock(IResponse::class);
+					$page->method('getStatusCode')->willReturn(200);
+					// Same body resolution as the hourly pass. Serving fixtures here while
+					// the test served something else made three unrelated tests fail on
+					// content they never asked for — the double, not the code.
+					$page->method('getBody')->willReturn($bodies[$term] ?? $body ?? $this->fixture($term));
+					$page->method('getHeader')->willReturn('');
+
+					return $page;
+				}
+
 				$this->requested[] = $term;
 				$this->sentHeaders[$term] = $options['headers'] ?? [];
 
@@ -646,7 +743,27 @@ class IspRepositoryTest extends TestCase {
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
-		return new IspRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
+		return new IspRepository(
+			$clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory, $this->appConfig(),
+		);
+	}
+
+	/**
+	 * The backfill cursor lives here rather than in the cache precisely so a flush
+	 * cannot reset it, so the double must survive independently of $this->store.
+	 */
+	private function appConfig(): IAppConfig {
+		$config = $this->createMock(IAppConfig::class);
+		$config->method('getAppValueString')
+			->willReturnCallback(fn (string $k, string $default = '') => $this->appConfig[$k] ?? $default);
+		$config->method('setAppValueString')
+			->willReturnCallback(function (string $k, string $v): bool {
+				$this->appConfig[$k] = $v;
+
+				return true;
+			});
+
+		return $config;
 	}
 
 	/**

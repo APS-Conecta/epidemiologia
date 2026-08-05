@@ -11,6 +11,20 @@ history they describe is unchanged.
 
 ### Added
 
+- **The archive backfills itself, two pages an hour** (#49). The ISP archive reaches to 2009 and is
+  at least 1.423 alerts, but a bulk walk is not an option — 255 requests got a machine TLS-blocked on
+  2026-08-04. Two pages per run is funded by what conditional GET already saves, so the app costs
+  less than it did while still walking backwards.
+- Each category's cursor lives in `IAppConfig`, **not** the cache: a Redis flush would otherwise
+  restart every walk and pay for the whole archive again. A failed page does not advance the cursor,
+  so it is retried rather than skipped; an exhausted category retires its cursor and is never walked
+  again. WordPress answers 404 past the last page, and that is exhaustion, not failure — confusing
+  the two would brake a healthy feed at the end of its own archive.
+- The walk starts at a different category each hour, derived from the clock. With a fixed start the
+  first categories would reach 2009 while the last never began.
+- Backfill is strictly additive: it cannot empty a category, cannot set `degraded`, and does not
+  stamp freshness — a page of old news must not make a stale category look current.
+
 - **A failing ISP category backs off instead of being asked every hour** (#60). Doubling from two
   hours to a cap of one day; a success clears the count outright rather than unwinding it. Two hours
   because refreshes are hourly — anything shorter is not a brake, the category would simply be asked

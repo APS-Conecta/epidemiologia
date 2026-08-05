@@ -7,10 +7,11 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
+use OCP\AppFramework\Services\IAppConfig;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
 use OCP\ICacheFactory;
-use OCP\AppFramework\Utility\ITimeFactory;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -73,6 +74,13 @@ class IspRepository {
 	 */
 	private const COOLDOWN = 300;
 
+	/**
+	 * Older pages fetched per run. Two, and named rather than inline, because it is the
+	 * one number that decides how hard the app leans on a host that has already blocked
+	 * a machine for asking 255 times (#45). Raising it is a deliberate act.
+	 */
+	private const BACKFILL_PAGES = 2;
+
 	/** Same windows as MinsalRepository: fresh for an hour, kept for thirty days. */
 	private const FRESH_FOR = 3600;
 	private const KEEP_FOR = 30 * 24 * 3600;
@@ -84,6 +92,7 @@ class IspRepository {
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
 		ICacheFactory $cacheFactory,
+		private IAppConfig $config,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 	}
@@ -225,7 +234,107 @@ class IspRepository {
 			], self::KEEP_FOR);
 		}
 
+		$this->backfill($this->storedAll());
+
 		return $this->present($this->storedAll(), false);
+	}
+
+	/**
+	 * Walk the archive backwards, a couple of pages an hour.
+	 *
+	 * The archive reaches to 2009 and is at least 1.423 alerts, but a bulk walk is not
+	 * an option: 255 requests got a machine TLS-blocked by the ISP (#45). Two pages per
+	 * run is funded by what conditional GET already saves, so the app costs less than it
+	 * did while still backfilling.
+	 *
+	 * STRICTLY ADDITIVE. It only unions older alerts in. It cannot empty a category,
+	 * cannot set degraded, and does not touch freshness — which is why it runs after the
+	 * decisions above are made and its result is never consulted by them.
+	 *
+	 * The cursor lives in IAppConfig, NOT the cache: a Redis flush would otherwise
+	 * silently restart every walk at page 2 and pay the whole archive again.
+	 *
+	 * @param array<string, array> $stored
+	 */
+	private function backfill(array $stored): void {
+		$budget = self::BACKFILL_PAGES;
+
+		/*
+		 * Start at a different category each hour instead of always at TERMS[0].
+		 * With a fixed start the first categories would walk to 2009 while the last
+		 * never began. Derived from the clock rather than stored, because a cursor for
+		 * the cursor is state that can go stale on its own.
+		 */
+		$count = count(self::TERMS);
+		$offset = intdiv($this->time->getTime(), self::FRESH_FOR) % $count;
+
+		for ($i = 0; $i < $count && $budget > 0; $i++) {
+			$term = self::TERMS[($offset + $i) % $count];
+
+			$page = (int)$this->config->getAppValueString('backfill-' . $term, '2');
+			if ($page === 0 || $this->braked($term)) {
+				continue;   // exhausted, or already backing off — never spend budget on it
+			}
+			$budget--;
+
+			$items = $this->page($term, $page);
+
+			// Unreachable: the cursor does NOT advance, so the page is retried next run
+			// rather than skipped forever. Same freno as the hourly pass.
+			if ($items === null) {
+				$this->brake($term);
+				continue;
+			}
+
+			// Past the end. Retire the cursor: this category is fully walked and must
+			// never be re-walked, which is the difference between a backfill and a loop.
+			if ($items === []) {
+				$this->config->setAppValueString('backfill-' . $term, '0');
+				continue;
+			}
+
+			$entry = $stored[$term] ?? [];
+			$this->cache->set($this->key($term), [
+				'items' => $this->union($entry['items'] ?? [], $items),
+				'etag' => $entry['etag'] ?? '',
+				'modified' => $entry['modified'] ?? '',
+				// Deliberately preserved, not stamped: freshness means "when did we last
+				// hear from this feed about NEW alerts". A backfill page is old news, and
+				// stamping it would make a stale category look fresh.
+				'fetched_at' => $entry['fetched_at'] ?? $this->time->getTime(),
+			], self::KEEP_FOR);
+
+			$this->config->setAppValueString('backfill-' . $term, (string)($page + 1));
+		}
+	}
+
+	/**
+	 * One older page of a category. Unconditional — every page is different bytes, so
+	 * validators would only ever miss.
+	 *
+	 * @return ?list<array<string, string>> null unreachable · [] past the last page
+	 */
+	private function page(string $term, int $page): ?array {
+		try {
+			$response = $this->clients->newClient()->get(
+				sprintf(self::FEED, $term) . '?paged=' . $page,
+				['timeout' => 15],
+			);
+		} catch (Throwable $e) {
+			// WordPress answers 404 past the last page, and the client throws on it. That
+			// is exhaustion, not failure, and the two must not be confused: treating it as
+			// failure would brake a healthy feed forever at the end of its own archive.
+			if (str_contains($e->getMessage(), '404')) {
+				return [];
+			}
+			$this->logger->debug('Página {page} de {term} no disponible', [
+				'term' => $term, 'page' => $page, 'exception' => $e,
+			]);
+
+			return null;
+		}
+
+		return $this->parse((string)$response->getBody());
 	}
 
 	/** Cheap liveness signal for the daily probe. False means a human has to look. */
