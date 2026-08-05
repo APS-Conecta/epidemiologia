@@ -14,6 +14,11 @@ in #54.
 
 ### Fixed
 
+- One ISP walk at a time. Every stale page load used to start its own 24-feed fan-out at 15 s a
+  feed, holding a worker for minutes; eight tabs exhausted the PHP-FPM pool for the whole instance.
+  A cold cache still fetches, because "no alerts" is not an answer we may invent (#76).
+- A response larger than 512 KB is not read. `timeout` was the only bound, and a 3 MB feed exhausts
+  the image's 512 MB inside the parser — reproduced (#76).
 - The revision marker was stamped in the server's UTC, so a revision seen after 20:00 in Chile was
   labelled tomorrow — and unlike `date` it is stored already rendered, so it could not be corrected
   on read. The three conversions from instant to Chilean day are now one helper (#77).

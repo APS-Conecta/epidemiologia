@@ -32,13 +32,16 @@ class MinsalRepository {
 	private const ALERTS_SLUG = 'alertas-epidemiologicas-vigentes';
 	private const IRAG_SLUG = 'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-%d';
 
-	/** How long a cached copy counts as fresh. */
+	/** The largest response we will read; IspRepository::parse() carries the measurement. */
+	private const MAX_BYTES = 512 * 1024;
+
 	/**
 	 * How long a failed refresh is remembered, so an outage is not retried on every
 	 * page load. Well under FRESH_FOR: recovery stays automatic and needs nobody.
 	 */
 	private const COOLDOWN = 300;
 
+	/** How long a cached copy counts as fresh. */
 	private const FRESH_FOR = 3600;
 
 	/**
@@ -303,7 +306,23 @@ class MinsalRepository {
 				'query' => ['slug' => $slug, '_fields' => $fields],
 				'timeout' => 15,
 			]);
-			$pages = json_decode((string)$response->getBody(), true);
+			$body = (string)$response->getBody();
+
+			/*
+			 * The same bound IspRepository::parse() carries, and for the same reason: a
+			 * decoder on an unbounded body fatals the worker inside a page render. Measured
+			 * against the largest real payload here, the 43 KB alerts page — twelve times
+			 * over. A body this size is not a WordPress page, whatever it claims to be.
+			 */
+			if (strlen($body) > self::MAX_BYTES) {
+				$this->logger->warning('Respuesta de MINSAL de {bytes} bytes, descartada', [
+					'slug' => $slug, 'bytes' => strlen($body),
+				]);
+
+				return null;
+			}
+
+			$pages = json_decode($body, true);
 		} catch (Throwable $e) {
 			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
 			// checks isset($entry['exception']) and serialises the class, the trace and

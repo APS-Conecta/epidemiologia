@@ -320,6 +320,26 @@ class MinsalRepositoryTest extends TestCase {
 	 * TTL nothing checked — raising COOLDOWN to a week would have kept the suite green and
 	 * pinned both feeds to degraded until someone flushed Redis.
 	 */
+	/**
+	 * `timeout` was the only bound on a response, so a decoder on an unbounded body
+	 * fatals the worker inside a page render — reproduced on the ISP side, where a 3 MB
+	 * feed exhausted 512 MB.
+	 */
+	public function testAResponseTooBigToBeAPageIsNotRead(): void {
+		/*
+		 * A page that WOULD parse, padded past the cap. A first version padded with 'x'
+		 * alone and passed either way: with no PDF anchors it degraded on the parse, so
+		 * the cap was never what the assertion measured.
+		 */
+		$link = '<a href="https://epi.minsal.cl/wp-content/uploads/2026/07/x.pdf">Alerta</a>';
+		$huge = json_encode([['content' => ['rendered' => $link . str_repeat('<!-- pad -->', 60000)]]]);
+
+		$alerts = $this->repository(body: $huge)->get(MinsalRepository::ALERTS);
+
+		self::assertSame([], $alerts['items'], 'a body that size is not a page, whatever it parses to');
+		self::assertTrue($alerts['degraded'], 'unread is not the same as empty');
+	}
+
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
 		$this->repository()->get(MinsalRepository::ALERTS);
 		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);

@@ -11,6 +11,7 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
 use OCP\ICacheFactory;
+use OCP\IMemcache;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -87,11 +88,25 @@ class IspRepository {
 	 */
 	private const BACKFILL_PAGES = 2;
 
+	/**
+	 * How long the refresh lock is held before another reader may take it. Above the
+	 * worst case the walk can cost — 24 feeds plus 2 backfill pages at 15 s — so a lock
+	 * cannot expire under a run that is still going. A process that dies mid-walk leaves
+	 * it held for this long, during which readers get the stored copy, which is what they
+	 * would have got anyway.
+	 */
+	private const LOCK_FOR = 600;
+
+	/** The largest response we will read. See parse() for where the number comes from. */
+	private const MAX_BYTES = 512 * 1024;
+
 	/** Same windows as MinsalRepository: fresh for an hour, kept for thirty days. */
 	private const FRESH_FOR = 3600;
 	private const KEEP_FOR = 30 * 24 * 3600;
 
 	private ICache $cache;
+
+	private IMemcache $lock;
 
 	public function __construct(
 		private IClientService $clients,
@@ -100,6 +115,7 @@ class IspRepository {
 		ICacheFactory $cacheFactory,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
+		$this->lock = $cacheFactory->createLocking('epidemiologia');
 	}
 
 	/**
@@ -126,7 +142,32 @@ class IspRepository {
 			return $this->present($stored, true);
 		}
 
-		return $this->refresh($stored);
+		/*
+		 * One walk at a time. PageController::index() calls this synchronously and has no
+		 * rate limit, so every stale page load used to start its own 24-feed fan-out at
+		 * 15 s a feed — ~390 s of wall clock each, each holding a PHP-FPM worker. Eight
+		 * tabs on a slow ISP exhausts the pool for the whole instance, not just this app.
+		 *
+		 * The cooldown does not cover it: degrade() needs EVERY feed to fail, and a merely
+		 * slow ISP counts as reached, so it is never armed at all.
+		 *
+		 * `add()` because it is atomic — check-then-set on an ordinary cache is the race
+		 * it is meant to close. A loser serves the copy it already has, which is at most
+		 * an hour older than the one being fetched.
+		 *
+		 * Only when there IS a copy. With nothing stored, answering "no alerts" would be
+		 * the exact lie the empty-versus-degraded rule exists to prevent, and a cold start
+		 * happens once per instance while the herd this guards against is hourly.
+		 */
+		if ($stored !== [] && !$this->lock->add($this->lockKey(), 1, self::LOCK_FOR)) {
+			return $this->present($stored, false);
+		}
+
+		try {
+			return $this->refresh($stored);
+		} finally {
+			$this->lock->remove($this->lockKey());
+		}
 	}
 
 	/**
@@ -418,6 +459,29 @@ class IspRepository {
 	 * @return list<array<string, string>>
 	 */
 	private function parse(string $xml): array {
+		/*
+		 * `timeout` was the only bound on a response, and the ISP is a public government
+		 * WordPress — a compromise or a broken plugin is the realistic trigger. Measured
+		 * here: a 3 MB feed exhausts the image's 512 MB inside simplexml_load_string,
+		 * fataling the worker in the middle of a page render. Below that threshold it is
+		 * worse rather than better, because union() writes the lot into an archive that
+		 * never evicts and every page load then carries it.
+		 *
+		 * 512 KB against a largest-real-feed of 9,5 KB (anamed) and a largest-real-payload
+		 * of 43 KB (MINSAL's alerts page): twelve times the biggest thing we have ever
+		 * seen, and about 87 MB once parsed at the amplification measured above.
+		 *
+		 * ponytail: the body is already a string by the time we see it, so this bounds the
+		 * PARSE, not the download. Bounding the download needs on_headers plus a
+		 * chunked-transfer fallback; if a hostile response ever gets that far, that is the
+		 * upgrade.
+		 */
+		if (strlen($xml) > self::MAX_BYTES) {
+			$this->logger->warning('Respuesta del ISP de {bytes} bytes, descartada', ['bytes' => strlen($xml)]);
+
+			return [];
+		}
+
 		$previous = libxml_use_internal_errors(true);
 		$feed = simplexml_load_string($xml);
 		libxml_clear_errors();
@@ -757,6 +821,10 @@ class IspRepository {
 
 	private function key(string $term): string {
 		return 'feed-' . self::ALERTS . '-' . $term;
+	}
+
+	private function lockKey(): string {
+		return 'refresh-' . self::ALERTS;
 	}
 
 	/** Distinct from key(), or the cooldown flag would be read as the archive. */

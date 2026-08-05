@@ -14,6 +14,7 @@ use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\ICache;
 use OCP\ICacheFactory;
+use OCP\IMemcache;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -68,6 +69,7 @@ class IspRepositoryTest extends TestCase {
 		$this->pagesOffline = false;
 		$this->pagesExhausted = false;
 		$this->logged = [];
+		$this->locks = [];
 	}
 
 	// --- what the ISP actually publishes -------------------------------------
@@ -565,6 +567,72 @@ class IspRepositoryTest extends TestCase {
 		self::assertGreaterThanOrEqual(count($before['items']), count($after['items']));
 	}
 
+	// --- one fan-out at a time -----------------------------------------------
+
+	/**
+	 * PageController::index() calls this synchronously and carries no rate limit, so
+	 * without a lock every stale page load started its own 24-feed walk at 15 s a feed —
+	 * ~390 s of wall clock each, holding a PHP-FPM worker. Eight tabs while the ISP is
+	 * slow exhausts the pool for the whole instance, not just this app.
+	 *
+	 * The cooldown does not cover it: it is armed only when EVERY feed fails, and a
+	 * merely slow ISP counts as reached, so it is never set at all.
+	 */
+	public function testASecondReaderServesTheStoredCopyRatherThanItsOwnFanOut(): void {
+		$this->repository()->get();
+		$this->requested = [];
+		$this->locks['refresh-' . IspRepository::ALERTS] = true;   // another request, mid-walk
+
+		$alerts = $this->repository(now: self::NOW + 3601)->get();
+
+		self::assertSame([], $this->requested, 'one walk at a time');
+		self::assertNotEmpty($alerts['items'], 'and the reader still gets the archive');
+		self::assertFalse($alerts['degraded'], 'someone else refreshing is not an outage');
+	}
+
+	/**
+	 * With nothing stored there is no copy to serve, and answering "no alerts" would be
+	 * the lie the whole degraded/empty distinction exists to prevent. A cold start is
+	 * once per instance; the herd this guards against is the hourly one.
+	 */
+	public function testAColdCacheFetchesEvenWhileAnotherReaderHoldsTheLock(): void {
+		$this->locks['refresh-' . IspRepository::ALERTS] = true;
+
+		$alerts = $this->repository()->get();
+
+		self::assertNotEmpty($this->requested);
+		self::assertNotEmpty($alerts['items']);
+	}
+
+	public function testTheLockIsReleasedSoTheNextHourRefreshes(): void {
+		// Three calls, not two. The FIRST runs on a cold cache and therefore never takes
+		// the lock at all — so a two-call version passed against a lock that was taken and
+		// never released, which is the failure this test is named for.
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 3601)->get();
+		$this->requested = [];
+
+		$this->repository(now: self::NOW + 7202)->get();
+
+		self::assertNotEmpty($this->requested, 'a finished walk must not leave the lock held');
+	}
+
+	/**
+	 * `timeout` was the only bound on a response. The ISP is a public government
+	 * WordPress: a compromise or a broken plugin serving 100 MB of XML fatals the worker
+	 * inside a page render, and below that threshold it is worse — union() writes all of
+	 * it into the archive, which never evicts, and every page load then embeds it.
+	 */
+	public function testAResponseTooBigToBeAFeedIsNotRead(): void {
+		$huge = '<?xml version="1.0"?><rss version="2.0"><channel>'
+			. str_repeat('<item><title>x</title><link>https://www.ispch.gob.cl/a/</link></item>', 40000)
+			. '</channel></rss>';
+
+		$alerts = $this->repository(body: $huge)->get();
+
+		self::assertSame([], $alerts['items'], 'nothing that large is a feed we can trust');
+	}
+
 	// --- retention -----------------------------------------------------------
 
 	/**
@@ -1022,6 +1090,7 @@ class IspRepositoryTest extends TestCase {
 
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
+		$cacheFactory->method('createLocking')->willReturn($this->locking());
 
 		return new IspRepository(
 			$clients, $time, $this->logger(), $cacheFactory,
@@ -1032,6 +1101,9 @@ class IspRepositoryTest extends TestCase {
 	 * The backfill cursor lives here rather than in the cache precisely so a flush
 	 * cannot reset it, so the double must survive independently of $this->store.
 	 */
+	/** @var array<string, bool> the locking cache's contents — one key, held or not */
+	private array $locks = [];
+
 	/** @var list<array{level: string, message: string}> what the code logged, and at what level */
 	private array $logged = [];
 
@@ -1050,6 +1122,29 @@ class IspRepositoryTest extends TestCase {
 		}
 
 		return $logger;
+	}
+
+	/**
+	 * add() is the whole interface that matters: it must set the key ONLY if absent, and
+	 * say which happened. A double that always returned true would prove nothing.
+	 */
+	private function locking(): IMemcache {
+		$lock = $this->createMock(IMemcache::class);
+		$lock->method('add')->willReturnCallback(function (string $key): bool {
+			if (isset($this->locks[$key])) {
+				return false;
+			}
+			$this->locks[$key] = true;
+
+			return true;
+		});
+		$lock->method('remove')->willReturnCallback(function (string $key): bool {
+			unset($this->locks[$key]);
+
+			return true;
+		});
+
+		return $lock;
 	}
 
 	/** The walk's position for one category, where it now lives: beside its own alerts. */
