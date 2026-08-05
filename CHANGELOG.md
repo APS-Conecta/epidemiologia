@@ -14,6 +14,11 @@ in #54.
 
 ### Fixed
 
+- `layout.mjs` check 6 pointed at the Tablero pane, which has no toolbar, so it printed ok about
+  the ISP filters it never opened. It now points at the right pane **and fails when it finds no
+  menus at all** — a check that succeeds on finding nothing to check occupies the slot (#79).
+- The rail's active chip carries `aria-pressed`; the state was a background colour and nothing else.
+- A row's category buttons toggle like the rail instead of assigning, so a second tap clears them.
 - Global search bypassed `present()`, so it shipped the internal revision fingerprint and showed a
   different day than the pane for the same alert (#78).
 - A stored URL that is not `https://` no longer leaves the repository. The scheme guard was

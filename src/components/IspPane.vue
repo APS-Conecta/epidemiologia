@@ -59,9 +59,15 @@
 			Counts come from the loaded data, so a category the ISP stops publishing
 			leaves the rail on its own rather than sitting at zero.
 		-->
+		<!-- aria-pressed, because the ON state is otherwise a background colour and
+		     nothing else: a screen reader was read seven identical buttons with no way
+		     to tell which filter was applied, and a high-contrast user had only the
+		     fill. The class stays for sighted users; this is the same fact, told to
+		     everyone else. -->
 		<div v-if="rail.length > 1" class="epi-rail" role="group" :aria-label="t('epidemiologia', 'Categorías')">
 			<button class="epi-rail__chip"
 				:class="{ 'epi-rail__chip--on': kind === null }"
+				:aria-pressed="kind === null"
 				@click="kind = null">
 				{{ railAllLabel }}
 			</button>
@@ -69,6 +75,7 @@
 				:key="c.slug"
 				class="epi-rail__chip"
 				:class="{ 'epi-rail__chip--on': kind === c.slug }"
+				:aria-pressed="kind === c.slug"
 				@click="kind = kind === c.slug ? null : c.slug">
 				{{ kindLabel(c.slug) }} ({{ c.count }})
 			</button>
@@ -93,10 +100,16 @@
 					     filled pills — 57 alerts carried 154 of those, nearly three per
 					     row, and they outweighed the titles they were describing. Still
 					     buttons, so one click still filters. -->
+					<!-- Toggles, like the rail. Assigning meant a second tap did nothing
+					     and no chip lit up — and inside a family these list categories the
+					     rail does not offer, so the only way back was switching family.
+					     Two controls that filter by category, on one screen, behaving
+					     the same way. -->
 					<button v-for="category in alert.categories"
 						:key="category"
 						class="epi-alert__cat"
-						@click="kind = category">
+						:aria-pressed="kind === category"
+						@click="kind = kind === category ? null : category">
 						{{ kindLabel(category) }}
 					</button>
 					<!-- Only when the pane is showing everything: inside a family the tag
@@ -301,21 +314,6 @@ const countLabel = computed(() => {
 </script>
 
 <style scoped>
-/*
-	A wrapping row. With at most three controls per row the library's 240/260px
-	minimums fit a ~1000px pane, so nothing overflows sideways and nothing has to
-	be forced narrower than the component was designed for.
-*/
-.epi-count {
-	display: flex;
-	align-items: center;
-	gap: calc(var(--default-grid-baseline) * 2);
-	margin: 0 0 calc(var(--default-grid-baseline) * 2);
-	color: var(--color-text-maxcontrast);
-	font-size: var(--font-size-small);
-	font-variant-numeric: tabular-nums;
-}
-
 .epi-list {
 	list-style: none;
 	margin: 0;
@@ -359,10 +357,6 @@ const countLabel = computed(() => {
 	white-space: nowrap;
 }
 
-/* Carries weight the date does not: an alert that grew new lots is the one case
-   where re-reading something already read is the point. Not a colour on its own —
-   --color-primary-element on --color-primary-element-text is the pair the theme
-   guarantees contrast for, and a tinted word on the row background is not. */
 /* Horizontal, scrollable, and never wrapping into a wall: at 360px a family's
    categories are more than fit, and a rail that wraps to four rows pushes the
    alerts themselves off the first screen. */
@@ -401,6 +395,10 @@ const countLabel = computed(() => {
 	white-space: nowrap;
 }
 
+/* Carries weight the date does not: an alert that grew new lots is the one case where
+   re-reading something already read is the point. As a BACKGROUND, not as a tint on
+   text: --color-primary-element on --color-primary-element-text is the pair the theme
+   guarantees contrast for. */
 .epi-alert__updated {
 	background-color: var(--color-primary-element);
 	color: var(--color-primary-element-text);
