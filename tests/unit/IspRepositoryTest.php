@@ -399,6 +399,39 @@ class IspRepositoryTest extends TestCase {
 		self::assertNotContains(str_replace('backfill-', '', $retired[0]), $this->pagesRequested);
 	}
 
+	/**
+	 * The property the other four tests here do not assert.
+	 *
+	 * They count requests, check the cursor moved, check it did not, and assert a count
+	 * that cannot fall — all about the MECHANISM. Replacing the union at the write with
+	 * `'items' => $items` left every one of them green, so #49's headline claim, that the
+	 * archive assembles itself, was unproven.
+	 */
+	public function testAnAlertOnlyOnAnOlderPageIsAddedToTheArchiveAndDisplacesNothing(): void {
+		$old = $this->rss([['t' => 'Retiro de 2019', 'u' => 'https://www.ispch.gob.cl/alerta-2019/']]);
+
+		$this->repository(paged: $old)->get();
+
+		/*
+		 * Asserted on the walked category's entry, not on get(). Two weaker versions were
+		 * written first and BOTH survived replacing the union with the page:
+		 *
+		 *   - "the older alert is in get()" — it is, either way; replacing also leaves it.
+		 *   - "get() returns one more item" — merge() dedupes by URL across the 24
+		 *     categories, and every fixture term but two serves the same file, so losing
+		 *     one category's copy of a shared URL changes no total.
+		 *
+		 * Per-category membership is what union() decides, and merge() is exactly what
+		 * hides it. So the entry is the surface to assert on.
+		 */
+		$walked = str_replace('backfill-', '', array_key_first($this->appConfig));
+		$entry = $this->store['feed-' . IspRepository::ALERTS . '-' . $walked]['v'];
+		$urls = array_column($entry['items'], 'url');
+
+		self::assertContains('https://www.ispch.gob.cl/alerta-2019/', $urls, 'the older page is added');
+		self::assertGreaterThan(1, count($urls), 'and does not take the hourly window\'s place');
+	}
+
 	public function testBackfillNeverDegradesAndNeverLosesAnAlert(): void {
 		$before = $this->repository()->get();
 
@@ -791,11 +824,12 @@ class IspRepositoryTest extends TestCase {
 		array $bodies = [],
 		array $validators = [],
 		array $unchanged = [],
+		?string $paged = null,
 	): IspRepository {
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
 			function (string $url, array $options = []) use (
-				$body, $offline, $offlineAll, $bodies, $validators, $unchanged,
+				$body, $offline, $offlineAll, $bodies, $validators, $unchanged, $paged,
 			): IResponse {
 				$term = $this->termOf($url);
 
@@ -813,10 +847,16 @@ class IspRepositoryTest extends TestCase {
 					}
 					$page = $this->createMock(IResponse::class);
 					$page->method('getStatusCode')->willReturn(200);
-					// Same body resolution as the hourly pass. Serving fixtures here while
-					// the test served something else made three unrelated tests fail on
-					// content they never asked for — the double, not the code.
-					$page->method('getBody')->willReturn($bodies[$term] ?? $body ?? $this->fixture($term));
+					/*
+					 * An older page is DIFFERENT alerts — that is the whole point of a
+					 * backfill. Falling back to the hourly body made every page identical
+					 * to the current window, so union() could not add anything and no test
+					 * could tell the archive assembling itself from the archive standing
+					 * still. Serving fixtures here while the test served something else
+					 * made three unrelated tests fail on content they never asked for, so
+					 * $paged is explicit: a test that cares says so.
+					 */
+					$page->method('getBody')->willReturn($paged ?? $bodies[$term] ?? $body ?? $this->fixture($term));
 					$page->method('getHeader')->willReturn('');
 
 					return $page;
