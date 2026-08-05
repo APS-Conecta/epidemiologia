@@ -12,6 +12,8 @@ in #54.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-05
+
 ### Added
 
 - The whole ISP archive is kept, not the newest 60 — one cache entry per category, accreting (#47).
