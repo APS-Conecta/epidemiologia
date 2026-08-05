@@ -437,7 +437,11 @@ class IspRepository {
 	 */
 	public function search(string $term): array {
 		$needle = MinsalRepository::fold($term);
-		$items = $this->merge($this->storedAll());
+		// Through present(), like every other way out. Merging straight from the store
+		// meant the search box skipped the `h` strip and the day derivation, so it showed
+		// a different date than the pane for the same alert, and shipped an internal
+		// field into the search provider.
+		$items = $this->present($this->storedAll(), false)['items'];
 
 		if ($needle === '' || $items === []) {
 			return [];
@@ -751,6 +755,19 @@ class IspRepository {
 			},
 			$this->merge($stored),
 		);
+
+		/*
+		 * The scheme guard again, on the way out. parse() already refuses anything that
+		 * is not https, but that is ingest-only on a store that never evicts and whose
+		 * every write refreshes KEEP_FOR — so one bad URL that ever got in would be
+		 * trusted forever, and AlertRow binds `url` straight to href with no guard of its
+		 * own. Here it covers the four renderers and the search provider at once, which
+		 * is the point of having one door.
+		 */
+		$items = array_values(array_filter(
+			$items,
+			static fn (array $i): bool => stripos((string)($i['url'] ?? ''), 'https://') === 0,
+		));
 
 		return [
 			'items' => $items,

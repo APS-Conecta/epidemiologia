@@ -138,6 +138,28 @@ class SourcesTest extends TestCase {
 		self::assertNull($sources->page(Sources::ALERTS, olderThan: 999));
 	}
 
+	/**
+	 * The guard was judged on `items[0]`, so it disappeared exactly when the source had
+	 * nothing to judge. During a MINSAL outage the same unanswerable narrowing that
+	 * gets 400 on a good day came back **200 with an empty list** — a wrong answer that
+	 * looks right, which is what this method's docblock says it exists to refuse.
+	 *
+	 * Judged on the fuente, not on a sample of its contents.
+	 */
+	public function testNarrowingIsRefusedEvenWhileTheFuenteIsEmpty(): void {
+		$sources = $this->sources(items: []);
+
+		self::assertNull($sources->page(Sources::ALERTS, category: 'anamed'));
+		self::assertNull($sources->page(Sources::ALERTS, olderThan: 999));
+	}
+
+	/** And the ISP, which CAN be narrowed, still answers while empty. */
+	public function testAnEmptyIspStillAcceptsANarrowing(): void {
+		$sources = $this->sources(items: []);
+
+		self::assertSame([], $sources->page(Sources::SANITARY_ALERTS, category: 'anamed')['items']);
+	}
+
 	/** Asking for nothing in particular is always answerable. */
 	public function testAFuenteThatCannotBeNarrowedStillAnswersUnnarrowed(): void {
 		$sources = $this->sources(items: [['title' => 'un oficio', 'url' => 'https://x/a.pdf', 'year' => '2026']]);

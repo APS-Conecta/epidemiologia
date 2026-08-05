@@ -633,6 +633,56 @@ class IspRepositoryTest extends TestCase {
 		self::assertSame([], $alerts['items'], 'nothing that large is a feed we can trust');
 	}
 
+	// --- one door out --------------------------------------------------------
+
+	/**
+	 * present() calls itself "the one place items leave the repository", and search()
+	 * made that false: it merged the stored entries straight out, so the global search
+	 * box skipped both the `h` strip and the date re-derivation. An alert stored before
+	 * 0.5.0 showed its UTC day there and its Santiago day in the pane.
+	 */
+	public function testSearchLeavesThroughTheSameDoorAsThePane(): void {
+		$this->repository()->get();
+
+		// The archive as it was written before present() derived days on read.
+		$key = 'feed-' . IspRepository::ALERTS . '-anamed';
+		$this->store[$key]['v']['items'] = [[
+			'title' => 'Retiro de un lote',
+			'url' => 'https://www.ispch.gob.cl/alerta/x/',
+			'date' => '2026-08-06',           // the UTC day, wrong
+			'at' => 1785981600,               // the instant, right: 2026-08-05 in Santiago
+			'categories' => ['anamed'],
+			'h' => 'deadbeef1234',
+		]];
+
+		$hits = $this->repository(now: self::NOW + 60)->search('retiro de un lote');
+
+		self::assertCount(1, $hits);
+		self::assertArrayNotHasKey('h', $hits[0], 'the fingerprint must not leave');
+		self::assertSame('2026-08-05', $hits[0]['date'], 'the same day the pane shows');
+	}
+
+	/**
+	 * The scheme guard is at ingest only, on a store that never evicts and whose every
+	 * write refreshes KEEP_FOR — so one bad entry is trusted permanently, and AlertRow
+	 * binds `url` to href with no guard of its own. One line at the funnel covers all
+	 * four renderers and the search provider.
+	 */
+	public function testAnItemWhoseUrlIsNotHttpsNeverLeaves(): void {
+		$this->repository()->get();
+
+		$key = 'feed-' . IspRepository::ALERTS . '-anamed';
+		$this->store[$key]['v']['items'] = [
+			['title' => 'malo', 'url' => 'javascript:alert(1)', 'date' => '2026-08-01', 'at' => 1785000000, 'categories' => ['anamed']],
+			['title' => 'bueno', 'url' => 'https://www.ispch.gob.cl/alerta/ok/', 'date' => '2026-08-01', 'at' => 1785000000, 'categories' => ['anamed']],
+		];
+
+		$urls = array_column($this->repository(now: self::NOW + 60)->get()['items'], 'url');
+
+		self::assertNotContains('javascript:alert(1)', $urls);
+		self::assertContains('https://www.ispch.gob.cl/alerta/ok/', $urls);
+	}
+
 	// --- retention -----------------------------------------------------------
 
 	/**
