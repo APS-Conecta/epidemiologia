@@ -26,8 +26,19 @@ OCS="http://localhost/ocs/v2.php/apps/$APP/api/v1"
 OCSH="OCS-APIRequest: true"
 TOKEN_NAME=epi-smoke
 
-occ() { docker exec -u www-data "$CONTAINER" php occ "$@" 2>/dev/null; }
-web() { docker exec -u www-data "$CONTAINER" curl -sS -u "$USER_ID:$TOKEN" "$@" 2>/dev/null; }
+# stderr is KEPT, not discarded. `2>/dev/null` here meant a container that is down, or
+# an occ that errored, was reported as "the app does not show as enabled" — asserting a
+# cause nobody checked. That is B-003 in the platform's BUGS.md, recurring in this script.
+occ() { docker exec -u www-data "$CONTAINER" php occ "$@"; }
+
+# The credential arrives on STDIN, as a curl config file, so it is never a command-line
+# argument: argv is readable from /proc/*/cmdline by any local user for the length of the
+# run. Not the environment either — /proc/*/environ is the same shape of leak, one step
+# narrower. App passwords are alphanumeric, so nothing here needs quoting beyond this.
+web() {
+	printf 'user = "%s:%s"\n' "$USER_ID" "$TOKEN" \
+		| docker exec -i -u www-data "$CONTAINER" curl -sS -K - "$@" 2>/dev/null
+}
 
 failures=0
 pass() { printf '  ok    %s\n' "$1"; }
@@ -166,6 +177,21 @@ case "$icon" in
 	'200 image/svg+xml'*) pass "the app icon is served ($icon)" ;;
 	*) fail "the icon is not served ($icon) — the menu would show the generic placeholder" ;;
 esac
+
+# What Apache hands out to ANYONE. These paths answer before Nextcloud is involved, so
+# "authenticated staff only" was never the audience — measured with no credentials at all.
+# The source map is the one that mattered: `npm run build` writes 4,9 MB beside the bundle
+# carrying sourcesContent for all 350 sources, and it was in neither .htaccess list.
+#
+# Unauthenticated on purpose: an authenticated probe would pass while the hole was open.
+for path in js/$APP-main.mjs.map vitest.config.js vite.config.js src/state.js; do
+	code="$(docker exec -u www-data "$CONTAINER" \
+		curl -sS -o /dev/null -w '%{http_code}' "http://localhost/custom_apps/$APP/$path")"
+	case "$code" in
+		404|403) pass "$path is not served to anonymous callers" ;;
+		*) fail "$path answers $code with NO credentials — check .htaccess" ;;
+	esac
+done
 
 # The bundle in js/ is committed — that IS the deployment. So the failure this
 # guards is src/ moving without a rebuild: the running app would then not be the

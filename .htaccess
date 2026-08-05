@@ -8,8 +8,19 @@
 #
 # Defence in depth, not the solution: it depends on Apache and on AllowOverride. A
 # deployment that does not build here should not have node_modules in the webroot.
+# `.map` is the one that matters. `npm run build` writes a 4,9 MB source map beside
+# the bundle carrying `sourcesContent` for all 350 sources — the whole of src/ from a
+# private repo, plus every bundled dependency — and it was in neither list. It is
+# gitignored and absent from the release tarball, so this only bites a checkout that
+# builds in place, which is exactly what apps/ is by design.
+#
+# `vitest` as well as `vite`: the deny list caught one and not the other, which is a
+# gap in a deliberate control rather than an exposure in itself.
 <IfModule mod_authz_core.c>
-	<FilesMatch "^(package(-lock)?\.json|vite\.config\.js|openapi\.json|phpunit\.xml)$">
+	<FilesMatch "^(package(-lock)?\.json|vite(st)?\.config\.js|openapi\.json|phpunit\.xml)$">
+		Require all denied
+	</FilesMatch>
+	<FilesMatch "\.map$">
 		Require all denied
 	</FilesMatch>
 </IfModule>

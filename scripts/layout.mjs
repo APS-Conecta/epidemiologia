@@ -11,7 +11,11 @@
 // Usage: node scripts/layout.mjs <base-url> <user> <password>
 import { chromium } from 'playwright'
 
-const [baseUrl, user, password] = process.argv.slice(2)
+// The token comes through the ENVIRONMENT, not argv. A command line is readable from
+// /proc/*/cmdline by any local user for as long as the run lasts, and this one holds a
+// live app password. Mint-and-revoke limits the window; it does not close it.
+const [baseUrl, user] = process.argv.slice(2)
+const password = process.env.EPI_TOKEN
 if (!baseUrl || !user || !password) {
 	console.error('usage: node scripts/layout.mjs <base-url> <user> <password>')
 	process.exit(2)
