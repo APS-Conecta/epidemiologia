@@ -14,6 +14,12 @@ in #54.
 
 ### Fixed
 
+- Inicio's "Ver las N alertas del ISP" landed on whatever family the navigation had last selected,
+  under a heading that named it. Opening a pane by name now shows that pane whole (#80).
+- The ISP navigation lists the families that carry alerts, not all five, so the "no alert matches
+  those filters" state cannot greet a reader who set no filters. **Todas** stays unconditional (#80).
+- `layout.mjs` gained check 8, the only one that clicks: it walks family → Inicio → the card's link
+  and asserts where it lands. Check 5 reads the heading once and never navigates (#80).
 - `layout.mjs` check 6 pointed at the Tablero pane, which has no toolbar, so it printed ok about
   the ISP filters it never opened. It now points at the right pane **and fails when it finds no
   menus at all** — a check that succeeds on finding nothing to check occupies the slot (#79).

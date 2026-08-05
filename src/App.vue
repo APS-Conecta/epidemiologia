@@ -104,7 +104,7 @@
 					report takes 15–20 s to paint; unmounting it on every tab switch would
 					re-pay that each time. This is the single easiest thing to get wrong here.
 				-->
-				<InicioPane v-show="current === 'inicio'" @open="current = $event" />
+				<InicioPane v-show="current === 'inicio'" @open="open" />
 				<AlertsPane v-show="current === 'alertas'" />
 				<IspPane v-show="current === 'isp'" :family="ispFamily" />
 				<ReportPane v-show="current === 'informe'" />
@@ -132,8 +132,9 @@ import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
 import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
-import { FAMILIAS } from './familias.js'
+import { familiasPresent } from './familias.js'
 import { paneName } from './panes.js'
+import { sanitaryAlerts } from './state.js'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
 import ReportPane from './components/ReportPane.vue'
@@ -209,8 +210,20 @@ const ispEntries = [
 	// "Todas". layout.mjs check 5 passed throughout, because "Todas" WAS a nav name —
 	// the check held while the property it stands for did not. On a phone the heading
 	// is the only name shown, so it named nothing at all.
+	//
+	// Unconditional, unlike the families below it: a degraded ISP must still have a
+	// destination, and it is the row that carries the banner.
 	{ id: null, name: paneName('isp'), icon: markRaw(Pill) },
-	...FAMILIAS.map((f) => ({ id: f.id, name: f.name(), icon: markRaw(Pill) })),
+	// The families that CARRY alerts, not all five. A family the ISP is not publishing
+	// kept a permanent row, and landing on it with no filters set said "Ninguna alerta
+	// del ISP coincide con esos filtros" — blaming the reader for a choice they had not
+	// made. familiasPresent() was written for exactly this and had no caller; wiring it
+	// in deletes the state, where wording it would have been more code than wiring it in.
+	...familiasPresent(sanitaryAlerts.items).map((f) => ({
+		id: f.id,
+		name: f.name,
+		icon: markRaw(Pill),
+	})),
 ]
 
 /** Which ISP family the pane is showing; null is the whole archive. */
@@ -219,6 +232,21 @@ const ispFamily = ref(null)
 function openIsp(family) {
 	current.value = 'isp'
 	ispFamily.value = family
+}
+
+/**
+ * Opening a pane by name always shows that pane WHOLE.
+ *
+ * `current = $event` left `ispFamily` wherever the navigation had put it, so opening
+ * Cosméticos, going to Inicio and tapping "Ver las 173 alertas del ISP" landed on a pane
+ * headed Cosméticos showing 12. One destination, two names, reached through the door that
+ * check 5 does not watch — it reads the heading once and never clicks.
+ */
+function open(pane) {
+	if (pane === 'isp') {
+		ispFamily.value = null
+	}
+	current.value = pane
 }
 </script>
 
