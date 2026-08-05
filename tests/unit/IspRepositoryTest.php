@@ -236,6 +236,61 @@ class IspRepositoryTest extends TestCase {
 		self::assertNotEmpty($alerts['items'], 'the archive still stands');
 	}
 
+	// --- revisions -----------------------------------------------------------
+
+	/** The alert as first published, then the same URL with lots added. */
+	private const ALERT = ['t' => 'Retiro de lote', 'u' => 'https://www.ispch.gob.cl/alerta/x/'];
+
+	public function testARevisedAlertIsReplacedInPlaceAndMarked(): void {
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'lotes A']]))->get();
+
+		$items = $this->repository(
+			body: $this->rss([self::ALERT + ['d' => 'lotes A y B']]),
+			now: self::NOW + 3601,
+		)->get()['items'];
+
+		self::assertCount(1, $items, 'a revision is not a second row');
+		self::assertSame('2026-08-02', $items[0]['updated'], 'marked with the day it was seen revised');
+	}
+
+	/**
+	 * Its place in the list is the point: moving a revised 2024 alert to the top
+	 * would present it as new, which is a different lie from the one being fixed.
+	 */
+	public function testARevisedAlertKeepsItsPublicationDate(): void {
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'lotes A']]))->get();
+		$before = $this->repository()->get()['items'][0]['date'];
+
+		$items = $this->repository(
+			body: $this->rss([self::ALERT + ['d' => 'lotes A y B']]),
+			now: self::NOW + 3601,
+		)->get()['items'];
+
+		self::assertSame($before, $items[0]['date']);
+	}
+
+	public function testAnUnrevisedAlertIsNeverMarked(): void {
+		$feed = $this->rss([self::ALERT + ['d' => 'lotes A']]);
+		$this->repository(body: $feed)->get();
+
+		$items = $this->repository(body: $feed, now: self::NOW + 3601)->get()['items'];
+
+		self::assertArrayNotHasKey('updated', $items[0], 'unchanged content must not re-mark');
+	}
+
+	/** A second revision moves the marker; it is not frozen at the first one. */
+	public function testTheMarkerCarriesTheLatestRevisionDate(): void {
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'a']]))->get();
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'b']]), now: self::NOW + 3601)->get();
+
+		$items = $this->repository(
+			body: $this->rss([self::ALERT + ['d' => 'c']]),
+			now: self::NOW + 86400 * 3,
+		)->get()['items'];
+
+		self::assertSame('2026-08-05', $items[0]['updated']);
+	}
+
 	// --- backfill ------------------------------------------------------------
 
 	public function testBackfillWalksAtMostTheBudgetPerRun(): void {
@@ -836,10 +891,13 @@ class IspRepositoryTest extends TestCase {
 		$body = '';
 		foreach ($items as $item) {
 			$body .= sprintf(
-				'<item><title>%s</title><link>%s</link><pubDate>%s</pubDate></item>',
+				'<item><title>%s</title><link>%s</link><pubDate>%s</pubDate><description>%s</description></item>',
 				$item['t'],
 				$item['u'],
 				$pubDate,
+				// The half a revision actually edits: the ISP adds affected lots here and
+				// leaves the title alone, so a hash over the title only would never fire.
+				$item['d'] ?? '',
 			);
 		}
 
