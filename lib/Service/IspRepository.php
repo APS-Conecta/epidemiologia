@@ -408,6 +408,17 @@ class IspRepository {
 				// and as an epoch for the sort, so the frontend never re-parses a date.
 				'date' => $at === false ? '' : date('Y-m-d', $at),
 				'at' => $at === false ? 0 : $at,
+				/*
+				 * A fingerprint of the content, so a revision can be SEEN. The ISP edits
+				 * an alert in place — typically adding affected lots — leaving the URL and
+				 * usually the title alone, so neither can detect it. The description is
+				 * where the change lands.
+				 *
+				 * The hash is stored and the description is NOT: the archive is ~1.423
+				 * alerts and keeping their bodies would multiply it for a field nothing
+				 * renders. Twelve hex characters is ample to tell two versions apart.
+				 */
+				'h' => substr(sha1($title . '|' . trim((string)$node->description)), 0, 12),
 			];
 		}
 
@@ -537,8 +548,38 @@ class IspRepository {
 		foreach ($stored as $item) {
 			$byUrl[$item['url']] = $item;
 		}
+
 		foreach ($fetched as $item) {
-			$byUrl[$item['url']] = $item;
+			$was = $byUrl[$item['url']] ?? null;
+
+			if ($was === null) {
+				$byUrl[$item['url']] = $item;
+				continue;
+			}
+
+			/*
+			 * Same URL, same fingerprint: nothing happened. Keep the STORED copy rather
+			 * than the fetched one, so an existing `updated` marker survives — taking the
+			 * new copy would silently clear the marker on the next hourly pass, and the
+			 * revision would stop being visible the moment it stopped being news.
+			 */
+			if (($was['h'] ?? '') === ($item['h'] ?? '')) {
+				continue;
+			}
+
+			/*
+			 * Revised. Replace the content, but keep the original publication date and
+			 * therefore its place in the list: floating a revised 2024 alert to the top
+			 * would present it as new, which is a different lie from the one being fixed.
+			 * The marker carries the day the revision was SEEN — the ISP publishes no
+			 * revision date, and inventing one would be worse than reporting our own.
+			 */
+			$byUrl[$item['url']] = [
+				...$item,
+				'date' => $was['date'],
+				'at' => $was['at'],
+				'updated' => date('Y-m-d', $this->time->getTime()),
+			];
 		}
 
 		return array_values($byUrl);

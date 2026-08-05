@@ -65,6 +65,13 @@
 				:url="alert.url">
 				<template #meta>
 					<NcDateTime class="epi-alert__date" :timestamp="alert.at * 1000" :relative-time="false" :format="{ dateStyle: 'long' }" />
+					<!-- The ISP edits an alert in place to add affected lots, and those
+					     lots are the part that changes what a clinician does. Beside the
+					     publication date, not replacing it: the alert is still from its
+					     original day, it just says more now. -->
+					<span v-if="alert.updated" class="epi-alert__updated">
+						{{ t('epidemiologia', 'actualizada {fecha}', { fecha: alert.updated }) }}
+					</span>
 					<!-- Every category that carried it, not just the first: an alert
 					     genuinely belongs to all of them. Rendered as text rather than
 					     filled pills — 57 alerts carried 154 of those, nearly three per
@@ -307,6 +314,19 @@ const countLabel = computed(() => {
 	color: var(--color-text-maxcontrast);
 	font-size: var(--font-size-small);
 	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* Carries weight the date does not: an alert that grew new lots is the one case
+   where re-reading something already read is the point. Not a colour on its own —
+   --color-primary-element on --color-primary-element-text is the pair the theme
+   guarantees contrast for, and a tinted word on the row background is not. */
+.epi-alert__updated {
+	background-color: var(--color-primary-element);
+	color: var(--color-primary-element-text);
+	border-radius: var(--border-radius);
+	padding: 0 calc(var(--default-grid-baseline) * 1.5);
+	font-size: var(--font-size-small);
 	white-space: nowrap;
 }
 </style>

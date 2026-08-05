@@ -11,6 +11,22 @@ history they describe is unchanged.
 
 ### Added
 
+- **A revised alert is replaced in place and marked *actualizada*** (#50). The ISP edits an alert
+  after publishing — typically adding affected lots, which for a recall is the part that changes what
+  a clinician does. The URL does not change and dedupe is by link, so the app kept its first copy
+  forever and showed content that was out of date.
+- Detection is a content fingerprint, since #46 established the REST API does not expose the alert
+  type and RSS carries no revision date. The hash covers the description, which is where the edit
+  lands — the title usually does not move. **Only the hash is stored, never the description**: the
+  archive is ~1.423 alerts and keeping their bodies would multiply it for a field nothing renders.
+- A revised alert keeps its original publication date and therefore its place in the list. Floating
+  it to the top would present a 2024 alert as new, which is a different lie from the one being fixed.
+  The marker carries the day the revision was *seen*, because the ISP publishes no revision date and
+  inventing one would be worse than reporting our own.
+- An unchanged alert keeps its stored copy rather than the fetched one, so an existing marker
+  survives — taking the new copy would clear it on the next hourly pass, and the revision would stop
+  being visible the moment it stopped being news.
+
 - **The archive backfills itself, two pages an hour** (#49). The ISP archive reaches to 2009 and is
   at least 1.423 alerts, but a bulk walk is not an option — 255 requests got a machine TLS-blocked on
   2026-08-04. Two pages per run is funded by what conditional GET already saves, so the app costs
