@@ -50,6 +50,13 @@ class Sources {
 	 */
 	private const SEARCHABLE = [self::ALERTS, self::SANITARY_ALERTS];
 
+	/**
+	 * Items per narrowed response. One number, because it is the only thing standing
+	 * between a caller and the whole 1.423-alert archive in a single payload — which is
+	 * the problem the narrowing exists to solve.
+	 */
+	private const PAGE = 100;
+
 	public function __construct(
 		private MinsalRepository $minsal,
 		private IspRepository $isp,
@@ -69,6 +76,41 @@ class Sources {
 		}
 
 		return $sources;
+	}
+
+	/**
+	 * One source, narrowed — a category and/or everything older than a cursor.
+	 *
+	 * The archive outgrew what `IInitialState` can carry: 1.423+ alerts is ~357 KB of
+	 * JSON in the HTML of every page load, paid by every user including the ones who
+	 * never open the pane. So the newest slice still ships inline and the depth is
+	 * fetched on demand, which is what this serves.
+	 *
+	 * The envelope is deliberately identical to get()'s. A caller that narrows should
+	 * not also have to parse a different shape, and the pane appends these items to the
+	 * ones it already holds.
+	 *
+	 * @param ?string $category one of the source's own category slugs, or null for all
+	 * @param ?int    $olderThan epoch; only items published strictly before it
+	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 */
+	public function page(string $id, ?string $category = null, ?int $olderThan = null): array {
+		$source = $this->get($id);
+
+		$source['items'] = array_values(array_filter(
+			$source['items'],
+			static fn (array $i): bool =>
+				($category === null || in_array($category, $i['categories'] ?? [], true))
+				&& ($olderThan === null || (int)($i['at'] ?? 0) < $olderThan),
+		));
+
+		// Capped so one call cannot ask for the whole archive by omitting the cursor —
+		// the reason this route exists is that the whole archive is too big to hand over
+		// in one response. Items are already newest-first, so this is the newest page of
+		// whatever was asked for, and the caller pages back with the last `at` it saw.
+		$source['items'] = array_slice($source['items'], 0, self::PAGE);
+
+		return $source;
 	}
 
 	/**

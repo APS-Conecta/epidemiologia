@@ -66,3 +66,28 @@ trap `CHANGELOG.md` records for exactly this file.
 - The response's key set is `Sources::ALL`. The registry, not this controller, is what decides what
   the contract contains — which is why `openapi.json` is generated from the code and never edited by
   hand.
+
+## Amendment — the route takes parameters (2026-08-05, #51)
+
+**Nothing above is withdrawn.** The route is still one route keyed by source, `openapi.json` is
+still generated, and a call with no parameters returns exactly what it returned before, envelope for
+envelope. This records what was added and why.
+
+**What changed underneath.** This ADR costed a whole-payload response at "roughly 30 KB behind an
+hour of cache", and concluded that was cheaper than the round trips a split shape would cost. That
+arithmetic held for 60 alerts. Since #49 the ISP archive accretes without a cap and is 1.423+ — about
+**357 KB of JSON in the HTML of every page load**, paid by every user including those who never open
+the pane. The conclusion did not survive the premise.
+
+**What was added.** Three optional parameters: `source`, `category`, `olderThan`. Omit them and the
+old contract answers. Supply `source` and the response carries that source alone, narrowed and capped
+at one page, in the same envelope.
+
+**Why parameters rather than a second route.** A `/sources/{id}` route would have made the key set a
+URL fact instead of `Sources::ALL`, and the registry deciding what the contract contains is the thing
+this ADR exists to protect. Parameters leave that intact.
+
+**One consequence worth stating.** An unknown `source` answers **404** rather than reaching
+`Sources::get()`'s deliberately default-less `match`. That loudness is for an id added to `ALL` and
+nowhere else — a developer's mistake, caught in development. A URL typo is a caller's mistake and
+must not be a 500.

@@ -90,6 +90,37 @@ for source in alerts reports sanitary_alerts; do
 		"source $source is NOT in the response"
 done
 
+# --- narrowing (#51) --------------------------------------------------------
+# The whole point of the parameters is that a narrowed answer is SMALLER and still
+# the same envelope. Asserting only that it answers would pass against a route that
+# ignored them, which is the failure worth catching.
+narrowed="$(web -H "$OCSH" "$OCS/sources?format=json&source=sanitary_alerts")"
+expect "$narrowed" '"sanitary_alerts"' \
+	"?source= returns the asked source" \
+	"?source= did not return the asked source"
+if printf '%s' "$narrowed" | grep -q '"alerts"'; then
+	fail "?source=sanitary_alerts also returned the other sources — the parameter is being ignored"
+else
+	pass "?source= excludes the sources that were not asked for"
+fi
+
+# An unknown id must not reach Sources::get()'s default-less match, which would
+# throw UnhandledMatchError and answer 500 to what is a caller's typo.
+unknown="$(web -H "$OCSH" "$OCS/sources?format=json&source=no-such-source")"
+if printf '%s' "$unknown" | grep -q '"alerts"'; then
+	fail "an unknown source id fell through to the whole payload"
+else
+	pass "an unknown source id does not fall through to the whole payload"
+fi
+
+# olderThan=1 is before anything the ISP has published, so a route that honours it
+# returns no items and one that ignores it returns the archive.
+empty="$(web -H "$OCSH" "$OCS/sources?format=json&source=sanitary_alerts&olderThan=1")"
+oldcount="$(printf '%s' "$empty" | grep -o '"title"' | wc -l | tr -d ' ')"
+[ "$oldcount" -eq 0 ] \
+	&& pass "olderThan= narrows to nothing when nothing is older" \
+	|| fail "olderThan= returned $oldcount items when nothing is older than epoch 1"
+
 expect "$sources" '"degraded":false' \
 	"the data arrives undegraded" \
 	"some source is degraded — it did not answer, or stopped parsing"

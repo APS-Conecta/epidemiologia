@@ -95,10 +95,49 @@ class SourcesTest extends TestCase {
 		);
 	}
 
+	// --- narrowing (#51) ----------------------------------------------------
+
+	public function testPageWithoutNarrowingIsTheWholeSource(): void {
+		$page = $this->sources(items: $this->threeAlerts())->page(Sources::SANITARY_ALERTS);
+
+		self::assertCount(3, $page['items']);
+	}
+
+	public function testPageKeepsOnlyTheAskedCategory(): void {
+		$page = $this->sources(items: $this->threeAlerts())
+			->page(Sources::SANITARY_ALERTS, category: 'anamed');
+
+		self::assertSame(['a', 'c'], array_column($page['items'], 'title'));
+	}
+
+	/** Strictly older, so paging on the last `at` seen cannot repeat that item. */
+	public function testPageKeepsOnlyWhatIsStrictlyOlderThanTheCursor(): void {
+		$page = $this->sources(items: $this->threeAlerts())
+			->page(Sources::SANITARY_ALERTS, olderThan: 200);
+
+		self::assertSame(['c'], array_column($page['items'], 'title'));
+	}
+
+	public function testPageLeavesTheEnvelopeAlone(): void {
+		$whole = $this->sources(items: $this->threeAlerts())->get(Sources::SANITARY_ALERTS);
+		$page = $this->sources(items: $this->threeAlerts())->page(Sources::SANITARY_ALERTS);
+
+		self::assertSame(array_keys($whole), array_keys($page), 'a narrowed answer is the same shape');
+	}
+
+	/** @return list<array<string, mixed>> newest first, as the repository hands them over */
+	private function threeAlerts(): array {
+		return [
+			['title' => 'a', 'url' => 'https://x/a', 'at' => 300, 'categories' => ['anamed']],
+			['title' => 'b', 'url' => 'https://x/b', 'at' => 200, 'categories' => ['robo-hurto']],
+			['title' => 'c', 'url' => 'https://x/c', 'at' => 100, 'categories' => ['anamed']],
+		];
+	}
+
 	// -----------------------------------------------------------------------
 
-	private function sources(): Sources {
-		$payload = ['items' => [], 'updated_at' => null, 'fetched_at' => null, 'degraded' => false];
+	private function sources(array $items = []): Sources {
+		$payload = ['items' => $items, 'updated_at' => null, 'fetched_at' => null, 'degraded' => false];
 
 		$minsal = $this->createMock(MinsalRepository::class);
 		$minsal->method('get')->willReturn($payload);
