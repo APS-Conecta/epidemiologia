@@ -45,4 +45,4 @@ if [ -z "$TOKEN" ]; then
 	exit 1
 fi
 
-node "$HERE/scripts/layout.mjs" "$BASE" "$USER_ID" "$TOKEN"
+EPI_TOKEN="$TOKEN" node "$HERE/scripts/layout.mjs" "$BASE" "$USER_ID"

@@ -14,6 +14,12 @@ in #54.
 
 ### Fixed
 
+- The 4,9 MB source map and `vitest.config.js` were served **with no authentication at all**;
+  both are denied now, and `smoke.sh` asserts it anonymously so it cannot reopen quietly (#83).
+- Neither dev script passes a live app password as a command-line argument any more — argv is
+  readable from `/proc/*/cmdline` by any local user for the length of the run (#83).
+- `smoke.sh`'s `occ()` no longer discards stderr, so a container that is down stops being
+  reported as "the app does not show as enabled" (#83).
 - `scripts/layout.mjs` reports in English, and the two Spanish comments in `appinfo/info.xml` and
   the ones in `.htaccess` are English. Nothing a clinician reads changed (#82).
 - Seven accessibility and wording defects: a bare green dot asserting health nothing had measured;
