@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\BackgroundJob;
 
 use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -54,17 +55,16 @@ class ProbeJob extends TimedJob {
 	 */
 	private const NOTIFY_AT = [2, 7, 30];
 
-	/** Consecutive failed probes, per source. 0 means healthy. */
-	public const FAILURES = 'probe_failures_';
 
-	/** Unix time of the first failure in the current run, per source. */
-	public const FAILING_SINCE = 'probe_failing_since_';
 
 	public function __construct(
 		ITimeFactory $time,
 		private Sources $sources,
 		private IManager $notifications,
 		private IGroupManager $groups,
+		private ProbeRecord $record,
+		// Still here, but for `notify_groups` alone — who to tell. The failure counts
+		// it used to hold are ProbeRecord's now.
 		private IAppConfig $config,
 	) {
 		parent::__construct($time);
@@ -90,37 +90,30 @@ class ProbeJob extends TimedJob {
 		}
 	}
 
-	private function judge(string $source, bool $healthy): void {
-		if ($healthy) {
-			$this->recovered($source);
-		} else {
-			$this->failed($source);
-		}
-	}
+	/**
+	 * One probe recorded, and the bell rung if this is a day for it.
+	 *
+	 * The count lives in ProbeRecord, which returns it rather than making this read
+	 * back what it just wrote. What stays here is the only thing that is this job's
+	 * business: WHEN to shout, and taking the notification off the bell on recovery.
+	 */
+	private function judge(string $source, bool $reachable): void {
+		$before = $this->record->consecutive($source);
+		$failures = $this->record->record($source, $reachable);
 
-	/** Clear the state and take the notification back off the bell. */
-	private function recovered(string $source): void {
-		if ($this->config->getAppValueInt(self::FAILURES . $source) === 0) {
+		if ($reachable) {
+			// Only when there was something to take down, or every healthy day would
+			// re-notify the notification manager about a notification nobody filed.
+			if ($before > 0) {
+				$this->notifications->markProcessed($this->match($source));
+			}
+
 			return;
 		}
 
-		$this->config->setAppValueInt(self::FAILURES . $source, 0);
-		$this->config->deleteAppValue(self::FAILING_SINCE . $source);
-		$this->notifications->markProcessed($this->match($source));
-	}
-
-	private function failed(string $source): void {
-		$failures = $this->config->getAppValueInt(self::FAILURES . $source) + 1;
-		$this->config->setAppValueInt(self::FAILURES . $source, $failures);
-
-		if ($failures === 1) {
-			$this->config->setAppValueInt(self::FAILING_SINCE . $source, $this->time->getTime());
+		if (in_array($failures, self::NOTIFY_AT, true)) {
+			$this->tellAdmins($source, $failures);
 		}
-		if (!in_array($failures, self::NOTIFY_AT, true)) {
-			return;
-		}
-
-		$this->tellAdmins($source, $failures);
 	}
 
 	/**

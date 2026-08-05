@@ -26,6 +26,15 @@ in #54.
 
 ### Changed
 
+- **The sondeo's failure count has an interface.** It was two config-key prefixes: `ProbeJob` wrote
+  them, `SourcesReachable` imported the background job for no reason except to borrow the two
+  strings, and both test suites read and wrote the raw store. `CONTEXT.md` says those two surfaces
+  "cannot disagree" — that was enforced by both files spelling the same string, which is an agreement
+  nobody can see from a signature. `ProbeRecord` now owns the count, the first-failure stamp and the
+  reset, and is the only thing that knows the keys exist.
+- The notification schedule stays with the job. A bell is right at a transition and a status row at a
+  persistent state, so the thresholds differ on purpose — but they now differ over a named method
+  rather than over a shared prefix.
 - The publication day is rendered in the **publisher's** timezone, not the server's. The ISP is
   Chilean and prints a Chilean date; the container runs UTC, so anything published after 20:00 in
   Santiago showed a day late — one alert of 173 on the live archive. Derived on read from the stored
