@@ -26,6 +26,13 @@ in #54.
 
 ### Changed
 
+- The publication day is rendered in the **publisher's** timezone, not the server's. The ISP is
+  Chilean and prints a Chilean date; the container runs UTC, so anything published after 20:00 in
+  Santiago showed a day late — one alert of 173 on the live archive. Derived on read from the stored
+  instant, so the 1.423-alert archive is corrected without a single refetch.
+- The revision fingerprint no longer leaves the repository. It is how a rewritten alert is spotted; it
+  renders nowhere, and an internal field riding out to every browser and into the OCS contract is one
+  nobody can change later.
 - The ISP feeds are asked conditionally; an unchanged feed answers `304` with no body (#48).
 - `scripts/layout.mjs` gained check 7: the navigation must fit its column at every viewport (#52).
 
@@ -36,6 +43,10 @@ in #54.
 
 ### Fixed
 
+- **A MINSAL narrowing was answered with confident nonsense.** `page()` filtered on `categories` and
+  `at`, which only ISP items carry, so `category` matched nothing and returned an empty archive while
+  `olderThan` compared against a defaulted `0` and returned everything — both labelled as if filtered.
+  The route now answers **400**: the fuente exists, the request does not make sense against it.
 - A cache entry in an older shape is ignored rather than half-read.
 - A non-RSS body from the ISP no longer wipes the archive (#42).
 - An outage no longer costs a fetch on every page load (#43).

@@ -168,6 +168,68 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "That source cannot be narrowed the way you asked",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object",
+                                                        "required": [
+                                                            "updated_at",
+                                                            "fetched_at",
+                                                            "degraded",
+                                                            "items"
+                                                        ],
+                                                        "properties": {
+                                                            "updated_at": {
+                                                                "type": "string",
+                                                                "nullable": true
+                                                            },
+                                                            "fetched_at": {
+                                                                "type": "integer",
+                                                                "format": "int64",
+                                                                "nullable": true
+                                                            },
+                                                            "degraded": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "items": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "object",
+                                                                    "additionalProperties": {
+                                                                        "type": "string"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
                     "404": {
                         "description": "No such source",
                         "content": {

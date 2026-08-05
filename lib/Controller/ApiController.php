@@ -71,9 +71,10 @@ class ApiController extends OCSController {
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category A category slug of that source; omit for all of them
 	 * @param ?int $olderThan Only items published strictly before this epoch
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND, array<string, array{updated_at: ?string, fetched_at: ?int, degraded: bool, items: list<array<string, string>>}>, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{updated_at: ?string, fetched_at: ?int, degraded: bool, items: list<array<string, string>>}>, array{}>
 	 *
 	 * 200: Each source asked for, with its items, its freshness and its own degraded flag
+	 * 400: That source cannot be narrowed the way you asked
 	 * 404: No such source
 	 */
 	#[NoAdminRequired]
@@ -101,6 +102,15 @@ class ApiController extends OCSController {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
 
-		return new DataResponse([$source => $this->sources->page($source, $category, $olderThan)]);
+		// Null means the fuente cannot express the narrowing asked of it — MINSAL items
+		// have no category and no instant. 400, not 404: the source exists, the request
+		// does not make sense against it. Answering 200 with a filtered-looking payload
+		// is what this replaced.
+		$page = $this->sources->page($source, $category, $olderThan);
+		if ($page === null) {
+			return new DataResponse([], Http::STATUS_BAD_REQUEST);
+		}
+
+		return new DataResponse([$source => $page]);
 	}
 }

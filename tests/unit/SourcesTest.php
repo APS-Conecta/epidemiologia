@@ -125,6 +125,26 @@ class SourcesTest extends TestCase {
 		self::assertSame(array_keys($whole), array_keys($page), 'a narrowed answer is the same shape');
 	}
 
+	/**
+	 * MINSAL items carry `year`/`month`; they have no `categories` and no `at`. The
+	 * filter read those two keys off every source, so narrowing a MINSAL fuente
+	 * returned a confidently wrong answer rather than refusing: `category` matched
+	 * nothing at all, and `olderThan` matched everything.
+	 */
+	public function testNarrowingAFuenteThatCannotBeNarrowedIsRefused(): void {
+		$sources = $this->sources(items: [['title' => 'un oficio', 'url' => 'https://x/a.pdf', 'year' => '2026']]);
+
+		self::assertNull($sources->page(Sources::ALERTS, category: 'anamed'));
+		self::assertNull($sources->page(Sources::ALERTS, olderThan: 999));
+	}
+
+	/** Asking for nothing in particular is always answerable. */
+	public function testAFuenteThatCannotBeNarrowedStillAnswersUnnarrowed(): void {
+		$sources = $this->sources(items: [['title' => 'un oficio', 'url' => 'https://x/a.pdf', 'year' => '2026']]);
+
+		self::assertCount(1, $sources->page(Sources::ALERTS)['items']);
+	}
+
 	/** @return list<array<string, mixed>> newest first, as the repository hands them over */
 	private function threeAlerts(): array {
 		return [

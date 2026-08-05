@@ -1,15 +1,12 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 
-// Still no fetch on mount, but the reasoning has changed and the old one no longer
-// holds. It used to be that IInitialState carried EVERYTHING, so a round trip to
-// ourselves bought a spinner and nothing else. Since #49 the ISP archive accretes
-// past 1.423 alerts — ~357 KB of JSON in the HTML of every page load, paid by every
-// user including the ones who never open the pane — so IInitialState now carries
-// only the newest slice.
+// No fetch on mount, and the archive that arrives is the whole archive.
 //
-// Mount stays fetch-free because that slice is what the pane opens on. The depth is
-// fetched on demand, by the pane, through the OCS route's category and olderThan
-// parameters (#51). A fetch here would put the spinner back for everyone to load
-// what almost nobody scrolls to.
+// This comment claimed for a few hours that only the newest slice ships and the
+// depth is fetched on demand. It was never true, and ADR-0009 records the
+// measurement that says it need not become true: the ISP payload is 15,4 KB
+// gzipped, ~126 KB projected at the full 1.423-alert archive, on a page that is
+// 41 KB. The OCS route's category and olderThan parameters exist for other apps
+// (ADR-0006), not for this one.
 createApp(App).mount('#epidemiologia')

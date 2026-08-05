@@ -236,6 +236,68 @@ class IspRepositoryTest extends TestCase {
 		self::assertNotEmpty($alerts['items'], 'the archive still stands');
 	}
 
+	// --- what leaves the repository ------------------------------------------
+
+	/**
+	 * The ISP is a Chilean publisher and prints a Chilean date. `at` is a correct
+	 * instant, but rendering it in the server's UTC moves anything published after
+	 * 20:00 Santiago to the next day — measured on the live archive 2026-08-05, one
+	 * alert of 173 displayed a day late.
+	 */
+	public function testTheDayIsThePublishersDayNotTheServers(): void {
+		// 2026-08-04T02:30:00Z — still 3 August in Santiago (UTC-4).
+		$feed = $this->rss([self::ALERT], 'Tue, 04 Aug 2026 02:30:00 +0000');
+
+		$items = $this->repository(body: $feed)->get()['items'];
+
+		self::assertSame('2026-08-03', $items[0]['date']);
+	}
+
+	/**
+	 * The revision fingerprint is how union() spots a rewritten alert. It is a cache
+	 * concern; nothing renders it, and an internal field that rides out to every
+	 * browser is one nobody can change later.
+	 */
+	public function testTheRevisionFingerprintNeverLeavesTheRepository(): void {
+		$items = $this->repository()->get()['items'];
+
+		self::assertNotEmpty($items);
+		foreach ($items as $item) {
+			self::assertArrayNotHasKey('h', $item);
+		}
+	}
+
+	/** But it must still be kept, or every alert reads as revised on the next pass. */
+	public function testTheFingerprintIsStillStoredSoRevisionsAreStillSeen(): void {
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'lotes A']]))->get();
+
+		$items = $this->repository(
+			body: $this->rss([self::ALERT + ['d' => 'lotes A y B']]),
+			now: self::NOW + 3601,
+		)->get()['items'];
+
+		self::assertSame('2026-08-02', $items[0]['updated']);
+	}
+
+	/**
+	 * The archive accretes and union() keeps what it holds, so an alert stored before
+	 * the timezone fix would have kept its wrong day forever — and re-fetching 1.423
+	 * of them is what the WAF blocks a machine for. `at` is stored, so the day is
+	 * derived on the way out and every item is corrected without a single request.
+	 */
+	public function testAnAlreadyStoredAlertGetsTheRightDayWithoutRefetching(): void {
+		// An entry written by an older version: correct instant, day rendered in UTC.
+		$at = 1785810600;   // 2026-08-04T02:30:00Z — 3 August in Santiago
+		$this->store['feed-' . IspRepository::ALERTS . '-anamed'] = ['v' => [
+			'items' => [['title' => 'vieja', 'url' => 'https://x/v', 'at' => $at, 'date' => '2026-08-04']],
+			'etag' => '', 'modified' => '', 'fetched_at' => self::NOW,
+		], 'exp' => null];
+
+		$items = $this->repository()->get()['items'];
+
+		self::assertSame('2026-08-03', $items[0]['date']);
+	}
+
 	// --- revisions -----------------------------------------------------------
 
 	/** The alert as first published, then the same URL with lots added. */

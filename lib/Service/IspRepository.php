@@ -48,6 +48,13 @@ class IspRepository {
 	private const FEED = 'https://www.ispch.gob.cl/categorias-alertas/%s/feed/';
 
 	/**
+	 * Where the ISP publishes. A published day belongs to whoever published it, so
+	 * it is rendered here and not in the server's zone (UTC in this container) nor
+	 * the reader's — Chile spans three, and Easter Island is two hours from Santiago.
+	 */
+	private const PUBLISHER_TZ = 'America/Santiago';
+
+	/**
 	 * The 24 alert categories the ISP publishes. Each is its own feed capped at
 	 * WordPress's default of 10 items, so `anamed` is a window like the rest and
 	 * not a superset — pulling only it would silently lose the others.
@@ -404,9 +411,20 @@ class IspRepository {
 			$items[] = [
 				'title' => $title,
 				'url' => $url,
-				// Unlike MINSAL, the ISP publishes a real day. Kept as ISO for the UI
-				// and as an epoch for the sort, so the frontend never re-parses a date.
-				'date' => $at === false ? '' : date('Y-m-d', $at),
+				/*
+				 * Unlike MINSAL, the ISP publishes a real day. Kept as ISO for the UI
+				 * and as an epoch for the sort, so the frontend never re-parses a date.
+				 *
+				 * Rendered in the PUBLISHER'S timezone, not the server's. `date()` uses
+				 * the container's UTC, which moves anything published after 20:00 in
+				 * Santiago to the next day — measured on the live archive 2026-08-05,
+				 * one alert of 173 was a day late. The day an alert carries is a fact
+				 * about the ISP, so it is formatted where the ISP published it. Not the
+				 * reader's zone either: Chile spans three, and a recall does not change
+				 * date because the clinic is in Punta Arenas.
+				 */
+				'date' => $at === false ? '' : (new \DateTimeImmutable('@' . $at))
+					->setTimezone(new \DateTimeZone(self::PUBLISHER_TZ))->format('Y-m-d'),
 				'at' => $at === false ? 0 : $at,
 				/*
 				 * A fingerprint of the content, so a revision can be SEEN. The ISP edits
@@ -611,7 +629,34 @@ class IspRepository {
 
 	/** @param array<string, array> $stored */
 	private function present(array $stored, bool $degraded): array {
-		$items = $this->merge($stored);
+		/*
+		 * `h` is how union() spots an alert the ISP rewrote. It is a cache concern:
+		 * nothing renders it, and an internal field that rides out to every browser
+		 * and into the OCS contract is one nobody can change later without breaking
+		 * a consumer that never should have seen it. Stripped here, at the one place
+		 * items leave the repository, rather than at each of the three writers.
+		 */
+		$items = array_map(
+			function (array $i): array {
+				unset($i['h']);
+
+				/*
+				 * Derived here, not trusted from storage. The archive accretes and
+				 * union() keeps what it already holds, so items written before the day
+				 * was rendered in the publisher's zone would have kept a UTC day
+				 * forever — and re-fetching 1.423 alerts to correct them is what got a
+				 * machine WAF-blocked (#45). `at` is the instant and it is stored, so
+				 * every item is corrected on the way out at no cost.
+				 */
+				if (($i['at'] ?? 0) > 0) {
+					$i['date'] = (new \DateTimeImmutable('@' . $i['at']))
+						->setTimezone(new \DateTimeZone(self::PUBLISHER_TZ))->format('Y-m-d');
+				}
+
+				return $i;
+			},
+			$this->merge($stored),
+		);
 
 		return [
 			'items' => $items,

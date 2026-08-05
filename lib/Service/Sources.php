@@ -81,21 +81,35 @@ class Sources {
 	/**
 	 * One source, narrowed — a category and/or everything older than a cursor.
 	 *
-	 * The archive outgrew what `IInitialState` can carry: 1.423+ alerts is ~357 KB of
-	 * JSON in the HTML of every page load, paid by every user including the ones who
-	 * never open the pane. So the newest slice still ships inline and the depth is
-	 * fetched on demand, which is what this serves.
+	 * Returns NULL when the source cannot answer the narrowing asked of it. That is
+	 * the whole point of the guard: the filters read `categories` and `at`, which only
+	 * ISP items carry. MINSAL items carry `year` and `month`, so the old code answered
+	 * a MINSAL request with confident nonsense — `category` matched nothing and
+	 * returned an empty archive, `olderThan` compared against a defaulted 0 and
+	 * returned everything, both labelled as if the filter had been applied.
 	 *
-	 * The envelope is deliberately identical to get()'s. A caller that narrows should
-	 * not also have to parse a different shape, and the pane appends these items to the
-	 * ones it already holds.
+	 * Refusing is better than guessing. A caller asking for something a fuente cannot
+	 * express has made a mistake, and a wrong answer that looks right is the failure
+	 * this repository keeps paying for elsewhere.
 	 *
 	 * @param ?string $category one of the source's own category slugs, or null for all
 	 * @param ?int    $olderThan epoch; only items published strictly before it
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return ?array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
-	public function page(string $id, ?string $category = null, ?int $olderThan = null): array {
+	public function page(string $id, ?string $category = null, ?int $olderThan = null): ?array {
 		$source = $this->get($id);
+
+		// Judged on the data, not on a list of ids: a fuente that grows an `at` later
+		// starts being narrowable without anyone remembering to update a constant.
+		$first = $source['items'][0] ?? null;
+		if ($first !== null) {
+			if ($category !== null && !array_key_exists('categories', $first)) {
+				return null;
+			}
+			if ($olderThan !== null && !array_key_exists('at', $first)) {
+				return null;
+			}
+		}
 
 		$source['items'] = array_values(array_filter(
 			$source['items'],
