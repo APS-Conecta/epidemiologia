@@ -67,6 +67,7 @@ class IspRepositoryTest extends TestCase {
 		$this->pagesRequested = [];
 		$this->pagesOffline = false;
 		$this->pagesExhausted = false;
+		$this->logged = [];
 	}
 
 	// --- what the ISP actually publishes -------------------------------------
@@ -200,6 +201,48 @@ class IspRepositoryTest extends TestCase {
 
 		self::assertNotContains('anamed', $this->requested);
 		self::assertContains('retiro-de-mercado', $this->requested, 'only the failing one is braked');
+	}
+
+	/**
+	 * The detector is not the reader, and reusing the reader's rule made it lie.
+	 *
+	 * With every category braked — five failed rounds and the backoff is capped at a
+	 * day — refresh() attempts nothing, so `$attempted === 0` and degraded is false. The
+	 * daily sondeo then reported the ISP healthy, ProbeRecord cleared the consecutive
+	 * count AND the failing-since stamp, the notification came off the bell, and Visión
+	 * general said every source had been read without problems. For a week.
+	 */
+	public function testTheProbeSeesAnOutageThroughTheFreno(): void {
+		// Five rounds of failure, each spaced past the previous wait: 2 h, 4 h, 8 h, 16 h.
+		$t = self::NOW;
+		foreach ([0, 7201, 14401, 28801, 57601] as $step) {
+			$t += $step;
+			$this->repository(offlineAll: true, now: $t)->get();
+		}
+
+		$this->requested = [];
+		self::assertFalse(
+			$this->repository(offlineAll: true, now: $t + 3601)->probe(),
+			'every category braked and the host still down is an outage, not silence',
+		);
+		self::assertNotSame([], $this->requested, 'the detector has to ask to find out');
+	}
+
+	/**
+	 * One dead category is otherwise invisible: nothing degrades while 23 feeds answer,
+	 * the probe stays true, the setup check stays green — and after KEEP_FOR the category
+	 * leaves the cache and, since the rail is derived from loaded data, the UI too. The
+	 * failures were logged at `debug`, and Nextcloud's default level is `warn`.
+	 */
+	public function testABrakedCategoryIsNewsAtTheDefaultLogLevel(): void {
+		$this->repository(offline: ['anamed'])->get();
+
+		$warnings = array_filter($this->logged, static fn (array $l): bool => $l['level'] === 'warning');
+		self::assertNotEmpty($warnings);
+		self::assertStringContainsString(
+			'anamed',
+			implode(' ', array_column($warnings, 'message')),
+		);
 	}
 
 	public function testAnsweringClearsTheFreno(): void {
@@ -960,7 +1003,7 @@ class IspRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
 		return new IspRepository(
-			$clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory,
+			$clients, $time, $this->logger(), $cacheFactory,
 		);
 	}
 
@@ -968,6 +1011,26 @@ class IspRepositoryTest extends TestCase {
 	 * The backfill cursor lives here rather than in the cache precisely so a flush
 	 * cannot reset it, so the double must survive independently of $this->store.
 	 */
+	/** @var list<array{level: string, message: string}> what the code logged, and at what level */
+	private array $logged = [];
+
+	/**
+	 * Records level and message, because "a dead category is news" is a claim about the
+	 * LEVEL: at `debug` — the default until #75 — nothing reaches a default install's log.
+	 */
+	private function logger(): LoggerInterface {
+		$logger = $this->createMock(LoggerInterface::class);
+		foreach (['debug', 'info', 'warning', 'error'] as $level) {
+			$logger->method($level)->willReturnCallback(
+				function (string|\Stringable $message, array $context = []) use ($level): void {
+					$this->logged[] = ['level' => $level, 'message' => (string)$message . ' ' . json_encode($context)];
+				},
+			);
+		}
+
+		return $logger;
+	}
+
 	/** The walk's position for one category, where it now lives: beside its own alerts. */
 	private function cursor(string $term): int {
 		return (int)($this->store['feed-' . IspRepository::ALERTS . '-' . $term]['v']['backfill'] ?? 2);

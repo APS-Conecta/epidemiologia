@@ -133,7 +133,7 @@ class IspRepository {
 	 * @param ?array<string, array> $stored
 	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
-	public function refresh(?array $stored = null): array {
+	public function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
 		$stored ??= $this->storedAll();
 		$fetched = [];
 		$reached = 0;
@@ -143,7 +143,7 @@ class IspRepository {
 		$attempted = 0;
 
 		foreach (self::TERMS as $term) {
-			if ($this->braked($term)) {
+			if (!$ignoreBrakes && $this->braked($term)) {
 				continue;
 			}
 			$attempted++;
@@ -364,9 +364,21 @@ class IspRepository {
 		return $items === [] ? null : $items;
 	}
 
-	/** Cheap liveness signal for the daily probe. False means a human has to look. */
+	/**
+	 * Cheap liveness signal for the daily probe. False means a human has to look.
+	 *
+	 * Asks THROUGH the freno. `$attempted > 0` is the right rule for a reader — a braked
+	 * category is not an unreachable one — but the detector reusing it made the sondeo
+	 * report an outage as silence: five failed rounds cap the backoff at a day, so every
+	 * category is braked, nothing is attempted, and "we asked nothing" was answered as
+	 * "nothing is wrong". The count was cleared, the bell was emptied, and Visión general
+	 * said all sources read fine while the ISP had been down a week.
+	 *
+	 * Twenty-four requests once a day is what a detector costs. It does not clear the
+	 * brakes to do it: this job exists to detect, not to change what the hourly path sees.
+	 */
 	public function probe(): bool {
-		return $this->refresh()['degraded'] === false;
+		return $this->refresh(ignoreBrakes: true)['degraded'] === false;
 	}
 
 	/**
@@ -707,6 +719,18 @@ class IspRepository {
 	private function brake(string $term): void {
 		$n = (int)($this->cache->get($this->frenoKey($term))['n'] ?? 0) + 1;
 		$wait = min(2 * self::FRESH_FOR * (2 ** ($n - 1)), 86400);
+
+		/*
+		 * `warning`, not `debug`: Nextcloud's default loglevel is warn, so at debug one
+		 * dead category was invisible everywhere. A renamed slug 404s forever, 23 feeds
+		 * keep degraded false, the probe stays true and the setup check stays green —
+		 * until KEEP_FOR expires the entry and the category leaves the UI too, because
+		 * the rail is derived from the data that is loaded. Here, and not at each failed
+		 * request, so it is news once per escalation rather than hourly noise.
+		 */
+		$this->logger->warning('Categoría {term} del ISP frenada {n} vez/veces, {wait}s', [
+			'term' => $term, 'n' => $n, 'wait' => $wait,
+		]);
 
 		$this->cache->set($this->frenoKey($term), [
 			'n' => $n,

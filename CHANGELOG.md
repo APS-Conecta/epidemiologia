@@ -17,6 +17,10 @@ in #54.
 - The ISP archive could stop accreting for good: a flush left the cursor claiming a walk whose data
   was gone, one unreadable 200 retired a category permanently, and a failing backfill page braked
   the hourly feed (#74).
+- The daily probe reported the ISP healthy while it was down: with every category braked it
+  attempted nothing, and "we asked nothing" was answered as "nothing is wrong" — clearing the
+  failure count, emptying the bell and greening the setup check (#75).
+- A braked category is logged at `warning`, so one dead feed is visible at the default log level.
 - The backfill cursor moved into its category's own cache entry, so it cannot outlive the archive it
   describes. `IspRepository` no longer takes `IAppConfig`, and the old `backfill-*` app config keys
   are orphans that can be deleted.
