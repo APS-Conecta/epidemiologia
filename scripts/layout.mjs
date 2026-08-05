@@ -142,7 +142,30 @@ const INSPECT = (paneIndex) => {
 		naming.push(`heading "${heading}" is not one of the navigation's names (${navNames.join(', ')})`)
 	}
 
-	return { label, overflow, overlap, collapsed, affordance, naming }
+	/*
+	 * 7. the navigation fits its own column (#52, ADR-0008).
+	 *
+	 * ADR-0008 says the groups do not collapse. That is only affordable while the
+	 * rows fit: putting all 24 ISP categories in the column was measured at 1.134px
+	 * against a 506px column, which is what forced families instead. So MEASURE it
+	 * rather than assert it in a comment — the number is what the decision rests on,
+	 * and a comment cannot notice when a seventh row is added.
+	 *
+	 * The footer is excluded: it is pinned to the bottom and does not compete for the
+	 * scrolling area the lists live in.
+	 */
+	const fit = []
+	const nav = document.querySelector('.app-navigation')
+	const lists = [...document.querySelectorAll('.app-navigation ul')]
+	if (nav && lists.length) {
+		const rows = lists.reduce((sum, l) => sum + l.getBoundingClientRect().height, 0)
+		const column = nav.getBoundingClientRect().height
+		if (rows > column) {
+			fit.push(`the navigation's rows are ${Math.round(rows)}px in a ${Math.round(column)}px column — ADR-0008 says the groups do not collapse, which stops being free here`)
+		}
+	}
+
+	return { label, overflow, overlap, collapsed, affordance, naming, fit }
 }
 
 /**
@@ -272,9 +295,10 @@ for (const { w, h } of VIEWPORTS) {
 			...r.collapsed.map((d) => ['contenido con altura cero', d]),
 			...r.affordance.map((d) => ['algo pulsable idéntico al texto de al lado', d]),
 			...r.naming.map((d) => ['el panel se llama de dos maneras', d]),
+			...r.fit.map((d) => ['la navegación no cabe en su columna', d]),
 		]
 		if (problems.length === 0) {
-			pass(`${r.label.padEnd(26)} desborde·solape·altura·afordancia·nombres`)
+			pass(`${r.label.padEnd(26)} desborde·solape·altura·afordancia·nombres·columna`)
 		} else {
 			for (const [what, detail] of problems) {
 				fail(`${r.label} — ${what}`, [detail])

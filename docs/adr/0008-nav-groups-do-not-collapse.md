@@ -44,3 +44,20 @@ to do here: entry height **34px** and label **15px/500** on both, measured on th
   to ask whether every pane earns a permanent row.
 - Adding a source adds an entry, and possibly a fourth caption. That is 34–72px against 64px of
   slack, so the *next* source is the one that makes this worth re-measuring.
+
+## Still true after the ISP gained five families (2026-08-05, #52)
+
+This decision rests on the rows fitting the column. #52 added five family entries and a caption to
+the ISP, so the arithmetic was re-run rather than assumed.
+
+**Measured on the built app, at all three viewports:** every navigation list together is **538px**,
+in a column of **682px** at 360×740 and more above that. It fits. The groups do not collapse and
+nothing here changes.
+
+The alternative #52 rejected is the reason this is worth recording: putting all 24 ISP categories in
+the column instead measured **1.134px against a 506px column**, which would have forced collapsing
+groups and retired this ADR. Five families plus *Todas* is what keeps it.
+
+**The measurement is now a gate**, not a note — `scripts/layout.mjs` check 7 sums the lists and
+compares them against the column at every viewport. A comment cannot notice a seventh row; that check
+can.

@@ -51,16 +51,23 @@
 			</NcAppNavigationList>
 
 			<!-- The ISP, in its own list because an <li> loose in this <div> is as
-			     invalid as a nested <ul> — ADR-0005 measured that. No caption, so no
-			     aria-labelledby: the row names its own publisher. -->
-			<NcAppNavigationList>
-				<NcAppNavigationItem v-for="pane in loose"
-					:key="pane.id"
-					:name="pane.name"
-					:active="current === pane.id"
-					@click="current = pane.id">
+			     invalid as a nested <ul> — ADR-0005 measured that.
+			     It gained a caption when it gained rows: one row named its own
+			     publisher, six families cannot each repeat it (#52).
+			     Measured on the built app 2026-08-05, not taken from the mockup: all
+			     the lists together are 538px, in a column of 682px at 360×740 and more
+			     above that. It fits, so ADR-0008 stands and the groups do not collapse.
+			     scripts/layout.mjs check 7 asserts it at every viewport, because a
+			     seventh row is exactly the kind of thing a comment cannot notice. -->
+			<NcAppNavigationList :aria-labelledby="'epi-nav-isp'">
+				<NcAppNavigationCaption :name="t('epidemiologia', 'ISP')" heading-id="epi-nav-isp" />
+				<NcAppNavigationItem v-for="entry in ispEntries"
+					:key="entry.id ?? 'todas'"
+					:name="entry.name"
+					:active="current === 'isp' && ispFamily === entry.id"
+					@click="openIsp(entry.id)">
 					<template #icon>
-						<component :is="pane.icon" :size="20" />
+						<component :is="entry.icon" :size="20" />
 					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
@@ -99,7 +106,7 @@
 				-->
 				<InicioPane v-show="current === 'inicio'" @open="current = $event" />
 				<AlertsPane v-show="current === 'alertas'" />
-				<IspPane v-show="current === 'isp'" />
+				<IspPane v-show="current === 'isp'" :family="ispFamily" />
 				<ReportPane v-show="current === 'informe'" />
 				<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
 				<EpivigilaPane v-show="current === 'epivigila'" />
@@ -125,6 +132,7 @@ import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
 import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
+import { FAMILIAS } from './familias.js'
 import { paneName } from './panes.js'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
@@ -149,8 +157,10 @@ watch(current, (pane) => {
  * ONE caption, and it groups by publisher. There used to be three, and the third
  * grouped by function: "Notificación" over EPIVIGILA. EPIVIGILA is
  * epivigila.minsal.cl, so under the publisher rule it belongs to MINSAL, and moving
- * it there leaves one rule instead of two. The ISP's row then labels itself — a
- * caption spending 38px to label a single row is chrome, not structure.
+ * it there leaves one rule instead of two. The ISP's row used to label itself, on
+ * the grounds that a caption spending 38px on a single row is chrome rather than
+ * structure. That held while there was one row. Since #52 there are six, and six
+ * rows that each repeat "ISP" would spend far more than 38px saying it.
  *
  * Names come from panes.js. This file used to hold one wording and each pane
  * another; see ADR-0008 for why the groups do not collapse.
@@ -180,8 +190,30 @@ const groups = [
 	},
 ]
 
-/** Ungrouped, below it: one row, and it names its own publisher. */
-const loose = [pane('isp', Pill)]
+/**
+ * The ISP's six rows: everything, then its five families.
+ *
+ * `Todas` first and with no family, because the archive is what the pane is for —
+ * a family is a narrowing of it, not a separate place. The families come from
+ * familias.js so the navigation and the rail inside the pane cannot disagree about
+ * what a family contains; they held two copies of that test before #52.
+ *
+ * One icon for all six on purpose. Five invented glyphs would assert a visual
+ * taxonomy the ISP does not publish, which is the same mistake as sorting `otros`
+ * by resemblance.
+ */
+const ispEntries = [
+	{ id: null, name: t('epidemiologia', 'Todas'), icon: markRaw(Pill) },
+	...FAMILIAS.map((f) => ({ id: f.id, name: f.name(), icon: markRaw(Pill) })),
+]
+
+/** Which ISP family the pane is showing; null is the whole archive. */
+const ispFamily = ref(null)
+
+function openIsp(family) {
+	current.value = 'isp'
+	ispFamily.value = family
+}
 </script>
 
 <style scoped>
