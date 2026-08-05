@@ -2,10 +2,8 @@
 
 A class in `lib/` gets a unit test when it contains a **decision** — a branch, a loop over a list, a
 fallback, or a policy expressed as a dependency. It is left to `scripts/smoke.sh` when it only
-delegates.
-
-This replaces the rule the repo carried until now: *"the repository is the single seam"*, with
-everything else treated as thin glue not worth testing.
+delegates. This replaces the rule the repo carried until now: *"the repository is the single seam"*,
+with everything else treated as thin glue not worth testing.
 
 ## Why
 
@@ -21,27 +19,20 @@ three that were not were all in the supposed "thin glue":
 
 None of them was thin. They simply were not the repository.
 
-**And the suite did not notice**, which is the sharper half. `ProbeJobTest` asserted that
+**And the suite did not notice**, the sharper half: `ProbeJobTest` asserted that
 `probe_failures_sanitary_alerts` reached 3, and passed, while the notificación that counter produces
-named the wrong institution. The test checked the plumbing; nobody had asserted the sentence.
-
-Issue #25 already stated the principle — *"a good test asserts what a clínico/a or a consuming app
-could observe"* — so the failure was not a missing idea. It was a layering rule that told us which
-classes to skip, and the layer boundary did not match where decisions live.
+named the wrong institution. Issue #25 already had the principle — assert what a clínico/a or a
+consuming app could observe — so what failed was the layering rule, whose boundary did not match
+where decisions live.
 
 ## Considered options
 
-- **Test every class in `lib/`.** No judgement call about what counts as a decision. Rejected: three
-  of the five untested classes only delegate, and `smoke.sh` already asserts their observable
-  behaviour against the running instance — every fuente key in the payload, the OCS envelope, the
-  412 without the header, the frame-domain header, the sondeo being registered. Unit-testing them
-  would assert delegation twice and observable behaviour zero extra times.
-- **Keep the single-seam rule and push assertions into `Sources`.** Cheapest, and honours what was
-  written down. Rejected: the registry cannot express *"the status row reports an ISP outage"*,
-  which is exactly the sentence that was missing.
-- **Rewrite the existing tests that assert internals.** Rejected as a separate concern: those tests
-  are green and their assertions are insufficient rather than wrong. The evidenced gap was absent
-  assertions, and a large diff across a passing suite carries its own risk.
+- **Test every class in `lib/`.** Three of the five untested classes only delegate, and `smoke.sh`
+  already asserts what they produce against the running instance — every fuente key in the payload,
+  the OCS envelope, the 412 without the header, the frame-domain header, the sondeo.
+- **Push the assertions into `Sources` instead.** The registry cannot express *"the status row
+  reports an ISP outage"*, the sentence that was missing.
+- **Rewrite the tests that assert internals.** Separate concern: green, and insufficient, not wrong.
 
 ## Consequences
 
@@ -59,6 +50,3 @@ classes to skip, and the layer boundary did not match where decisions live.
 - **`Sources::ALL` is what the tests walk**, not a list of three names. A fourth fuente added to the
   catálogo and forgotten elsewhere fails in the suite rather than in front of a clinician — which is
   the specific recurrence this exists to prevent.
-- The plan document's debt entry asserting the old rule is corrected in the same change. Leaving it
-  would mean two documents disagreeing about the same rule, and the next reader believing the older
-  one.

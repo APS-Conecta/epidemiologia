@@ -6,132 +6,94 @@ Semantic versioning, still on `0.x`: **an incompatible change raises the minor.*
 Written in English, like the rest of this repo outside the UI — see [`AGENTS.md`](AGENTS.md).
 
 **One line per change, naming what moved for someone using the app or its API.** Why a change was
-made belongs in the commit, the issue, or a comment beside the code. This file had grown into a
-design diary — 517 lines, with `### Changed` appearing twice inside one entry — and was cut back
-in #54.
+made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
 ### Fixed
 
-- The 4,9 MB source map and `vitest.config.js` were served **with no authentication at all**;
-  both are denied now, and `smoke.sh` asserts it anonymously so it cannot reopen quietly (#83).
-- Neither dev script passes a live app password as a command-line argument any more — argv is
-  readable from `/proc/*/cmdline` by any local user for the length of the run (#83).
-- `smoke.sh`'s `occ()` no longer discards stderr, so a container that is down stops being
-  reported as "the app does not show as enabled" (#83).
-- `scripts/layout.mjs` reports in English, and the two Spanish comments in `appinfo/info.xml` and
-  the ones in `.htaccess` are English. Nothing a clinician reads changed (#82).
-- Seven accessibility and wording defects: a bare green dot asserting health nothing had measured;
-  `h3`s following `h1` on desktop, where the only `h2` is `display: none`; the semana epidemiológica
-  printed with no word naming it, so "29 · julio de 2026" read as a date; an `aria-label` that
-  erased the visible label, leaving voice control unable to open any informe; the two EPIVIGILA
-  links without `rel="noopener noreferrer"`; a result count with no live region; and four wordings
-  for two facts, one claiming novelty the app says it cannot construct (#81).
-- Inicio's "Ver las N alertas del ISP" landed on whatever family the navigation had last selected,
-  under a heading that named it. Opening a pane by name now shows that pane whole (#80).
-- The ISP navigation lists the families that carry alerts, not all five, so the "no alert matches
-  those filters" state cannot greet a reader who set no filters. **Todas** stays unconditional (#80).
-- `layout.mjs` gained check 8, the only one that clicks: it walks family → Inicio → the card's link
-  and asserts where it lands. Check 5 reads the heading once and never navigates (#80).
-- `layout.mjs` check 6 pointed at the Tablero pane, which has no toolbar, so it printed ok about
-  the ISP filters it never opened. It now points at the right pane **and fails when it finds no
-  menus at all** — a check that succeeds on finding nothing to check occupies the slot (#79).
-- The rail's active chip carries `aria-pressed`; the state was a background colour and nothing else.
-- A row's category buttons toggle like the rail instead of assigning, so a second tap clears them.
-- Global search bypassed `present()`, so it shipped the internal revision fingerprint and showed a
-  different day than the pane for the same alert (#78).
-- A stored URL that is not `https://` no longer leaves the repository. The scheme guard was
-  ingest-only, on a store that never evicts (#78).
-- A narrowing MINSAL cannot express is refused while the fuente is empty too. The guard read the
-  keys off `items[0]`, so during an outage it answered 200 with an empty list instead of 400 (#78).
-- One ISP walk at a time. Every stale page load used to start its own 24-feed fan-out at 15 s a
-  feed, holding a worker for minutes; eight tabs exhausted the PHP-FPM pool for the whole instance.
-  A cold cache still fetches, because "no alerts" is not an answer we may invent (#76).
-- A response larger than 512 KB is not read. `timeout` was the only bound, and a 3 MB feed exhausts
-  the image's 512 MB inside the parser — reproduced (#76).
+- The ISP archive could stop accreting for good: a Redis flush left the cursor claiming a walk whose
+  data was gone, one unreadable 200 retired a category permanently, and a failing backfill page
+  braked the hourly feed (#74).
+- The daily probe reported the ISP healthy while it was down — with every category braked it
+  attempted nothing, and that was answered as "nothing is wrong" (#75).
+- One ISP walk at a time: every stale page load used to start its own 24-feed fan-out and could
+  exhaust the PHP-FPM pool. A cold cache still fetches (#76).
+- A response larger than 512 KB is not read; a 3 MB feed exhausted the image's 512 MB in the
+  parser (#76).
 - The revision marker was stamped in the server's UTC, so a revision seen after 20:00 in Chile was
-  labelled tomorrow — and unlike `date` it is stored already rendered, so it could not be corrected
-  on read. The three conversions from instant to Chilean day are now one helper (#77).
-- The ISP pane rendered each day in the reader's timezone while filtering on the publisher's, so an
-  alert could show "1 de agosto" and file under julio. Both panes share one day formatter (#77).
-- The ISP archive could stop accreting for good: a flush left the cursor claiming a walk whose data
-  was gone, one unreadable 200 retired a category permanently, and a failing backfill page braked
-  the hourly feed (#74).
-- The daily probe reported the ISP healthy while it was down: with every category braked it
-  attempted nothing, and "we asked nothing" was answered as "nothing is wrong" — clearing the
-  failure count, emptying the bell and greening the setup check (#75).
-- A braked category is logged at `warning`, so one dead feed is visible at the default log level.
-- The backfill cursor moved into its category's own cache entry, so it cannot outlive the archive it
-  describes. `IspRepository` no longer takes `IAppConfig`, and the old `backfill-*` app config keys
-  are orphans that can be deleted.
+  labelled tomorrow. The three conversions to a Chilean day are one helper (#77).
+- The ISP pane rendered days in the reader's timezone while filtering on the publisher's (#77).
+- Global search bypassed `present()`, shipping the revision fingerprint and a different day than
+  the pane (#78).
+- A stored URL that is not `https://` no longer leaves the repository (#78).
+- A narrowing MINSAL cannot express is refused while the fuente is empty too, instead of answering
+  200 with an empty list (#78).
+- `layout.mjs` check 6 pointed at a pane with no toolbar, so it printed ok about filters it never
+  opened; it now fails when it finds no menus at all (#79).
+- The rail's active chip carries `aria-pressed`, and a row's category buttons toggle like the rail
+  instead of assigning (#79).
+- Inicio's "Ver las N alertas del ISP" landed on whatever family was last selected (#80).
+- The ISP navigation lists the families that carry alerts, not all five; **Todas** is
+  unconditional (#80).
+- `layout.mjs` check 8, the only one that clicks, walks family → Inicio → the card's link (#80).
+- Seven accessibility and wording defects: a green dot asserting unmeasured health, a heading level
+  skipped on desktop, the semana epidemiológica printed with no word naming it, an `aria-label`
+  erasing the visible label, two external links without `rel`, a result count with no live region,
+  and four wordings for two facts (#81).
+- The 4,9 MB source map and `vitest.config.js` were served with no authentication; `smoke.sh` now
+  asserts it anonymously (#83).
+- Neither dev script passes an app password as a command-line argument, and `smoke.sh`'s `occ()`
+  keeps stderr (#83).
+
+### Changed
+
+- The backfill cursor lives in its category's own cache entry, so it cannot outlive the archive it
+  describes. `IspRepository` no longer takes `IAppConfig`; `backfill-*` config keys are orphans.
+- A braked category is logged at `warning`, so one dead feed is visible at the default level.
+- `scripts/layout.mjs` reports in English, and the comments in `appinfo/info.xml` and `.htaccess`
+  are English. Nothing a clinician reads changed (#82).
 
 ## [0.5.0] — 2026-08-05
 
 ### Added
 
 - The whole ISP archive is kept, not the newest 60 — one cache entry per category, accreting (#47).
-- The archive backfills itself two pages an hour, with a per-category cursor in `IAppConfig` (#49).
+- The archive backfills itself two pages an hour, with a per-category cursor (#49).
 - A failing category backs off, doubling from 2 h to a 24 h cap, instead of being asked hourly (#60).
 - A revised alert is replaced in place and marked *actualizada*, keeping its publication date (#50).
-- The OCS route takes `source`, `category` and `olderThan`; no parameters answers exactly as before (#51).
+- The OCS route takes `source`, `category` and `olderThan`; no parameters answers as before (#51).
 - Five ISP families in the navigation plus **Todas**, and a subcategory rail inside the pane (#52).
-- `LICENSE`, and SPDX headers on the eight `lib/` files that lacked them.
+- The ISP feeds are asked conditionally; an unchanged feed answers `304` with no body (#48).
 - A JS test runner (Vitest) and the frontend logic under it (#44).
-- The repository is checked against itself: four assertions in the unit suite (#53).
+- `LICENSE`, SPDX headers on the `lib/` files that lacked them, and four self-assertions (#53).
+- `layout.mjs` check 7: the navigation must fit its column at every viewport (#52).
 
 ### Changed
 
-- **The sondeo's failure count has an interface.** It was two config-key prefixes: `ProbeJob` wrote
-  them, `SourcesReachable` imported the background job for no reason except to borrow the two
-  strings, and both test suites read and wrote the raw store. `CONTEXT.md` says those two surfaces
-  "cannot disagree" — that was enforced by both files spelling the same string, which is an agreement
-  nobody can see from a signature. `ProbeRecord` now owns the count, the first-failure stamp and the
-  reset, and is the only thing that knows the keys exist.
-- The notification schedule stays with the job. A bell is right at a transition and a status row at a
-  persistent state, so the thresholds differ on purpose — but they now differ over a named method
-  rather than over a shared prefix.
-- The publication day is rendered in the **publisher's** timezone, not the server's. The ISP is
-  Chilean and prints a Chilean date; the container runs UTC, so anything published after 20:00 in
-  Santiago showed a day late — one alert of 173 on the live archive. Derived on read from the stored
-  instant, so the 1.423-alert archive is corrected without a single refetch.
-- The revision fingerprint no longer leaves the repository. It is how a rewritten alert is spotted; it
-  renders nowhere, and an internal field riding out to every browser and into the OCS contract is one
-  nobody can change later.
-- The ISP feeds are asked conditionally; an unchanged feed answers `304` with no body (#48).
-- `scripts/layout.mjs` gained check 7: the navigation must fit its column at every viewport (#52).
-
-### Removed
-
-- Nothing, from the freno and the backfill: [ADR-0010](docs/adr/0010-the-freno-and-the-backfill-stay-inside.md)
-  records why an architecture review's proposal to extract them was rejected — the deletion test
-  fails for both, and the review's sharpest claim (that `probe()` starves the backfill budget) was
-  simply wrong, since the budget is per call.
-- 1.072 lines of prose (#54): a stale 401-line plan doc, a 74-line REM glossary for data this app
-  never fetches, 158 lines of agent-skill boilerplate, and a CHANGELOG that had become a design diary.
+- The sondeo's failure count has an interface, `ProbeRecord`, instead of two shared config prefixes.
+- The publication day is rendered in the publisher's timezone, derived on read from the stored
+  instant — one alert of 173 on the live archive was a day late.
+- The revision fingerprint no longer leaves the repository.
 
 ### Fixed
 
-- **The ISP pane had three names for one destination.** Inicio said "Alertas del ISP", the navigation
-  row and the heading said "Todas". `panes.js` exists to stop exactly that, and `layout.mjs` check 5
-  passed throughout — "Todas" *was* a nav name, so the check held while the property it stands for
-  did not. On a phone the heading is the only name shown, so it named nothing. The row and the
-  heading read `paneName('isp')` again.
-- **`Alertas vigentes` blamed the reader for an outage**, telling them nothing matched their search
-  when MINSAL had simply returned nothing and they had not searched. It now distinguishes the two
-  emptinesses, as the ISP pane always did.
-- **A row could say the same words twice** — "Dispositivos médicos · Retiro — dispositivo médico ·
-  *Dispositivos médicos*". The family tag now appears only when it adds something.
-- **A MINSAL narrowing was answered with confident nonsense.** `page()` filtered on `categories` and
-  `at`, which only ISP items carry, so `category` matched nothing and returned an empty archive while
-  `olderThan` compared against a defaulted `0` and returned everything — both labelled as if filtered.
-  The route now answers **400**: the fuente exists, the request does not make sense against it.
+- The ISP pane had three names for one destination, and `layout.mjs` check 5 held throughout because
+  "Todas" *was* a nav name.
+- `Alertas vigentes` told a reader their search matched nothing when MINSAL had returned nothing.
+- A row could print a family tag repeating a category it already showed.
+- A MINSAL narrowing was answered with an empty list labelled as if filtered; it answers **400**.
 - A cache entry in an older shape is ignored rather than half-read.
 - A non-RSS body from the ISP no longer wipes the archive (#42).
 - An outage no longer costs a fetch on every page load (#43).
 - The filters never said what was filtered (#44).
 - The version was written in three places and two were wrong (#53).
 - The test cache double ignored TTL and `remove()`, so a test passed for the wrong reason.
+
+### Removed
+
+- 1.072 lines of prose (#54). Nothing from the freno or the backfill: ADR-0010 records why an
+  architecture review's proposal to extract them was rejected.
 
 ## [0.4.0] — 2026-08-03
 
