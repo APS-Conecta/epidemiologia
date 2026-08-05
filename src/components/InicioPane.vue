@@ -120,11 +120,11 @@
 <script setup>
 import { computed } from 'vue'
 import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
-import { getCanonicalLocale, t, n } from '@nextcloud/l10n'
+import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { alerts, degradedText, mes, sanitaryAlerts, reports } from '../state.js'
+import { alerts, degradedText, fecha, mes, sanitaryAlerts, reports } from '../state.js'
 
 defineEmits(['open'])
 
@@ -139,10 +139,6 @@ defineEmits(['open'])
  * instructs a clinic to do is not something to show a prefix of. The other 74
  * are one click away, in a pane that now also shows them in full.
  */
-/** A real day when the fuente publishes one; the ISP does, MINSAL does not. */
-const fecha = (iso) => new Intl.DateTimeFormat(getCanonicalLocale(), { dateStyle: 'long' })
-	.format(new Date(iso + 'T00:00:00'))
-
 const PER_CARD = 1
 const PER_CARD_WEEKS = 3
 

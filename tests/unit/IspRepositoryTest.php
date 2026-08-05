@@ -378,6 +378,27 @@ class IspRepositoryTest extends TestCase {
 		self::assertArrayNotHasKey('updated', $items[0], 'unchanged content must not re-mark');
 	}
 
+	/**
+	 * The marker is a day, and a day belongs to a timezone.
+	 *
+	 * `date('Y-m-d')` uses the container's zone — UTC — three lines below a comment
+	 * explaining why that is wrong, and between two conversions that get it right. And
+	 * unlike `date`, `updated` is stored already rendered, so present() cannot correct it
+	 * on the way out: a revision seen after 20:00 in Chile was labelled TOMORROW, in the
+	 * pill a clinician reads.
+	 */
+	public function testTheMarkerCarriesThePublishersDayNotTheServersOne(): void {
+		// 2026-08-06T02:00:00Z is still 2026-08-05 in Santiago, four hours behind.
+		$this->repository(body: $this->rss([self::ALERT + ['d' => 'a']]))->get();
+
+		$items = $this->repository(
+			body: $this->rss([self::ALERT + ['d' => 'b']]),
+			now: 1785981600,
+		)->get()['items'];
+
+		self::assertSame('2026-08-05', $items[0]['updated']);
+	}
+
 	/** A second revision moves the marker; it is not frozen at the first one. */
 	public function testTheMarkerCarriesTheLatestRevisionDate(): void {
 		$this->repository(body: $this->rss([self::ALERT + ['d' => 'a']]))->get();

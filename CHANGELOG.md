@@ -14,6 +14,11 @@ in #54.
 
 ### Fixed
 
+- The revision marker was stamped in the server's UTC, so a revision seen after 20:00 in Chile was
+  labelled tomorrow — and unlike `date` it is stored already rendered, so it could not be corrected
+  on read. The three conversions from instant to Chilean day are now one helper (#77).
+- The ISP pane rendered each day in the reader's timezone while filtering on the publisher's, so an
+  alert could show "1 de agosto" and file under julio. Both panes share one day formatter (#77).
 - The ISP archive could stop accreting for good: a flush left the cursor claiming a walk whose data
   was gone, one unreadable 200 retired a category permanently, and a failing backfill page braked
   the hourly feed (#74).
