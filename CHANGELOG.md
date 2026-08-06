@@ -12,6 +12,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Fixed
 
+- The ISP archive is emptied by **any** app on the instance being installed, enabled, disabled or
+  updated — Nextcloud's distributed-cache namespace is keyed by every enabled app's version. It
+  rebuilds in about three days of walking; a refresh that finds nothing now says so, instead of the
+  pane silently understating the archive. [ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md) (#101).
 - **27 of 75 MINSAL alerts reached a clinician titled "Descargar Documento"** — 36 % of the pane,
   since 0.1.0. The page is a table whose third cell is a link label; the name is in the first cell.
   An anchor text used by more than one row is now read as a label, not a title (#100).

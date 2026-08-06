@@ -66,6 +66,13 @@ _Avoid_: **Tablero** unqualified, dashboard, panel — all collide with Nextclou
 **EPIVIGILA** — MINSAL's credentialed system for notifying Enfermedades de Notificación Obligatoria.
 Reachable only from Red MINSAL, and linked from here rather than embedded.
 
+**Archivo del ISP** — every alerta sanitaria this app has ever seen, accreted across the 24 feed
+windows plus a backwards walk of two pages an hour. It is a **cache**, not a store: Nextcloud keys
+the distributed cache by every enabled app's version, so any app update on the instance empties it
+and the walk rebuilds it over about three days ([ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)).
+_Avoid_: base de datos, histórico — nothing here is stored, and an *alerta sanitaria* never expires,
+which is why the archive accretes rather than being replaced.
+
 **Estado degradado** — a fetch returned zero items and the app is serving its last good copy
 instead. A displayed state, not an error path: an empty list read as reassurance is the failure this
 context most needs to avoid.
