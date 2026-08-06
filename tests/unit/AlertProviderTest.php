@@ -165,9 +165,12 @@ class AlertProviderTest extends TestCase {
 		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
 		$isp = $this->createMock(IspRepository::class);
 		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
+		// Every way in that can reach the network. `refresh()` is no longer among them:
+		// it is private, so `get()` and `probe()` are the whole surface a provider could
+		// trip over — which is the point of it being private.
 		foreach ([$minsal, $isp] as $repository) {
 			$repository->method('get')->willThrowException(new RuntimeException('a search provider must not fetch'));
-			$repository->method('refresh')->willThrowException(new RuntimeException('a search provider must not fetch'));
+			$repository->method('probe')->willThrowException(new RuntimeException('a search provider must not fetch'));
 		}
 
 		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query(self::IN_BOTH));

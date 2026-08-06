@@ -91,9 +91,11 @@ class MinsalRepository {
 	/**
 	 * Fetch, validate, and either cache or degrade.
 	 *
+	 * Private: nothing outside this class calls it, and `$stored` is the raw cache entry.
+	 *
 	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
-	public function refresh(string $feed, ?array $stored = null): array {
+	private function refresh(string $feed, ?array $stored = null): array {
 		$page = $this->fetch($feed, 'content,modified');
 		$items = $page === null ? [] : $this->parse($feed, (string)($page['content']['rendered'] ?? ''));
 

@@ -10,6 +10,16 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Changed
+
+- `refresh()` is private in both repositories. Nothing outside them ever called it, and its
+  signature published two implementation facts: the raw cache-entry shape, and a freno ADR-0010
+  says lives inside the class. `IspRepository`'s public interface goes from five members to four.
+- The filter pair both alert panes carry — the search box, the year, the month, and the rule that
+  clears a month the newly chosen year does not have — moved to `src/filters.js`. It was
+  byte-identical in both files, comment included, and **had no test in any language**. It has six
+  now. Each pane keeps what is genuinely its own: the ISP composes family and category on top.
+
 ## [0.7.0] — 2026-08-06
 
 ### Fixed
