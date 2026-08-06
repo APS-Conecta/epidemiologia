@@ -97,7 +97,26 @@ class IspRepository {
 	 */
 	private const LOCK_FOR = 600;
 
-	/** The largest response we will read. See parse() for where the number comes from. */
+	/**
+	 * Consecutive unreadable attempts on one page before the walk steps over it. Three,
+	 * because a category is reached about twice a day: that is a day and a half of
+	 * transient trouble tolerated before one page is given up on.
+	 */
+	private const STALLS_BEFORE_SKIP = 3;
+
+	/**
+	 * The largest response we will read. `timeout` was the only bound before, and the ISP
+	 * is a public government WordPress — a compromise or a broken plugin is the realistic
+	 * trigger. Measured: a 3 MB feed exhausts the image's 512 MB inside
+	 * `simplexml_load_string`, fataling the worker in the middle of a page render.
+	 *
+	 * 512 KB against a largest-real-feed of 9,5 KB (anamed) and a largest-real-payload of
+	 * 43 KB (MINSAL's alerts page): twelve times the biggest thing we have ever seen.
+	 *
+	 * ponytail: the body is already a string when we see it, so this bounds the PARSE, not
+	 * the download. Bounding the download needs `on_headers` plus a chunked-transfer
+	 * fallback; if a hostile response ever gets that far, that is the upgrade.
+	 */
 	private const MAX_BYTES = 512 * 1024;
 
 	/** Same windows as MinsalRepository: fresh for an hour, kept for thirty days. */
@@ -159,14 +178,24 @@ class IspRepository {
 		 * the exact lie the empty-versus-degraded rule exists to prevent, and a cold start
 		 * happens once per instance while the herd this guards against is hourly.
 		 */
-		if ($stored !== [] && !$this->lock->add($this->lockKey(), 1, self::LOCK_FOR)) {
+		$held = $stored !== [] && $this->lock->add($this->lockKey(), 1, self::LOCK_FOR);
+
+		if ($stored !== [] && !$held) {
 			return $this->present($stored, false);
 		}
 
 		try {
 			return $this->refresh($stored);
 		} finally {
-			$this->lock->remove($this->lockKey());
+			// Only what we took. The release used to be unconditional while the acquire
+			// was not, so a cold reader — a fresh instance, an evicted entry, or a
+			// `memcache.locking` pointing at a different Redis than the distributed one —
+			// walked without the lock and then DELETED the lock of whoever was mid-walk.
+			// The next arrival won `add()` and started a third fan-out: the mutex defeated
+			// in exactly the pile-up it exists for.
+			if ($held) {
+				$this->lock->remove($this->lockKey());
+			}
 		}
 	}
 
@@ -201,12 +230,18 @@ class IspRepository {
 			// Nothing to parse, and NOT an empty answer — see the guard below.
 			if ($answer['unchanged']) {
 				$confirmed++;
+				/*
+				 * Spread the stored entry rather than listing its keys. The backfill owns
+				 * fields in here — the cursor, and the count of unreadable attempts — and
+				 * an explicit list silently dropped them on every hourly write, which is
+				 * how the stall counter could never reach its own threshold.
+				 */
 				$this->cache->set($this->key($term), [
+					...$stored[$term] ?? [],
 					'items' => $stored[$term]['items'] ?? [],
 					'etag' => $stored[$term]['etag'] ?? '',
 					'modified' => $stored[$term]['modified'] ?? '',
 					'fetched_at' => $this->time->getTime(),
-					'backfill' => $stored[$term]['backfill'] ?? 2,
 				], self::KEEP_FOR);
 				continue;
 			}
@@ -266,19 +301,22 @@ class IspRepository {
 		 * alert never expires — so replacing a category with what its window happens
 		 * to show today would throw away everything older on every refresh. Union
 		 * instead, keyed by link, and the archive assembles itself from the fetch the
-		 * app already makes hourly. Nothing is capped: the whole thing is ~357 KB.
+		 * app already makes hourly. Nothing is capped, on the measurement in ADR-0009: ~126 KB gzipped
+		 * at the full archive, against a page that is already 41 KB.
 		 *
 		 * A category nobody could reach this round is simply not written, so its last
 		 * good copy stands on its own rather than needing a rule to protect it.
 		 */
 		$now = $this->time->getTime();
 		foreach ($fetched as $term => $answer) {
+			// Spread, for the reason above: the backfill's fields are not this loop's to
+			// enumerate, and enumerating them is how they get dropped.
 			$this->cache->set($this->key($term), [
+				...$stored[$term] ?? [],
 				'items' => $this->union($stored[$term]['items'] ?? [], $answer['items']),
 				'etag' => $answer['etag'],
 				'modified' => $answer['modified'],
 				'fetched_at' => $now,
-				'backfill' => $stored[$term]['backfill'] ?? 2,
 			], self::KEEP_FOR);
 		}
 
@@ -344,6 +382,29 @@ class IspRepository {
 			 * `continue` alone already leaves the page to be retried.
 			 */
 			if ($items === null) {
+				/*
+				 * With a counter, because without one this was a permanent silent stall.
+				 * `parse()` returns nothing for a body over the size cap, for a page whose
+				 * every item fails the https guard, and for anything that is not RSS — so a
+				 * page that can NEVER be read was re-requested on every rotation forever,
+				 * spending budget, while that category's archive stopped growing and
+				 * nothing degraded. Three tries, then step over it and say so: one lost
+				 * page beats a walk that is dead and quiet about it.
+				 */
+				$stalls = (int)($entry['stalls'] ?? 0) + 1;
+				if ($stalls < self::STALLS_BEFORE_SKIP) {
+					$this->cache->set($this->key($term), [...$entry, 'stalls' => $stalls], self::KEEP_FOR);
+					continue;
+				}
+
+				$this->logger->warning('Página {page} de {term} ilegible {n} veces, backfill la salta', [
+					'term' => $term, 'page' => $page, 'n' => $stalls,
+				]);
+				$this->cache->set(
+					$this->key($term),
+					[...$entry, 'backfill' => $page + 1, 'stalls' => 0],
+					self::KEEP_FOR,
+				);
 				continue;
 			}
 
@@ -363,6 +424,7 @@ class IspRepository {
 				// stamping it would make a stale category look fresh.
 				'fetched_at' => $entry['fetched_at'] ?? $this->time->getTime(),
 				'backfill' => $page + 1,
+				'stalls' => 0,
 			], self::KEEP_FOR);
 		}
 	}
@@ -400,7 +462,16 @@ class IspRepository {
 		 * arrive here as []. refresh() has guarded exactly this since the class was
 		 * written. This path had not, so one WAF answer retired a category permanently.
 		 */
-		$items = $this->parse((string)$response->getBody());
+		$body = (string)$response->getBody();
+		if (strlen($body) > self::MAX_BYTES) {
+			$this->logger->warning('Página {page} de {term} de {bytes} bytes, descartada', [
+				'term' => $term, 'page' => $page, 'bytes' => strlen($body),
+			]);
+
+			return null;
+		}
+
+		$items = $this->parse($body);
 
 		return $items === [] ? null : $items;
 	}
@@ -415,8 +486,13 @@ class IspRepository {
 	 * "nothing is wrong". The count was cleared, the bell was emptied, and Visión general
 	 * said all sources read fine while the ISP had been down a week.
 	 *
-	 * Twenty-four requests once a day is what a detector costs. It does not clear the
-	 * brakes to do it: this job exists to detect, not to change what the hourly path sees.
+	 * Twenty-six requests once a day is what a detector costs here — 24 feeds plus the two
+	 * backfill pages `refresh()` always ends with.
+	 *
+	 * It does not SKIP the freno's bookkeeping, and an earlier version of this comment
+	 * claimed it did: a category that answers has its freno cleared and one that fails has
+	 * its count escalated, exactly as on the hourly path. That is the right behaviour — a
+	 * category that just answered is not braked — but it is a write, so say so.
 	 */
 	public function probe(): bool {
 		return $this->refresh(ignoreBrakes: true)['degraded'] === false;
@@ -441,9 +517,16 @@ class IspRepository {
 		// meant the search box skipped the `h` strip and the day derivation, so it showed
 		// a different date than the pane for the same alert, and shipped an internal
 		// field into the search provider.
+		if ($needle === '') {
+			return [];
+		}
+
+		// The guard first. present() is 24 cache reads, a merge that dedupes ~2.500
+		// memberships and sorts ~1.423 items, and a DateTimeImmutable per item — and
+		// every registered provider runs on every unified search, for every user.
 		$items = $this->present($this->storedAll(), false)['items'];
 
-		if ($needle === '' || $items === []) {
+		if ($items === []) {
 			return [];
 		}
 
@@ -463,29 +546,6 @@ class IspRepository {
 	 * @return list<array<string, string>>
 	 */
 	private function parse(string $xml): array {
-		/*
-		 * `timeout` was the only bound on a response, and the ISP is a public government
-		 * WordPress — a compromise or a broken plugin is the realistic trigger. Measured
-		 * here: a 3 MB feed exhausts the image's 512 MB inside simplexml_load_string,
-		 * fataling the worker in the middle of a page render. Below that threshold it is
-		 * worse rather than better, because union() writes the lot into an archive that
-		 * never evicts and every page load then carries it.
-		 *
-		 * 512 KB against a largest-real-feed of 9,5 KB (anamed) and a largest-real-payload
-		 * of 43 KB (MINSAL's alerts page): twelve times the biggest thing we have ever
-		 * seen, and about 87 MB once parsed at the amplification measured above.
-		 *
-		 * ponytail: the body is already a string by the time we see it, so this bounds the
-		 * PARSE, not the download. Bounding the download needs on_headers plus a
-		 * chunked-transfer fallback; if a hostile response ever gets that far, that is the
-		 * upgrade.
-		 */
-		if (strlen($xml) > self::MAX_BYTES) {
-			$this->logger->warning('Respuesta del ISP de {bytes} bytes, descartada', ['bytes' => strlen($xml)]);
-
-			return [];
-		}
-
 		$previous = libxml_use_internal_errors(true);
 		$feed = simplexml_load_string($xml);
 		libxml_clear_errors();
@@ -575,9 +635,26 @@ class IspRepository {
 			return null;
 		}
 
+		$body = (string)$response->getBody();
+
+		/*
+		 * Too big to read is "could not read it", not "answered with nothing". Rejecting
+		 * it inside parse() instead made an oversize answer indistinguishable from a
+		 * legitimately empty feed — and on a cold cache the unparseable-set guard below
+		 * does not fire, so 24 oversize responses were written as a healthy empty archive
+		 * and kept for thirty days. Here it counts as unreachable, which is what it is.
+		 */
+		if (strlen($body) > self::MAX_BYTES) {
+			$this->logger->warning('Respuesta de {term} de {bytes} bytes, descartada', [
+				'term' => $term, 'bytes' => strlen($body),
+			]);
+
+			return null;
+		}
+
 		return [
 			'unchanged' => $response->getStatusCode() === 304,
-			'body' => (string)$response->getBody(),
+			'body' => $body,
 			'etag' => $response->getHeader('ETag'),
 			'modified' => $response->getHeader('Last-Modified'),
 		];

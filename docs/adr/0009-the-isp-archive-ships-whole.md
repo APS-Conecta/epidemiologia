@@ -16,8 +16,8 @@ too big for `IInitialState`, *"~357 KB of JSON in the HTML of every page load"* 
 | ISP pane DOM today (173 rows) | 1.125 nodes, 6,5 per row |
 | projected DOM at 1.423 | ~9.254 nodes |
 
-The 357 KB figure was uncompressed *and* about half the true raw size — the real raw projection is
-~714 KB. It does not matter: the page has been served `gzip` all along, so that is **126 KB over the
+The 357 KB figure was uncompressed, and short of the true raw size: 59,1 KB over 173 alerts projects
+to **~486 KB** raw at 1.423. It does not matter: the page has been served `gzip` all along, so that is **126 KB over the
 wire, once per load, on a clinic LAN**, against a page that is already 41 KB.
 
 ## Decision

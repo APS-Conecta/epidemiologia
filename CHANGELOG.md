@@ -10,6 +10,25 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-05
+
+### Fixed after review
+
+- `get()` released a lock it had never acquired: the `add()` was conditional and the `remove()` was
+  not, so a cold reader deleted the lock of whoever was mid-walk. The test passed while executing it.
+- A backfill page that can never be read stalled that category's walk forever and silently. Three
+  tries, then the walk steps over it and says so.
+- The hourly write rebuilt each entry from an explicit key list, dropping the fields the backfill
+  owns. It spreads the stored entry now, so the class of bug is gone rather than the instance.
+- An oversize response was cached as a healthy empty archive for thirty days. The cap moved from
+  `parse()` into `fetch()` and `page()`: too big to read is *unreachable*, not *empty*.
+- `search()` paid for the whole of `present()` before its own empty guard, on every unified search.
+- `layout.mjs` check 8 hard-required a `Cosméticos` row, which exists only when the archive carries
+  a cosmetics alert — a red suite for a data reason. It walks whichever family is there, or skips.
+- `layout.mjs`'s usage message still told you to pass the token on the command line.
+- `probe()`'s docblock claimed it does not touch the freno. It does, in both directions, and the
+  cost is 26 requests rather than 24.
+
 ### Fixed
 
 - The ISP archive could stop accreting for good: a Redis flush left the cursor claiming a walk whose
@@ -34,9 +53,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 - The rail's active chip carries `aria-pressed`, and a row's category buttons toggle like the rail
   instead of assigning (#79).
 - Inicio's "Ver las N alertas del ISP" landed on whatever family was last selected (#80).
-- The ISP navigation lists the families that carry alerts, not all five; **Todas** is
-  unconditional (#80).
-- `layout.mjs` check 8, the only one that clicks, walks family → Inicio → the card's link (#80).
+- The ISP navigation lists the families that carry alerts, not all five. The pane's own row,
+  **Alertas del ISP**, stays unconditional so a degraded ISP keeps a destination (#80).
+- `layout.mjs` check 8, the only one that navigates between panes, walks family → Inicio → the
+  card's link and asserts where it lands (#80).
 - Seven accessibility and wording defects: a green dot asserting unmeasured health, a heading level
   skipped on desktop, the semana epidemiológica printed with no word naming it, an `aria-label`
   erasing the visible label, two external links without `rel`, a result count with no live region,
@@ -63,7 +83,7 @@ made belongs in the commit, the issue, or a comment beside the code.
 - A failing category backs off, doubling from 2 h to a 24 h cap, instead of being asked hourly (#60).
 - A revised alert is replaced in place and marked *actualizada*, keeping its publication date (#50).
 - The OCS route takes `source`, `category` and `olderThan`; no parameters answers as before (#51).
-- Five ISP families in the navigation plus **Todas**, and a subcategory rail inside the pane (#52).
+- Five ISP families in the navigation under the pane's own row, and a subcategory rail (#52).
 - The ISP feeds are asked conditionally; an unchanged feed answers `304` with no body (#48).
 - A JS test runner (Vitest) and the frontend logic under it (#44).
 - `LICENSE`, SPDX headers on the `lib/` files that lacked them, and four self-assertions (#53).
@@ -101,7 +121,7 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 - One toolbar row and one filter model for every list pane, with counts in the menus.
 - `scripts/layout.sh`: a headless layout gate at 360, 768 and 1366 px (#40).
-- CI (`.github/workflows/ci.yml`): the unit suite and the bundle check on every push.
+- CI (`.github/workflows/ci.yml`): the unit suite and the bundle check, on `main` and on pull requests.
 - One name per pane, in `src/panes.js` — each answered to two or three before.
 - `fuente` and `sondeo` in the glossary; ADR-0007 and ADR-0008.
 

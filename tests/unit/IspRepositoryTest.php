@@ -557,6 +557,35 @@ class IspRepositoryTest extends TestCase {
 		self::assertCount(24, $this->requested, 'every category still asked the next hour');
 	}
 
+	/**
+	 * #74 removed the brake from the backfill, which was right — it gated the HOURLY
+	 * fetch — but it left `null` with no counter at all. A page that can never be read
+	 * (over the size cap, every item failing the https guard, a permanently broken
+	 * response) is then re-requested on every rotation forever, spending budget, and that
+	 * category's archive never grows past it again. Silently: nothing degrades.
+	 *
+	 * A permanent wrong retire was swapped for a permanent silent stall. Three tries and
+	 * the walk steps over the page, saying so.
+	 */
+	public function testAPageThatCanNeverBeReadIsSteppedOverRatherThanRetriedForever(): void {
+		// Thirty-six hours, not twenty-four. Measured: the rotation reaches each category
+		// exactly twice a day, so three consecutive failures take a day and a half — which
+		// is what the threshold's comment claims and what a 24-hour run could not reach.
+		for ($h = 1; $h <= 36; $h++) {
+			$this->repository(paged: '<html>not a feed</html>', now: self::NOW + $h * 3601)->get();
+		}
+
+		$cursors = array_map(fn (string $t): int => $this->cursor($t), array_unique($this->pagesRequested));
+		self::assertNotEmpty($cursors);
+		self::assertGreaterThan(2, max($cursors), 'the walk must get past a page it cannot read');
+
+		$warnings = implode(' ', array_column(
+			array_filter($this->logged, static fn (array $l): bool => $l['level'] === 'warning'),
+			'message',
+		));
+		self::assertStringContainsString('backfill', $warnings, 'and must say it skipped one');
+	}
+
 	public function testBackfillNeverDegradesAndNeverLosesAnAlert(): void {
 		$before = $this->repository()->get();
 
@@ -602,6 +631,11 @@ class IspRepositoryTest extends TestCase {
 
 		self::assertNotEmpty($this->requested);
 		self::assertNotEmpty($alerts['items']);
+		self::assertArrayHasKey(
+			'refresh-' . IspRepository::ALERTS,
+			$this->locks,
+			'a reader that never took the lock must not release someone else\'s',
+		);
 	}
 
 	public function testTheLockIsReleasedSoTheNextHourRefreshes(): void {
@@ -631,6 +665,8 @@ class IspRepositoryTest extends TestCase {
 		$alerts = $this->repository(body: $huge)->get();
 
 		self::assertSame([], $alerts['items'], 'nothing that large is a feed we can trust');
+		self::assertTrue($alerts['degraded'], 'unread is not the same as an empty archive');
+		self::assertSame([], $this->archive(), 'and must not be cached as one for thirty days');
 	}
 
 	// --- one door out --------------------------------------------------------

@@ -9,7 +9,6 @@ namespace OCA\Epidemiologia\SetupCheck;
 
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\IL10N;
 use OCP\SetupCheck\ISetupCheck;
 use OCP\SetupCheck\SetupResult;

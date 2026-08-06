@@ -10,7 +10,7 @@ import { t } from '@nextcloud/l10n'
  * under a label that says exactly that.
  *
  * Sorting the eight by resemblance would be publishing our guess as the ISP's —
- * the same thing PLAN.md forbids for MINSAL disease tags, and for the same reason:
+ * the same thing issue #1 forbids for MINSAL disease tags, and for the same reason:
  * a clinician reads what the app groups as what the source declared.
  *
  * This module exists because the navigation and the pane must agree. They used to

@@ -18,7 +18,7 @@ so a remote URL could not be read even with a working delegate.
 
 Installing it is not ours to do: both fixes need packages in the **runtime** image (`ghostscript`
 pulls 32, `poppler-utils` 27), i.e. a derived production image, which `AGENTS.md` sanctions only for
-development — a `gestion` platform decision, touching #109's digest pinning. A cached thumbnail is
+development — a `gestion` platform decision, touching `gestion`'s #109 digest pinning. A cached thumbnail is
 also a derivative work of a state document on our server, reopening issue #1's "no rehosting" and
 "no parsing PDF contents" lines.
 

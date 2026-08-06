@@ -30,7 +30,7 @@ of its navigation we already match: entry height **34px**, label **15px/500**, s
 - The condition that would reopen this is **overflow**, not taste: if the navigation grows past the
   column — roughly ten entries at today's sizes — the right move is still not to collapse labels but
   to ask whether every pane earns a permanent row.
-- Adding a source adds an entry, and possibly a third caption: 34–72px against 64px of slack, so the
+- Adding a source adds an entry, and possibly a third caption: 34–72px against the ~144px of slack the addendum below measures, so the
   *next* source is the one that makes this worth re-measuring.
 
 ## Still true after the ISP gained five families (2026-08-05, #52)

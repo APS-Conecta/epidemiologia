@@ -22,7 +22,7 @@ ISP* is never merged with an *alerta vigente*.
 - **`…/api/v1/alerts` and `…/reports` are gone, no aliases, no grace period.** Nobody consumed them;
   incompatible, so it raised the minor to **0.3.0**. `scripts/smoke.sh` asserts both return 404, so a
   re-added contract fails the check.
-- A consumer wanting one source still receives all three — cheaper than the split's round trips.
+- A consumer wanting one source once received all three; since the amendment below it supplies `source` and gets that source alone — cheaper than the split's round trips.
 - The key set is `Sources::ALL`: the registry, not this controller, decides what the contract holds,
   which is why `openapi.json` is generated from the code and never edited by hand.
 - **The accesos (tablero, EPIVIGILA) stay out of the payload.** The three reasons to route anything
