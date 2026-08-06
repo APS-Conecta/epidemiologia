@@ -182,12 +182,75 @@ class MinsalRepository {
 	}
 
 	/**
+	 * Decoded, with every kind of space collapsed. `\s` does not match U+00A0 even under
+	 * /u, and these titles are full of `&nbsp;`.
+	 */
+	private function text(string $html): string {
+		$decoded = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+		return trim((string)preg_replace('/[\s\x{00A0}]+/u', ' ', $decoded));
+	}
+
+	/**
+	 * The name each PDF is given by its own table row, keyed by URL.
+	 *
+	 * Empty when the page is not a table, which is the IRAG page: 29 anchors, no rows at
+	 * all. So this adds a better title where one exists and changes nothing where it does
+	 * not — the anchor scan above still finds every link either way.
+	 *
+	 * @return array<string, string>
+	 */
+	private function rowTitles(string $html): array {
+		if (preg_match_all('#<tr\b.*?</tr>#is', $html, $rows) === 0) {
+			return [];
+		}
+
+		$titles = [];
+		foreach ($rows[0] as $row) {
+			if (preg_match('#<a[^>]+href="([^"]+\.pdf)"#i', $row, $link) !== 1) {
+				continue;
+			}
+			if (preg_match_all('#<td\b[^>]*>(.*?)</td>#is', $row, $cells) === 0) {
+				continue;
+			}
+			foreach ($cells[1] as $cell) {
+				$name = $this->text($cell);
+				// The first cell that says anything. `rowspan` cells and stray `&nbsp;`
+				// ones are real on this page.
+				if ($name !== '') {
+					$titles[html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')] = $name;
+					break;
+				}
+			}
+		}
+
+		return $titles;
+	}
+
+	/**
 	 * @return list<array<string, string>>
 	 */
 	private function parse(string $feed, string $html): array {
 		if (preg_match_all('#<a[^>]+href="([^"]+\.pdf)"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER) === 0) {
 			return [];
 		}
+
+		$rowTitles = $this->rowTitles($html);
+
+		/*
+		 * An anchor text used by more than one row is a LINK LABEL, not a title. MINSAL's
+		 * page is a table — `Nombre de la alerta | Fecha | Descarga` — and for the older
+		 * half the third cell reads "Descargar Documento", 27 times out of 75. Taking the
+		 * anchor text put 27 indistinguishable rows in front of a clinician.
+		 *
+		 * Detected by repetition rather than by a wordlist: a real title is unique, and
+		 * "Descargar Documento" is the only string on the live page that is not. That also
+		 * survives MINSAL rewording it, which a wordlist would not.
+		 */
+		$labels = array_count_values(array_map(
+			fn (array $m): string => $this->text($m[2]),
+			$matches,
+		));
 
 		$items = [];
 		$rejected = 0;
@@ -215,10 +278,13 @@ class MinsalRepository {
 				continue;
 			}
 
-			// The anchor text IS the official title. Note that \s does not match
-			// U+00A0 even under /u, and these titles are full of &nbsp;.
-			$title = html_entity_decode(strip_tags($label), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-			$title = trim((string)preg_replace('/[\s\x{00A0}]+/u', ' ', $title));
+			// The anchor text is the official title WHEN it is one — it carries the oficio
+			// number, which the row's cell does not. When it is a repeated label, the row's
+			// first cell is what the table's own header calls "Nombre de la alerta".
+			$title = $this->text($label);
+			if (($labels[$title] ?? 0) > 1) {
+				$title = $rowTitles[$url] ?? $title;
+			}
 			if ($title === '') {
 				continue;
 			}
@@ -237,7 +303,11 @@ class MinsalRepository {
 				$item['se'] = preg_match('/SE\s*(\d{1,2})/i', $title, $se) === 1 ? $se[1] : '';
 			}
 
-			$items[] = $item;
+			// Keyed by URL, because MINSAL links the same PDF from two rows of its own
+			// table. AlertsPane keys on the url, so a duplicate was a duplicate Vue key
+			// as well as a row printed twice. IspRepository has deduped by link since
+			// #47; this side never had to until the table shape made it possible.
+			$items[$url] = $item;
 		}
 
 		if ($rejected > 0) {
@@ -247,7 +317,7 @@ class MinsalRepository {
 			);
 		}
 
-		return $this->sort($feed, $items);
+		return $this->sort($feed, array_values($items));
 	}
 
 	/**

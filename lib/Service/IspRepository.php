@@ -62,8 +62,12 @@ class IspRepository {
 	 * Measured across six of them: 51 item slots, 43 unique alerts, ~16 percent
 	 * overlap, the same withdrawal appearing under both `anamed` and
 	 * `retiro-de-mercado`. Hence dedupe by link, below.
+	 *
+	 * Public because the values are contract: every item carries `categories`, and the
+	 * OCS route has to be able to tell a category it does not publish from one that
+	 * merely has nothing in it today.
 	 */
-	private const TERMS = [
+	public const TERMS = [
 		'anamed', 'farmacovigilancia', 'retiro-de-mercado',
 		'alerta-falsificado-producto-sin-registro', 'producto-sin-registro',
 		'dispositivos-medicos', 'retiro-del-mercado-dispositivo-medico',
@@ -269,8 +273,11 @@ class IspRepository {
 		 * manufacture the very banner it exists to prevent.
 		 */
 		if ($attempted > 0 && $reached === 0) {
-			$this->logger->warning('No se pudo contactar ningún feed del ISP ({total} intentos)', [
-				'total' => count(self::TERMS),
+			// `$attempted`, not count(TERMS). refresh() keeps the two apart for the
+			// degradation decision and then logged the constant, so "24 intentos" could
+			// mean one — in the only line an admin diagnoses an outage from.
+			$this->logger->warning('No se pudo contactar ningún feed del ISP ({total} intentos de {feeds})', [
+				'total' => $attempted, 'feeds' => count(self::TERMS),
 			]);
 
 			return $this->degrade($stored);
@@ -287,8 +294,8 @@ class IspRepository {
 		 */
 		$parsedSomething = array_filter($fetched, static fn (array $f): bool => $f['items'] !== []);
 		if ($attempted > 0 && $confirmed === 0 && $parsedSomething === [] && $this->merge($stored) !== []) {
-			$this->logger->warning('Los {total} feeds del ISP respondieron sin nada que interpretar', [
-				'total' => count(self::TERMS),
+			$this->logger->warning('Los {total} feeds del ISP consultados respondieron sin nada que interpretar', [
+				'total' => $attempted,
 			]);
 
 			return $this->degrade($stored);
@@ -558,7 +565,11 @@ class IspRepository {
 		$items = [];
 		foreach ($feed->channel->item as $node) {
 			$url = trim((string)$node->link);
-			$title = trim((string)$node->title);
+			// The same normalisation MinsalRepository does, and for the reason its comment
+			// gives: `\s` does not match U+00A0 even under /u, so `trim()` leaves it. Seven
+			// of 168 live ISP titles carry a leading NBSP or a trailing EN SPACE, and the
+			// leading ones render as a visible indent on the pane's first row.
+			$title = trim((string)preg_replace('/[\s\x{00A0}\x{2000}-\x{200A}\x{202F}\x{205F}\x{3000}]+/u', ' ', (string)$node->title));
 
 			// Same guard as the MINSAL parser and for the same reason: htmlspecialchars
 			// cannot make a URL scheme safe, so only https reaches an href.

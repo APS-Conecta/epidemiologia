@@ -160,6 +160,59 @@ class SourcesTest extends TestCase {
 		self::assertSame([], $sources->page(Sources::SANITARY_ALERTS, category: 'anamed')['items']);
 	}
 
+	/**
+	 * Measured on the live route before this: all three answered **200 with an empty
+	 * list**, which is the confident-empty the 400 exists to refuse.
+	 */
+	public function testACategoryTheFuenteDoesNotPublishIsRefused(): void {
+		$sources = $this->sources(items: $this->threeAlerts());
+
+		self::assertNull($sources->page(Sources::SANITARY_ALERTS, category: 'no-such-category'));
+		self::assertNotNull(
+			$sources->page(Sources::SANITARY_ALERTS, category: 'anamed'),
+			'and one it does publish is still answerable',
+		);
+	}
+
+	/** A cursor is an instant; `?olderThan=abc` reaches PHP as 0 and matched nothing. */
+	public function testACursorThatIsNotAnInstantIsRefused(): void {
+		$sources = $this->sources(items: $this->threeAlerts());
+
+		self::assertNull($sources->page(Sources::SANITARY_ALERTS, olderThan: 0));
+		self::assertNull($sources->page(Sources::SANITARY_ALERTS, olderThan: -1));
+	}
+
+	/**
+	 * The cap was invisible. `?source=sanitary_alerts` returned 100 items where no
+	 * parameters at all returned 273 — naming what you want got you less than not
+	 * naming it — and nothing in the envelope distinguished a page from the whole set.
+	 */
+	public function testANarrowedResponseSaysHowMuchItLeftOut(): void {
+		$many = array_map(
+			static fn (int $i): array => [
+				'title' => "alerta $i",
+				'url' => "https://x/$i",
+				'categories' => ['anamed'],
+				'at' => 1785000000 - $i,
+				'date' => '2026-08-01',
+			],
+			range(1, 130),
+		);
+
+		$page = $this->sources(items: $many)->page(Sources::SANITARY_ALERTS);
+
+		self::assertCount(100, $page['items']);
+		self::assertSame(130, $page['total'], 'the caller has to be able to tell 100 from all of it');
+		self::assertTrue($page['has_more']);
+	}
+
+	public function testAResponseThatFitsSaysThereIsNoMore(): void {
+		$page = $this->sources(items: $this->threeAlerts())->page(Sources::SANITARY_ALERTS);
+
+		self::assertSame(3, $page['total']);
+		self::assertFalse($page['has_more']);
+	}
+
 	/** Asking for nothing in particular is always answerable. */
 	public function testAFuenteThatCannotBeNarrowedStillAnswersUnnarrowed(): void {
 		$sources = $this->sources(items: [['title' => 'un oficio', 'url' => 'https://x/a.pdf', 'year' => '2026']]);

@@ -58,7 +58,9 @@ class MinsalRepositoryTest extends TestCase {
 		$alerts = $this->repository()->get(MinsalRepository::ALERTS);
 
 		self::assertFalse($alerts['degraded']);
-		self::assertCount(75, $alerts['items']);
+		// 74, not the fixture's 75 anchors: MINSAL links one PDF from two rows of its
+		// own table, and the same alert is not two alerts.
+		self::assertCount(74, $alerts['items']);
 		self::assertSame('2026-07-31T22:15:04', $alerts['updated_at']);
 	}
 
@@ -75,6 +77,48 @@ class MinsalRepositoryTest extends TestCase {
 	 * leave most of the list unfilterable. The upload path is the only field with
 	 * full coverage, which is why it is the one we use.
 	 */
+	/**
+	 * MINSAL's alerts page is a TABLE — `Nombre de la alerta | Fecha | Descarga` — and for
+	 * the older half the anchor text is the literal string "Descargar Documento" while the
+	 * name sits in the row's first cell. Taking the anchor text as the title put **27 of
+	 * 75** identical rows in front of a clinician, 36 % of the pane, since 0.1.0.
+	 *
+	 * The fixture has carried the defect all along. Nothing asserted that two alerts are
+	 * told apart, so nothing saw it — and reading the parser could not, because the other
+	 * half of the same page does put the title in the anchor.
+	 */
+	public function testNoAlertIsTitledWithALinkLabel(): void {
+		$titles = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'title');
+
+		self::assertNotContains('Descargar Documento', $titles);
+		// The property, not the string: nothing a reader sees may be shared by rows that
+		// are otherwise identical to them. MINSAL's table does name two pairs of genuinely
+		// different alerts alike; those differ in the month the pane prints beside them.
+		$seen = array_map(
+			static fn (array $i): string => $i['title'] . '|' . $i['month'],
+			$this->repository()->get(MinsalRepository::ALERTS)['items'],
+		);
+
+		self::assertSame(array_unique($seen), $seen, 'two rows a reader cannot tell apart');
+	}
+
+	/** MINSAL links the same PDF from two rows of its own table. */
+	public function testTheSamePdfIsListedOnce(): void {
+		$urls = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'url');
+
+		self::assertSame(array_unique($urls), $urls);
+	}
+
+	/** And the half that DOES name itself in the anchor keeps its oficio number. */
+	public function testAnAlertNamedInItsAnchorKeepsThatName(): void {
+		$titles = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'title');
+
+		self::assertNotEmpty(
+			array_filter($titles, static fn (string $t): bool => str_starts_with($t, 'OFICIO')),
+			'the anchor is the better title when it is one, and carries the oficio number',
+		);
+	}
+
 	public function testDerivesAYearForAlertsWhoseTitleHasNone(): void {
 		$items = $this->repository()->get(MinsalRepository::ALERTS)['items'];
 
@@ -275,7 +319,7 @@ class MinsalRepositoryTest extends TestCase {
 		$after = $offline->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($after['degraded']);
-		self::assertCount(75, $after['items']);
+		self::assertCount(74, $after['items']);
 		self::assertSame($good['updated_at'], $after['updated_at']);
 	}
 

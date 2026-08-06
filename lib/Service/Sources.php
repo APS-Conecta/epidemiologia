@@ -52,6 +52,9 @@ class Sources {
 	 */
 	private const NARROWABLE = [self::SANITARY_ALERTS => ['categories', 'at']];
 
+	/** The category values each fuente publishes. Only the ISP has any. */
+	private const VOCABULARY = [self::SANITARY_ALERTS => IspRepository::TERMS];
+
 	/**
 	 * The two that carry alerts somebody would search for by subject. An informe
 	 * is a weekly PDF identified by its semana epidemiológica, so matching
@@ -126,6 +129,23 @@ class Sources {
 			return null;
 		}
 
+		/*
+		 * A category the fuente does not publish is a narrowing it cannot express, the
+		 * same as asking MINSAL for one — so it gets the same 400. Judged against the
+		 * vocabulary, never against the items: during an outage the items are empty, and
+		 * answering "no hay alertas" to a valid category would be the confident-empty
+		 * this route already refuses elsewhere.
+		 */
+		if ($category !== null && !in_array($category, self::VOCABULARY[$id] ?? [], true)) {
+			return null;
+		}
+
+		// A cursor is an instant. `?olderThan=abc` arrives here as 0 after PHP's cast,
+		// and 0 silently matches nothing rather than saying the request was nonsense.
+		if ($olderThan !== null && $olderThan <= 0) {
+			return null;
+		}
+
 		$source['items'] = array_values(array_filter(
 			$source['items'],
 			static fn (array $i): bool =>
@@ -137,7 +157,16 @@ class Sources {
 		// the reason this route exists is that the whole archive is too big to hand over
 		// in one response. Items are already newest-first, so this is the newest page of
 		// whatever was asked for, and the caller pages back with the last `at` it saw.
+		//
+		// `total` and `has_more` because the cap was invisible: a narrowed response of
+		// 100 looked exactly like a complete one, and naming a source returned FEWER
+		// items than not naming one — 100 against 273 — with nothing in the envelope
+		// saying so. A consumer that cannot tell "that is all" from "that is a page" is
+		// the confident-empty defect again, one level up.
+		$total = count($source['items']);
 		$source['items'] = array_slice($source['items'], 0, self::PAGE);
+		$source['total'] = $total;          // of the NARROWING, not of the fuente
+		$source['has_more'] = $total > self::PAGE;
 
 		return $source;
 	}
@@ -151,11 +180,19 @@ class Sources {
 		// loudness is the property this class is for, and SourcesTest walks ALL
 		// through every method so the failure lands in CI-less development, not in
 		// front of a clinician.
-		return match ($id) {
+		$source = match ($id) {
 			self::ALERTS => $this->minsal->get(MinsalRepository::ALERTS),
 			self::REPORTS => $this->minsal->get(MinsalRepository::IRAG),
 			self::SANITARY_ALERTS => $this->isp->get(),
 		};
+
+		// Every source says how many it holds and whether anything was left out, so a
+		// narrowed answer and a whole one are the same shape — the property
+		// testPageLeavesTheEnvelopeAlone records. Whole means nothing was left out.
+		$source['total'] = count($source['items']);
+		$source['has_more'] = false;
+
+		return $source;
 	}
 
 	/** @return bool false when the source is unreachable, or changed into something we cannot parse */
