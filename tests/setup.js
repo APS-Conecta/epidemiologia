@@ -17,4 +17,9 @@ globalThis.document ??= {
 	// instance in Spanish, so es_CL is what the app actually formats dates in — and
 	// mes() must render "julio de 2026", never "July 2026".
 	documentElement: { dataset: { locale: 'es_CL', language: 'es' }, lang: 'es' },
+	// Vue's runtime-dom calls this once at import, to sniff CSS feature support. It
+	// never renders here — `useFilters` is refs and computeds — so an object with a
+	// `style` bag is the whole browser it needs. Same trade as the three lines above:
+	// jsdom would be a dependency and a second environment for one call.
+	createElement: () => ({ style: {} }),
 }

@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { NcEmptyContent } from '@nextcloud/vue'
 import { t, n } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
@@ -75,38 +75,21 @@ import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, emptyText, fold, mes, monthOptions, yearOptions } from '../state.js'
+import { alerts, emptyText, mes } from '../state.js'
+import { useFilters } from '../filters.js'
 
-const query = ref('')
-const year = ref(null)
-const month = ref(null)
-
-// Upload year, not the oficio's year — only 28 of 75 titles carry one at all.
-// Both menus come from state.js, which is what stops this pane and the ISP's
-// building the same control two ways again (#44).
+// The filter pair, its menus and its stranding rule live in src/filters.js — both alert
+// panes carry the same three, and the copies had already drifted once (#44).
 const yearOf = (a) => a.year
 const monthOf = (a) => a.month
 
-const years = yearOptions(alerts.items, yearOf)
-const months = computed(() => monthOptions(alerts.items, yearOf, monthOf, year.value))
-
-// Changing the year can strand a month that year does not have, which would show
-// zero results and read as a fault in the data rather than in the filter pair.
-watch(year, () => {
-	if (month.value && !months.value.some((m) => m.id === month.value)) {
-		month.value = null
-	}
+const { query, year, month, years, months, matches } = useFilters(alerts.items, {
+	yearOf,
+	monthOf,
+	textOf: (a) => a.title,
 })
 
-// Folded once, not per keystroke: 75 rows x every character typed adds up.
-const folded = alerts.items.map((a) => ({ ...a, _fold: fold(a.title) }))
-
-const shown = computed(() => {
-	const needle = fold(query.value.trim())
-	return folded.filter((a) => (!needle || a._fold.includes(needle))
-		&& (!year.value || a.year === year.value)
-		&& (!month.value || a.month === month.value))
-})
+const shown = matches
 
 const countLabel = computed(() => {
 	const total = alerts.items.length

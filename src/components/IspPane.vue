@@ -147,7 +147,8 @@ import FilterMenu from './FilterMenu.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { emptyText, fecha, fold, monthOptions, sanitaryAlerts, yearOptions } from '../state.js'
+import { emptyText, fecha, sanitaryAlerts } from '../state.js'
+import { useFilters } from '../filters.js'
 import { categoriesIn, familiaName, familiaOf } from '../familias.js'
 
 /**
@@ -197,7 +198,6 @@ const props = defineProps({
 	family: { type: String, default: null },
 })
 
-const query = ref('')
 const kind = ref(null)
 
 /** The heading, and the rail's own "all" chip, both named after the navigation row. */
@@ -239,70 +239,26 @@ const rail = computed(() => categoriesIn(sanitaryAlerts.items, props.family))
 watch(() => props.family, () => {
 	kind.value = null
 })
-const year = ref(null)
-const month = ref(null)
-
-/**
- * The families the ISP's OWN naming declares, and one group for the ones it does
- * not.
- *
- * 16 of its 24 terms name their family in the slug — the `-dp` suffix for
- * dispositivos, `cosmet…`, `desinfectante…`, and the medicamentos cluster — so
- * grouping those is reading the ISP's nomenclature. The other eight
- * (advertencia de seguridad, informe técnico, nota informativa, robo,
- * actualización de software…) are NOT adscribed by the ISP to anything, and they
- * stay together under a label that says so.
- *
- * Sorting them by resemblance would be inventing a classification the source did
- * not publish — the same thing issue #1 forbids for MINSAL disease tags, and for
- * the same reason: a clinician would read our guess as the ISP's.
- */
-/*
- * `familia()` and `kindGroups` used to live here, duplicating what the navigation
- * needed too. Both now read src/familias.js, which is the whole point of #52: a
- * filter and the menu that offers it cannot drift into disagreeing about what a
- * family contains if there is only one of them.
- */
-
-// The ISP stores a full date where MINSAL stores year and month, so only these two
-// readers differ; the menus themselves are built in state.js by the same code that
-// builds Alertas vigentes'. Nothing is pre-applied: the pane opens on every year.
+// The filter pair, its menus and its stranding rule live in src/filters.js, shared with
+// AlertsPane. What stays here is what is genuinely this pane's: the family and the
+// category, which no other pane has.
 const yearOf = (a) => (a.date ?? '').slice(0, 4)
 const monthOf = (a) => (a.date ?? '').slice(0, 7)
 
-const years = computed(() => yearOptions(sanitaryAlerts.items, yearOf))
-const months = computed(() => monthOptions(sanitaryAlerts.items, yearOf, monthOf, year.value))
-
-// Changing the year can strand a month that year does not have, which would show
-// zero results and read as a fault in the data rather than in the filter pair.
-watch(year, () => {
-	if (month.value && !months.value.some((m) => m.id === month.value)) {
-		month.value = null
-	}
+const { query, year, month, years, months, matches } = useFilters(sanitaryAlerts.items, {
+	yearOf,
+	monthOf,
+	// The categories are searchable too: "dispositivo" has to find device alerts whose
+	// title never says the word, because the title names the product.
+	textOf: (a) => a.title + ' ' + (a.categories ?? []).map(kindLabel).join(' '),
 })
 
-/**
- * Folded ONCE, not per keystroke. The search covers the title AND the category
- * labels, so typing "dispositivo" finds device alerts whose title never says the
- * word — which is most of them, since the title names the product.
- */
-const folded = sanitaryAlerts.items.map((a) => ({
-	...a,
-	_fold: fold(a.title + ' ' + (a.categories ?? []).map(kindLabel).join(' ')),
-}))
-
-const shown = computed(() => {
-	const needle = fold(query.value.trim())
-
-	return folded.filter((a) => (!needle || a._fold.includes(needle))
-		// The family narrows before anything else. An alert is in it if ANY of its
-		// categories is — memberships are not exclusive, and requiring all of them
-		// would hide the 43 % of alerts that straddle two.
-		&& (props.family === null || (a.categories ?? []).some((c) => familiaOf(c) === props.family))
-		&& (!kind.value || (a.categories ?? []).includes(kind.value))
-		&& (!year.value || (a.date ?? '').startsWith(year.value))
-		&& (!month.value || (a.date ?? '').startsWith(month.value)))
-})
+const shown = computed(() => matches.value.filter((a) =>
+	// The family narrows before anything else. An alert is in it if ANY of its
+	// categories is — memberships are not exclusive, and requiring all of them would
+	// hide the 43 % of alerts that straddle two.
+	(props.family === null || (a.categories ?? []).some((c) => familiaOf(c) === props.family))
+	&& (!kind.value || (a.categories ?? []).includes(kind.value))))
 
 const countLabel = computed(() => {
 	const total = sanitaryAlerts.items.length

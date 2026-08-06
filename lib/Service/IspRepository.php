@@ -204,10 +204,19 @@ class IspRepository {
 	}
 
 	/**
+	 * Private, and it always should have been: nothing outside this class has ever called
+	 * it. Both its parameters are implementation — `$stored` is the raw per-category cache
+	 * entry, `backfill` and `stalls` included, and `$ignoreBrakes` cannot be used
+	 * correctly without knowing the freno exists and that ignoring it costs 26 requests.
+	 *
+	 * ADR-0010 says the freno lives inside this class. #75 put it on the interface to give
+	 * `probe()` its parameter; this takes it back off without changing a line of
+	 * behaviour. `get()`, `probe()`, `search()` and `ALERTS` are what a caller needs.
+	 *
 	 * @param ?array<string, array> $stored
 	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
 	 */
-	public function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
+	private function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
 		$stored ??= $this->storedAll();
 
 		/*
