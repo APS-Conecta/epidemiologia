@@ -10,6 +10,8 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-06
+
 ### Changed
 
 - `refresh()` is private in both repositories. Nothing outside them ever called it, and its
