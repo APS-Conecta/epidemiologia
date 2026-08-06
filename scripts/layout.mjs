@@ -8,7 +8,7 @@
 //
 // Driven by scripts/layout.sh, which mints the credential and revokes it.
 //
-// Usage: node scripts/layout.mjs <base-url> <user> <password>
+// Usage: EPI_TOKEN=<token> node scripts/layout.mjs <base-url> <user>
 import { chromium } from 'playwright'
 
 // The token comes through the ENVIRONMENT, not argv. A command line is readable from
@@ -17,7 +17,7 @@ import { chromium } from 'playwright'
 const [baseUrl, user] = process.argv.slice(2)
 const password = process.env.EPI_TOKEN
 if (!baseUrl || !user || !password) {
-	console.error('usage: node scripts/layout.mjs <base-url> <user> <password>')
+	console.error('usage: EPI_TOKEN=<token> node scripts/layout.mjs <base-url> <user>')
 	process.exit(2)
 }
 
@@ -318,7 +318,8 @@ for (const { w, h } of VIEWPORTS) {
 		}
 	}
 
-	// Check 8. The only check that CLICKS, and the only one that could have caught
+	// Check 8. The only check that NAVIGATES — check 6 clicks too, but within one pane —
+	// and the only one that could have caught
 	// this: opening a family and then following Inicio's "Ver las N alertas del ISP"
 	// landed on a pane headed with the family's name, not the one the link said. Check
 	// 5 reads the heading once, in the app's initial state, and never navigates — so a
@@ -334,10 +335,19 @@ for (const { w, h } of VIEWPORTS) {
 		const settle = () => new Promise((r) => setTimeout(r, 150))
 
 		// A family, then Inicio, then the card's own link back to the ISP.
-		const family = nav.find((e) => e.textContent.trim() === 'Cosméticos')
+		// Whichever family the archive happens to carry, not a named one. Since the nav
+		// lists only families with alerts, hard-coding 'Cosméticos' made this check go red
+		// for a DATA reason — a quiet week, or a degraded ISP — which is not what a layout
+		// gate is for. With no family at all there is nothing to walk, so skip rather than
+		// fail: the defect needs two destinations to exist before it can be shown.
 		const inicio = nav.find((e) => e.textContent.trim() === 'Inicio')
-		if (!family || !inicio) {
-			return { error: 'navigation has no Cosméticos or no Inicio row' }
+		const family = nav.find((e, i) => i > nav.indexOf(
+			nav.find((n) => n.textContent.trim() === 'Alertas del ISP')) && e.textContent.trim() !== '')
+		if (!inicio) {
+			return { error: 'navigation has no Inicio row' }
+		}
+		if (!family) {
+			return { skipped: 'no ISP family carries alerts right now' }
 		}
 		click(family); await settle()
 		click(inicio); await settle()
@@ -354,7 +364,9 @@ for (const { w, h } of VIEWPORTS) {
 		return { heading: pane?.querySelector('h2, h1')?.textContent.trim() ?? '' }
 	})
 
-	if (landed.error) {
+	if (landed.skipped) {
+		pass('Inicio'.padEnd(26) + ` skipped — ${landed.skipped}`)
+	} else if (landed.error) {
 		fail(`Inicio — ${landed.error}`)
 	} else if (landed.heading !== 'Alertas del ISP') {
 		fail('Inicio — the link goes somewhere it did not name', [

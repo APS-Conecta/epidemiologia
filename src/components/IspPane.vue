@@ -254,7 +254,7 @@ const month = ref(null)
  * stay together under a label that says so.
  *
  * Sorting them by resemblance would be inventing a classification the source did
- * not publish — the same thing PLAN.md forbids for MINSAL disease tags, and for
+ * not publish — the same thing issue #1 forbids for MINSAL disease tags, and for
  * the same reason: a clinician would read our guess as the ISP's.
  */
 /*

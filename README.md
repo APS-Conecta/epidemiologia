@@ -8,7 +8,7 @@ AGPL-3.0-or-later; data from the Departamento de Epidemiología (MINSAL) and the
 | View | What it is | Where it comes from |
 | --- | --- | --- |
 | **Inicio** | What was published most recently, freshness first | Everything below, already loaded |
-| **Alertas vigentes** | The oficios in force, filterable by text and by year | Public REST API on `epi.minsal.cl` |
+| **Alertas vigentes** | The oficios in force, filterable by text, year and month | Public REST API on `epi.minsal.cl` |
 | **Informe semanal ETI e IRAG** | The weekly report, by semana epidemiológica | Public REST API on `epi.minsal.cl` |
 | **Alertas del ISP** | Recalls, falsifications, pharmacovigilance, device withdrawals | 24 hourly RSS feeds on `ispch.gob.cl` |
 | **Tablero ETI e IRAG** | The national dashboard, embedded | Power BI *"Publish to web"* |

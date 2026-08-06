@@ -58,8 +58,8 @@ export function fecha(iso) {
 /**
  * A month, written the way a person reads one.
  *
- * MINSAL publishes no day: the month comes from the upload path, and PLAN.md is
- * explicit that it is the UPLOAD month, not the oficio's. So this formats a month
+ * MINSAL publishes no day: the month comes from the upload path, and it is the
+ * UPLOAD month, not the oficio's (issue #1). So this formats a month
  * and never invents a day — the 1 below only exists because Intl needs a Date to
  * format, and the day is never rendered.
  *
