@@ -1,23 +1,17 @@
 # Tests follow branching, not layering
 
 A class in `lib/` gets a unit test when it contains a **decision** — a branch, a loop over a list, a
-fallback, or a policy expressed as a dependency. It is left to `scripts/smoke.sh` when it only
-delegates. This replaces the rule the repo carried until now: *"the repository is the single seam"*,
-with everything else treated as thin glue not worth testing.
-
-## Why
-
-**The old rule was disproved by three defects, all of which shipped past a green suite.** When the
-ISP arrived as a third fuente, four of the seven places that enumerate fuentes were updated. The
-three that were not were all in the supposed "thin glue":
+fallback, or a policy expressed as a dependency — and is left to `scripts/smoke.sh` when it only
+delegates. This replaces *"the repository is the single seam"*, which treated everything else as thin
+glue not worth testing, and was disproved by three defects that all shipped past a green suite. When
+the ISP arrived as a third fuente, four of the seven places that enumerate fuentes were updated; the
+three that were not were all in the supposed glue:
 
 | Class | What it actually held | What shipped |
 | --- | --- | --- |
 | `Notifier` | a ternary on the fuente id | an ISP outage rendered as *"…desde MINSAL"* |
 | `SourcesReachable` | a loop over a hardcoded list | Visión general green through an ISP outage |
 | `AlertProvider` | a policy choice in its constructor | 60 alertas sanitarias absent from global search |
-
-None of them was thin. They simply were not the repository.
 
 **And the suite did not notice**, the sharper half: `ProbeJobTest` asserted that
 `probe_failures_sanitary_alerts` reached 3, and passed, while the notificación that counter produces
@@ -32,16 +26,14 @@ where decisions live.
   the OCS envelope, the 412 without the header, the frame-domain header, the sondeo.
 - **Push the assertions into `Sources` instead.** The registry cannot express *"the status row
   reports an ISP outage"*, the sentence that was missing.
-- **Rewrite the tests that assert internals.** Separate concern: green, and insufficient, not wrong.
 
 ## Consequences
 
 - `SourcesReachable` and `AlertProvider` gain tests. `ApiController`, `PageController` and
-  `Application` stay untested by unit tests **on purpose**, and that is now a reasoned position
-  rather than an omission: they delegate, and `smoke.sh` covers what they produce.
-- **New tests assert what a person could observe** — the severity of a status row and which fuente
-  it names, whether a search finds a thing and how it is labelled — never how a counter is stored or
-  how many times a collaborator was called.
+  `Application` stay untested by unit tests **on purpose**: they delegate, and `smoke.sh` covers them.
+- **New tests assert what a person could observe** — the severity of a status row and which fuente it
+  names, whether a search finds a thing and how it is labelled — never how a counter is stored or how
+  many times a collaborator was called.
 - **A regression test that has never failed is worth nothing**, so each new guard was proved by
   reintroducing the bug it exists for: enumerating MINSAL's two fuentes by name, always claiming a
   start date, letting the check fetch, restricting search to MINSAL, dropping the institution from a

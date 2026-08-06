@@ -1,17 +1,10 @@
 # The freno and the backfill stay inside `IspRepository`
 
-**Status: accepted, 2026-08-05.** Recorded because an architecture review proposed extracting both
-and the proposal did not survive its own evidence.
-
-## Context
-
-The 2026-08-05 review listed two mechanisms with their own state and rules, reachable only through a
-24-feed refresh, and proposed each become an internal module behind the repository's unchanged
-interface: the **freno** — `braked()` / `brake()` / `frenoKey()`, an exponential backoff whose curve
-is a literal inside `brake()` — and the **backfill** — `backfill()` / `page()` plus a cursor in
-`IAppConfig`, with its own budget, exhaustion rule and rotating start.
-
-## What the evidence actually said
+**Status: accepted, 2026-08-05.** An architecture review proposed extracting two mechanisms, each
+into a module behind the repository's unchanged interface: the **freno** — `braked()` / `brake()` /
+`frenoKey()`, an exponential backoff whose curve is a literal inside `brake()` — and the **backfill**
+— `backfill()` / `page()` plus a cursor in `IAppConfig`, with its own budget, exhaustion rule and
+rotating start. The proposal did not survive its own evidence.
 
 **The deletion test fails for both.** Delete either class and its three methods go back where they
 came from. Complexity **moves**; it does not concentrate at N call sites and it does not vanish.
@@ -31,15 +24,11 @@ opt-*out*, and nothing needs one.
 
 **Both stay inside `IspRepository`.** Its public interface is already deep — five members over
 24-feed fan-out, conditional GET, backoff, an accreting archive, revision detection and a
-cursor-driven backfill — and that is the interface callers and tests cross. Adding two classes to
-make an already-passing test less awkward is structure bought on speculation.
-
-## The cost, stated rather than hidden
-
-The backoff curve cannot be observed or changed without editing `IspRepository`, and its three tests
-are awkward: `testEveryCategoryBrakedIsNotAnOutage` needs three repository instances sharing a store
-and a comment explaining that `NOW + 3601 + 400` lands past the 300 s cooldown but inside the 2 h
-freno. That is the accepted price of not inventing a seam.
+cursor-driven backfill — and that is the interface callers and tests cross. The cost, stated rather
+than hidden: the backoff curve cannot be observed or changed without editing `IspRepository`, and its
+three tests are awkward — `testEveryCategoryBrakedIsNotAnOutage` needs three repository instances
+sharing a store and a comment explaining that `NOW + 3601 + 400` lands past the 300 s cooldown but
+inside the 2 h freno.
 
 ## Reopen when a second adapter exists
 
