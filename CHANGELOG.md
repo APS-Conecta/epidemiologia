@@ -10,6 +10,8 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-06
+
 ### Fixed
 
 - The ISP archive is emptied by **any** app on the instance being installed, enabled, disabled or
