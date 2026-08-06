@@ -209,6 +209,20 @@ class IspRepository {
 	 */
 	public function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
 		$stored ??= $this->storedAll();
+
+		/*
+		 * An empty archive is worth one line, because it is usually not a new instance.
+		 * `Memcache\Factory::getGlobalPrefix()` hashes every ENABLED app's name and
+		 * version, so installing, enabling, disabling or updating ANY app on the instance
+		 * moves this app's whole cache namespace — see ADR-0012. The walk rebuilds at two
+		 * pages an hour and takes about three days, during which the pane understates the
+		 * archive and the Año menu offers fewer years, silently.
+		 */
+		if ($stored === []) {
+			$this->logger->warning('El archivo del ISP está vacío; se reconstruye a {pages} páginas por hora', [
+				'pages' => self::BACKFILL_PAGES,
+			]);
+		}
 		$fetched = [];
 		$reached = 0;
 
