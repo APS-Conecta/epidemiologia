@@ -55,6 +55,16 @@ class SourcesReachable implements ISetupCheck {
 
 	#[\Override]
 	public function run(): SetupResult {
+		// Nothing has been recorded yet, so there is no last sondeo to report on. Said
+		// rather than folded into success: the job runs once a day and is TIME_INSENSITIVE,
+		// so a fresh instance sits here for hours, and an empty count is not good news.
+		$probed = array_filter(Sources::ALL, fn (string $s): bool => $this->record->everProbed($s));
+		if ($probed === []) {
+			return SetupResult::info(
+				$this->l->t('El sondeo diario aún no ha corrido. Se ejecuta una vez al día.')
+			);
+		}
+
 		$broken = [];
 		foreach (Sources::ALL as $source) {
 			if ($this->record->consecutive($source) > 0) {

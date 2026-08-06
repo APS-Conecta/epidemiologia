@@ -141,6 +141,25 @@ class IspRepositoryTest extends TestCase {
 		}
 	}
 
+	/**
+	 * Seven of 168 live titles carry whitespace `trim()` cannot see — a leading U+00A0,
+	 * a trailing U+2002. The leading ones render as a visible indent. MinsalRepository has
+	 * normalised these since 0.1.0 and says why; this parser only called `trim()`.
+	 */
+	public function testTitlesCarryNoWhitespaceTrimCannotSee(): void {
+		$body = $this->rss([
+			['t' => "\u{00A0}Suturas V-Loc 90", 'u' => 'https://www.ispch.gob.cl/a/'],
+			['t' => "NOTA INFORMATIVA\u{2002}", 'u' => 'https://www.ispch.gob.cl/b/'],
+			['t' => "RETIRO CON\u{00A0}FINALIDAD", 'u' => 'https://www.ispch.gob.cl/c/'],
+		]);
+
+		$titles = array_column($this->repository(body: $body)->get()['items'], 'title');
+
+		self::assertContains('Suturas V-Loc 90', $titles);
+		self::assertContains('NOTA INFORMATIVA', $titles);
+		self::assertContains('RETIRO CON FINALIDAD', $titles);
+	}
+
 	public function testSortsNewestFirst(): void {
 		$dates = array_column($this->repository()->get()['items'], 'date');
 		$sorted = $dates;
@@ -245,6 +264,26 @@ class IspRepositoryTest extends TestCase {
 			'anamed',
 			implode(' ', array_column($warnings, 'message')),
 		);
+	}
+
+	/**
+	 * The only line an admin diagnoses an outage from said "24 intentos" whatever the
+	 * freno had left to attempt. refresh() keeps `$attempted` separate from count(TERMS)
+	 * precisely because they differ, then logged the constant.
+	 */
+	public function testTheOutageLineSaysHowManyWereActuallyAsked(): void {
+		// One round of failure brakes all 24, so the next round attempts none of them and
+		// cannot report an outage at all — the case CONTEXT.md's Freno entry names.
+		$this->repository(offlineAll: true)->get();
+		$this->logged = [];
+
+		$this->repository(offlineAll: true, now: self::NOW + 3601)->get();
+
+		$outage = array_filter(
+			$this->logged,
+			static fn (array $l): bool => str_contains($l['message'], 'No se pudo contactar'),
+		);
+		self::assertSame([], $outage, 'nothing was asked, so nothing can be reported as unreachable');
 	}
 
 	public function testAnsweringClearsTheFreno(): void {

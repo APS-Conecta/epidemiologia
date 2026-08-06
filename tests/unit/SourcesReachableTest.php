@@ -43,9 +43,28 @@ class SourcesReachableTest extends TestCase {
 	// --- the row an administrator sees ---------------------------------------
 
 	public function testEveryFuenteHealthyReadsAsSuccess(): void {
+		$this->probed();
+
 		$result = $this->check()->run();
 
 		self::assertSame(SetupResult::SUCCESS, $result->getSeverity());
+	}
+
+	/**
+	 * Before a first run there is nothing to report, and this row said
+	 * "El último sondeo diario leyó todas las fuentes sin problemas" anyway.
+	 *
+	 * `consecutive()` reads 0 for a key that was never written, so "never probed" and
+	 * "probed, all good" were the same value. The job is TIME_INSENSITIVE and the window
+	 * opens at 05:00, so after every install the row asserted a result that did not exist
+	 * for roughly 29 hours. It is the shape #75 fixed one layer down: an absence answered
+	 * as good news.
+	 */
+	public function testAnInstanceThatHasNeverProbedSaysSoInsteadOfClaimingSuccess(): void {
+		$result = $this->check()->run();
+
+		self::assertSame(SetupResult::INFO, $result->getSeverity());
+		self::assertStringNotContainsString('sin problemas', (string)$result->getDescription());
 	}
 
 	/**
@@ -167,10 +186,20 @@ class SourcesReachableTest extends TestCase {
 	}
 
 	public function testTheHealthyRowAlsoNeverReachesOut(): void {
+		$this->probed();
+
 		self::assertSame(SetupResult::SUCCESS, $this->check(explosive: true)->run()->getSeverity());
 	}
 
 	// -----------------------------------------------------------------------
+
+	/** A completed run with nothing wrong — which is NOT the same as no run. */
+	private function probed(): void {
+		$record = $this->probeRecord();
+		foreach (Sources::ALL as $source) {
+			$record->record($source, true);
+		}
+	}
 
 	private function failing(string $source, int $days): void {
 		// Through the record, not by writing its keys. This helper used to import

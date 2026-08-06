@@ -10,6 +10,22 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- **27 of 75 MINSAL alerts reached a clinician titled "Descargar Documento"** — 36 % of the pane,
+  since 0.1.0. The page is a table whose third cell is a link label; the name is in the first cell.
+  An anchor text used by more than one row is now read as a label, not a title (#100).
+- The same PDF, linked from two rows of MINSAL's own table, was listed twice and duplicated a Vue
+  key (#104).
+- Seven ISP titles carried whitespace `trim()` cannot see, rendering as a visible indent (#104).
+- The outage log line always claimed "24 intentos" whatever the freno had left to attempt (#104).
+- Administración → Visión general asserted the result of a daily probe that had never run — for
+  about 29 hours after every install. It now says so instead (#102).
+- Three narrowings answered 200 with an empty list: a blank `category`, a category the ISP does not
+  publish, and an `olderThan` that is not an instant. All three answer 400 (#103).
+- A narrowed response is capped at 100 and said nothing about it, so naming a source returned fewer
+  items than not naming one. Every source now carries `total` and `has_more` (#103).
+
 ## [0.6.0] — 2026-08-05
 
 ### Fixed after review

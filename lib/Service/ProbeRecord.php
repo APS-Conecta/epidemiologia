@@ -78,6 +78,20 @@ class ProbeRecord {
 		return $failures;
 	}
 
+	/**
+	 * Has this fuente ever been probed at all?
+	 *
+	 * `record()` writes the count on BOTH paths — 0 on success, n on failure — so the key
+	 * existing is the only evidence a run happened. Without this, `consecutive()` reads 0
+	 * for a key that was never written, and "never probed" is indistinguishable from
+	 * "probed, all good": Visión general asserted a result that did not exist for the
+	 * ~29 hours between an install and the first maintenance window.
+	 */
+	public function everProbed(string $source): bool {
+		// -1 as the sentinel, because 0 is a real and common value here.
+		return $this->config->getAppValueInt(self::FAILURES . $source, -1) !== -1;
+	}
+
 	/** Consecutive failed probes; 0 when the fuente answered last time it was asked. */
 	public function consecutive(string $source): int {
 		return $this->config->getAppValueInt(self::FAILURES . $source);

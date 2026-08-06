@@ -90,6 +90,15 @@ class ApiController extends OCSController {
 		 * every source, whole. The narrowing below is additive (ADR-0006 amendment), so
 		 * an existing consumer keeps its exact meaning and response shape.
 		 */
+		/*
+		 * An OMITTED parameter is null; an EMPTY one is ''. A consumer building
+		 * `&category=${selected}` with nothing selected sent the empty string, and `''`
+		 * matched no category at all — 200 with an empty list, the answer this route
+		 * exists to refuse. Blank means "not asked".
+		 */
+		$source = ($source ?? '') === '' ? null : $source;
+		$category = ($category ?? '') === '' ? null : $category;
+
 		if ($source === null) {
 			return new DataResponse($this->sources->all());
 		}
