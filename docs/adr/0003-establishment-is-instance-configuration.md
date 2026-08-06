@@ -21,6 +21,6 @@ what was missing is propagation, so a provisioning phase now pushes it to an app
   `rem_source.deis` already exist, and which clinic we show is a **filter value**, not a pipeline.
 - The REM read API takes the DEIS code as a **parameter**, not an implicit "ours", so a selector
   stays additive if the governance question is ever answered.
-- `grep 114302` is a runnable check, not a formality: before this decision it matched only prose in
-  `analizador_rem`'s `docs/ESTADO.md`, and Epidemiología had no notion of an establishment at all.
-  Both must keep returning nothing in code — fixtures and tests included, or agnosticism is untested.
+- `grep 114302` is a runnable check: before this decision it matched only prose in `analizador_rem`'s
+  `docs/ESTADO.md`, and Epidemiología had no notion of an establishment at all. Both must keep
+  returning nothing in code — fixtures and tests included, or agnosticism is untested.

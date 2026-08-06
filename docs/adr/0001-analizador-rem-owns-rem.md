@@ -3,17 +3,15 @@
 REM serves more than one app, so it needs one owner, not a copy per consumer: **`analizador_rem`**.
 Its `oc_rem_fact` denormalises `serie`, `deis`, `anio`, `periodo` onto every fact row, indexed as
 `rem_fact_slice_idx`, and it holds the cell map, the DEIS código dictionaries, the determinism
-firewall and the validator. Epidemiología keeps no copy and no SQL against it; it calls the OCS read
-API that app's roadmap calls Phase 4.
+firewall and the validator. Epidemiología keeps no copy and no SQL against it — the boundary AD-9
+draws for core — and calls the OCS read API that app's roadmap calls Phase 4.
 
 ## Considered options
 
-- **A second REM store here.** The código-de-prestación mapping would then exist in two apps and drift.
 - **A dedicated data app.** Refactors a working app for one consumer needing 440 rows; revisit at a third.
 - **`oc_ref_*` tables from provisioning, no owner.** REM cannot be read from a bare table: `es_total`
   marks the only summable column, Serie P is a stock never summed across cortes, and B17 is 94%
   formulas derived from B, so a naive serie-wide SUM double-counts.
-- **Direct SQL into `oc_rem_fact`.** The boundary AD-9 draws for core: no contract, no version.
 
 ## Consequences
 
