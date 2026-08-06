@@ -15,6 +15,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 - `refresh()` is private in both repositories. Nothing outside them ever called it, and its
   signature published two implementation facts: the raw cache-entry shape, and a freno ADR-0010
   says lives inside the class. `IspRepository`'s public interface goes from five members to four.
+- The TTL-honouring cache double is shared instead of byte-identical in both repository suites.
+  The rule it encodes is subtle — entries carry an **absolute** expiry, because `$now` is
+  per-repository — and a single edit to it now fails a test in each suite, where before the two
+  agreed only by coincidence.
 - The filter pair both alert panes carry — the search box, the year, the month, and the rule that
   clears a month the newly chosen year does not have — moved to `src/filters.js`. It was
   byte-identical in both files, comment included, and **had no test in any language**. It has six

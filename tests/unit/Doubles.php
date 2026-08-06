@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCP\AppFramework\Services\IAppConfig;
+use OCP\ICache;
 use OCP\IL10N;
 
 /**
@@ -26,9 +27,53 @@ trait Doubles {
 	 * the double's state, not the test's — the config methods below are the only
 	 * things that should read or write it directly.
 	 *
+	 * Named `$config`, not `$store`: the repository suites hold a CACHE in `$store`,
+	 * and a trait cannot share a property name with the class that uses it.
+	 *
 	 * @var array<string, mixed>
 	 */
-	private array $store = [];
+	private array $config = [];
+
+	/**
+	 * Shared, because it was byte-identical in both repository suites and the rule it
+	 * encodes is subtle: entries carry an ABSOLUTE expiry, since `$now` is per-repository
+	 * and a test builds several. The MINSAL copy's own docblock said "this is the same
+	 * double"; two copies of a rule this easy to get wrong is one too many.
+	 *
+	 * Honours TTL and remove(), because the code under test relies on both: the outage
+	 * cooldown and the freno are expressed AS expiry, and a success clears a freno by
+	 * removing its key. A store that ignored them let a test pass for the wrong reason
+	 * — testAnsweringClearsTheFreno went green against a freno that was never cleared,
+	 * only outlived. Entries carry an absolute expiry, since $now is per-repository.
+	 */
+	private function cache(int $now): ICache {
+		$cache = $this->createMock(ICache::class);
+		$cache->method('get')->willReturnCallback(function (string $key) use ($now) {
+			$e = $this->store[$key] ?? null;
+			if ($e === null) {
+				return null;
+			}
+			if ($e['exp'] !== null && $now >= $e['exp']) {
+				unset($this->store[$key]);
+
+				return null;
+			}
+
+			return $e['v'];
+		});
+		$cache->method('set')->willReturnCallback(function (string $key, $value, $ttl = 0) use ($now): bool {
+			$this->store[$key] = ['v' => $value, 'exp' => $ttl > 0 ? $now + $ttl : null];
+
+			return true;
+		});
+		$cache->method('remove')->willReturnCallback(function (string $key): bool {
+			unset($this->store[$key]);
+
+			return true;
+		});
+
+		return $cache;
+	}
 
 	/**
 	 * Translation that actually formats, so an assertion can match the rendered
@@ -56,7 +101,7 @@ trait Doubles {
 	}
 
 	/**
-	 * App config backed by $this->store, so a test can set up persisted state and
+	 * App config backed by $this->config, so a test can set up persisted state and
 	 * read back what the code under test wrote. Both directions matter: ProbeJob
 	 * writes the failure counters that SourcesReachable reads, and the pair only
 	 * agrees because they go through the same keys.
@@ -64,20 +109,20 @@ trait Doubles {
 	private function appConfig(): IAppConfig {
 		$config = $this->createMock(IAppConfig::class);
 		$config->method('getAppValueInt')->willReturnCallback(
-			fn (string $key, int $default = 0): int => (int)($this->store[$key] ?? $default),
+			fn (string $key, int $default = 0): int => (int)($this->config[$key] ?? $default),
 		);
 		$config->method('setAppValueInt')->willReturnCallback(
 			function (string $key, int $value): bool {
-				$this->store[$key] = $value;
+				$this->config[$key] = $value;
 
 				return true;
 			},
 		);
 		$config->method('getAppValueArray')->willReturnCallback(
-			fn (string $key, array $default = []): array => (array)($this->store[$key] ?? $default),
+			fn (string $key, array $default = []): array => (array)($this->config[$key] ?? $default),
 		);
 		$config->method('deleteAppValue')->willReturnCallback(function (string $key): void {
-			unset($this->store[$key]);
+			unset($this->config[$key]);
 		});
 
 		return $config;

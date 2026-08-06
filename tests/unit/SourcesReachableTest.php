@@ -37,7 +37,7 @@ class SourcesReachableTest extends TestCase {
 	private const NOW = 1785758400;
 
 	protected function setUp(): void {
-		$this->store = [];
+		$this->config = [];
 	}
 
 	// --- the row an administrator sees ---------------------------------------
