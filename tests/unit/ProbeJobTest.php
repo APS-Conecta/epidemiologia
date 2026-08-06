@@ -36,7 +36,7 @@ class ProbeJobTest extends TestCase {
 	private int $cleared = 0;
 
 	protected function setUp(): void {
-		$this->store = [];
+		$this->config = [];
 		$this->notified = [];
 		$this->cleared = 0;
 	}
@@ -133,7 +133,7 @@ class ProbeJobTest extends TestCase {
 	}
 
 	public function testTheNotifiedGroupIsConfigurable(): void {
-		$this->store['notify_groups'] = ['informatica'];
+		$this->config['notify_groups'] = ['informatica'];
 		$this->runDays(2, healthy: false);
 
 		self::assertSame(['tecnico', 'tecnico', 'tecnico'], $this->notified);

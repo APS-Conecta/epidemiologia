@@ -28,6 +28,8 @@ use RuntimeException;
  * asserts on.
  */
 class IspRepositoryTest extends TestCase {
+	use Doubles;
+
 	/** 2026-08-02T12:00:00Z */
 	private const NOW = 1785672000;
 
@@ -1275,42 +1277,6 @@ class IspRepositoryTest extends TestCase {
 	/** The walk's position for one category, where it now lives: beside its own alerts. */
 	private function cursor(string $term): int {
 		return (int)($this->store['feed-' . IspRepository::ALERTS . '-' . $term]['v']['backfill'] ?? 2);
-	}
-
-	/**
-	 * Honours TTL and remove(), because the code under test relies on both: the outage
-	 * cooldown and the freno are expressed AS expiry, and a success clears a freno by
-	 * removing its key. A store that ignored them let a test pass for the wrong reason
-	 * — testAnsweringClearsTheFreno went green against a freno that was never cleared,
-	 * only outlived. Entries carry an absolute expiry, since $now is per-repository.
-	 */
-	private function cache(int $now): ICache {
-		$cache = $this->createMock(ICache::class);
-		$cache->method('get')->willReturnCallback(function (string $key) use ($now) {
-			$e = $this->store[$key] ?? null;
-			if ($e === null) {
-				return null;
-			}
-			if ($e['exp'] !== null && $now >= $e['exp']) {
-				unset($this->store[$key]);
-
-				return null;
-			}
-
-			return $e['v'];
-		});
-		$cache->method('set')->willReturnCallback(function (string $key, $value, $ttl = 0) use ($now): bool {
-			$this->store[$key] = ['v' => $value, 'exp' => $ttl > 0 ? $now + $ttl : null];
-
-			return true;
-		});
-		$cache->method('remove')->willReturnCallback(function (string $key): bool {
-			unset($this->store[$key]);
-
-			return true;
-		});
-
-		return $cache;
 	}
 
 	/** The category slug is the request's identity here, as the slug is for MINSAL. */

@@ -26,6 +26,8 @@ use RuntimeException;
  * measured on 2026-08-01, which are what several of these tests pin down.
  */
 class MinsalRepositoryTest extends TestCase {
+	use Doubles;
+
 	/** 2026-08-01T12:00:00Z — fixed so the year-templated IRAG slug is deterministic. */
 	private const NOW = 1785585600;
 
@@ -536,43 +538,6 @@ class MinsalRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
 		return new MinsalRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
-	}
-
-	/**
-	 * An in-memory cache shared across repositories, so "last good copy" is real.
-	 *
-	 * TTLs are honoured. A store that ignored them proved COOLDOWN and KEEP_FOR were SET
-	 * and never that they EXPIRE — raise COOLDOWN to a week and every test still passed,
-	 * while production would pin both feeds to degraded until someone flushed Redis. The
-	 * ISP suite learned this and wrote down why; this is the same double.
-	 */
-	private function cache(int $now): ICache {
-		$cache = $this->createMock(ICache::class);
-		$cache->method('get')->willReturnCallback(function (string $key) use ($now) {
-			$e = $this->store[$key] ?? null;
-			if ($e === null) {
-				return null;
-			}
-			if ($e['exp'] !== null && $now >= $e['exp']) {
-				unset($this->store[$key]);
-
-				return null;
-			}
-
-			return $e['v'];
-		});
-		$cache->method('set')->willReturnCallback(function (string $key, $value, $ttl = 0) use ($now): bool {
-			$this->store[$key] = ['v' => $value, 'exp' => $ttl > 0 ? $now + $ttl : null];
-
-			return true;
-		});
-		$cache->method('remove')->willReturnCallback(function (string $key): bool {
-			unset($this->store[$key]);
-
-			return true;
-		});
-
-		return $cache;
 	}
 
 	/**
