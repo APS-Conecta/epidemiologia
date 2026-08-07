@@ -134,6 +134,7 @@ import { t } from '@nextcloud/l10n'
 import Alert from 'vue-material-design-icons/Alert.vue'
 import ChartBellCurve from 'vue-material-design-icons/ChartBellCurve.vue'
 import ChartBox from 'vue-material-design-icons/ChartBox.vue'
+import FormatListBulleted from 'vue-material-design-icons/FormatListBulleted.vue'
 import Home from 'vue-material-design-icons/Home.vue'
 import Lipstick from 'vue-material-design-icons/Lipstick.vue'
 import Pill from 'vue-material-design-icons/Pill.vue'
@@ -200,14 +201,9 @@ const groups = [
 ]
 
 /**
- * The ISP's six rows: everything, then its five families.
+ * One glyph per family, for the four the ISP names itself.
  *
- * `Todas` first and with no family, because the archive is what the pane is for —
- * a family is a narrowing of it, not a separate place. The families come from
- * familias.js so the navigation and the rail inside the pane cannot disagree about
- * what a family contains; they held two copies of that test before #52.
- *
- * This row list used to carry ONE icon for all six, so that no glyph would assert a
+ * This navigation used to carry ONE icon for all six rows, so that no glyph would assert a
  * visual taxonomy the ISP does not publish. Half of that survived and half did not
  * ([ADR-0013](../docs/adr/0013-family-icons-where-the-isp-names-the-family.md)):
  * `familias.js` opens by counting that 16 of the ISP's 24 slugs name their own
@@ -230,6 +226,13 @@ const FAMILY_ICONS = {
 }
 
 /**
+ * The ISP's six rows: everything, then its five families.
+ *
+ * `Todas` first and with no family, because the archive is what the pane is for —
+ * a family is a narrowing of it, not a separate place. The families come from
+ * familias.js so the navigation and the rail inside the pane cannot disagree about
+ * what a family contains; they held two copies of that test before #52.
+ */
 const ispEntries = [
 	// The pane's own name, from panes.js — NOT "Todas". #64 named this row for what
 	// it filters to instead of what it opens, and the app immediately had three names
@@ -240,7 +243,13 @@ const ispEntries = [
 	//
 	// Unconditional, unlike the families below it: a degraded ISP must still have a
 	// destination, and it is the row that carries the banner.
-	{ id: null, name: paneName('isp'), icon: markRaw(Pill) },
+	//
+	// A list glyph, NOT Pill. It shared Pill with Medicamentos and the two rows read as
+	// siblings of one kind — seen in a screenshot, which is the only way this was ever
+	// going to be seen. A pill would also misdescribe the row: the archive spans
+	// cosmetics, devices and disinfectants. "The whole list" is a UI metaphor and
+	// asserts no product taxonomy, which is the point ADR-0013 turns on.
+	{ id: null, name: paneName('isp'), icon: markRaw(FormatListBulleted) },
 	// The families that CARRY alerts, not all five. A family the ISP is not publishing
 	// kept a permanent row, and landing on it with no filters set said "Ninguna alerta
 	// del ISP coincide con esos filtros" — blaming the reader for a choice they had not
