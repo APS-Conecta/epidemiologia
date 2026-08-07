@@ -10,6 +10,14 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Changed
+
+- The four ISP families the publisher names in its own slugs — medicamentos, dispositivos,
+  cosméticos, desinfectantes — carry a distinct icon in the navigation instead of sharing one.
+  *Sin familia declarada por el ISP* deliberately keeps none, because a glyph there would invent the
+  classification the shared icon existed to prevent.
+  [ADR-0013](docs/adr/0013-family-icons-where-the-isp-names-the-family.md).
+
 ### Added
 
 - A shared accent-folding conformance table, read by both suites. `fold()` exists twice — PHP for

@@ -67,7 +67,12 @@
 					:active="current === 'isp' && ispFamily === entry.id"
 					@click="openIsp(entry.id)">
 					<template #icon>
-						<component :is="entry.icon" :size="20" />
+						<component :is="entry.icon" v-if="entry.icon" :size="20" />
+						<!-- `otros` carries no glyph (ADR-0013). The slot reserves no column of
+						     its own — checked in the compiled template — so an absent icon pulls
+						     that row's label left against the four above it. An empty box of the
+						     icon's size asserts nothing and keeps the list aligned. -->
+						<span v-else class="epi-nav-noicon" aria-hidden="true" />
 					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
@@ -130,8 +135,11 @@ import Alert from 'vue-material-design-icons/Alert.vue'
 import ChartBellCurve from 'vue-material-design-icons/ChartBellCurve.vue'
 import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
+import Lipstick from 'vue-material-design-icons/Lipstick.vue'
 import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
+import Spray from 'vue-material-design-icons/Spray.vue'
+import Stethoscope from 'vue-material-design-icons/Stethoscope.vue'
 import { familiasPresent } from './familias.js'
 import { paneName } from './panes.js'
 import { sanitaryAlerts } from './state.js'
@@ -199,10 +207,29 @@ const groups = [
  * familias.js so the navigation and the rail inside the pane cannot disagree about
  * what a family contains; they held two copies of that test before #52.
  *
- * One icon for all six on purpose. Five invented glyphs would assert a visual
- * taxonomy the ISP does not publish, which is the same mistake as sorting `otros`
- * by resemblance.
+ * This row list used to carry ONE icon for all six, so that no glyph would assert a
+ * visual taxonomy the ISP does not publish. Half of that survived and half did not
+ * ([ADR-0013](../docs/adr/0013-family-icons-where-the-isp-names-the-family.md)):
+ * `familias.js` opens by counting that 16 of the ISP's 24 slugs name their own
+ * family, so four of the five are the publisher's nomenclature and a glyph asserts
+ * nothing new. The fifth is `otros` — "Sin familia declarada por el ISP" — and there
+ * the original reasoning is exactly right, so it keeps no glyph.
+ *
+ * The map lives here rather than in familias.js: that module is plain data whose
+ * tests run under vitest's `node` environment, and importing SFCs into it would drag
+ * a component runtime into it — the split src/filters.js already records against
+ * src/state.js. The navigation is its only consumer.
  */
+const FAMILY_ICONS = {
+	medicamentos: Pill,
+	dispositivos: Stethoscope,
+	cosmeticos: Lipstick,
+	desinfectantes: Spray,
+	// `otros` is deliberately absent, not forgotten. A family the ISP adds tomorrow
+	// misses too, and renders with no glyph rather than with a borrowed one.
+}
+
+/**
 const ispEntries = [
 	// The pane's own name, from panes.js — NOT "Todas". #64 named this row for what
 	// it filters to instead of what it opens, and the app immediately had three names
@@ -222,7 +249,7 @@ const ispEntries = [
 	...familiasPresent(sanitaryAlerts.items).map((f) => ({
 		id: f.id,
 		name: f.name,
-		icon: markRaw(Pill),
+		icon: FAMILY_ICONS[f.id] ? markRaw(FAMILY_ICONS[f.id]) : null,
 	})),
 ]
 
@@ -300,6 +327,14 @@ function open(pane) {
 	.epi:has(> .epi-inicio:not([style*="display: none"])) {
 		height: auto;
 	}
+}
+
+/* The width of the glyph `otros` does not have (ADR-0013). 20px because that is the
+   `:size` every other row passes, not a number of its own. */
+.epi-nav-noicon {
+	display: block;
+	width: 20px;
+	height: 20px;
 }
 
 .epi-nav-footer {
