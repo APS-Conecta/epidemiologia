@@ -85,3 +85,11 @@ yields counts; prevalencia is a national constant; **incidencia has no REM sourc
 Naming a derived figure "incidencia" or "prevalencia local" would assert a classification neither
 MINSAL nor DEIS published — the same reason this context carries no severity levels and no disease
 tags on alerts.
+
+**Nothing here is organised by disease, and a pane that were would have to invent its own subject.**
+None of the three fuentes publishes at that grain: an alerta vigente is an oficio, an alerta
+sanitaria is a product notice, an informe ETI/IRAG is one weekly PDF per semana epidemiológica.
+Grouping any of them under a disease means classifying documents by a term this context has no word
+for — which is the paragraph above, arriving as layout instead of vocabulary. REM is not the way
+round it either: ADR-0001 gives it to `analizador_rem`, and it yields counts per corte, not a
+per-disease view.
