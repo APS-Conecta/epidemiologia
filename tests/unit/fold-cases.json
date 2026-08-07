@@ -1,0 +1,14 @@
+[
+	["Sarampión", "sarampion"],
+	["SARAMPIÓN", "sarampion"],
+	["sarampio\u0301n", "sarampion"],
+	["NIÑO", "nino"],
+	["Cosméticos", "cosmeticos"],
+	["Ünïcödé", "unicode"],
+	["", ""],
+	["ANAMED", "anamed"],
+	["alerta  doble  espacio", "alerta  doble  espacio"],
+	["ﬁcha", "ﬁcha"],
+	["ª ordinal", "ª ordinal"],
+	["Ω-3", "ω-3"]
+]
