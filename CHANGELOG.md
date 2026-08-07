@@ -10,6 +10,13 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Added
+
+- A shared accent-folding conformance table, read by both suites. `fold()` exists twice — PHP for
+  OCS and global search, JS for the in-browser filter — and the two agreed only by coincidence, so
+  a change to either could make searching and filtering return different sets for the same query
+  with nothing going red. One edit to `tests/unit/fold-cases.json` now fails a test in each.
+
 ## [0.8.0] — 2026-08-06
 
 ### Changed
