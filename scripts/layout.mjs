@@ -169,7 +169,32 @@ const INSPECT = (paneIndex) => {
 		}
 	}
 
-	return { label, overflow, overlap, collapsed, affordance, naming, fit }
+	/*
+	 * 9. the toolbar keeps the one thing that speaks, and names the one that filters.
+	 *
+	 * #81 fixed seven accessibility defects and left nothing watching them, so the
+	 * count's live region survived only because nobody happened to touch it. It is
+	 * still the ONLY live region in the app: without it, typing in Buscar tells a
+	 * screen-reader user nothing at all, not even that the list fell to zero.
+	 *
+	 * The token group is checked for a name rather than for existence — it is absent
+	 * whenever nothing is filtered, which is correct — because an unlabelled group of
+	 * dismiss buttons is a row of anonymous crosses.
+	 */
+	const a11y = []
+	const bar = pane.querySelector('.epi-bar')
+	if (bar) {
+		const live = bar.querySelector('[role="status"][aria-live]')
+		if (!live) {
+			a11y.push('the toolbar has no live region — the result count is the only thing this app announces (#81)')
+		}
+	}
+	// The active-filter group is NOT checked here. It does not exist until something
+	// is filtered, and this runs on a freshly loaded pane — a copy of the assertion
+	// lived here and could never fire, which is the same "check that holds while the
+	// property does not" that #64 already cost. It is in check 6, after the click.
+
+	return { label, overflow, overlap, collapsed, affordance, naming, fit, a11y }
 }
 
 /**
@@ -264,6 +289,27 @@ const inspectMenus = async (page, paneIndex) => {
 			if (!marked) {
 				complaints.push('choosing a filter option leaves its circle empty')
 			}
+
+			/*
+			 * Having chosen one, the toolbar must SAY so — and say it somewhere that
+			 * survives a scroll, which the menu's own tick does not.
+			 *
+			 * Asserted here rather than in INSPECT because the group does not exist
+			 * until something is filtered: the copy that lived there could never run.
+			 * The label matters more than the tokens: a group of dismiss buttons with
+			 * no name is a row of anonymous crosses.
+			 */
+			const tokens = await page.evaluate(() => {
+				const pane = [...document.querySelectorAll('.epi > section')].find((s) => s.offsetParent !== null)
+				const group = pane?.querySelector('.epi-bar__active')
+
+				return { there: !!group, label: group?.getAttribute('aria-label') ?? null }
+			})
+			if (!tokens.there) {
+				complaints.push('a chosen filter shows no token in the toolbar, so scrolling hides what is applied')
+			} else if (!tokens.label) {
+				complaints.push('the active-filter group has no aria-label, so its dismiss buttons are unnamed crosses')
+			}
 		}
 
 		await page.keyboard.press('Escape')
@@ -308,9 +354,10 @@ for (const { w, h } of VIEWPORTS) {
 			...r.affordance.map((d) => ['something clickable identical to the text beside it', d]),
 			...r.naming.map((d) => ['the pane goes by two names', d]),
 			...r.fit.map((d) => ['the navigation does not fit its column', d]),
+			...r.a11y.map((d) => ['the toolbar lost an accessibility affordance', d]),
 		]
 		if (problems.length === 0) {
-			pass(`${r.label.padEnd(26)} overflow·overlap·height·affordance·names·column`)
+			pass(`${r.label.padEnd(26)} overflow·overlap·height·affordance·names·column·a11y`)
 		} else {
 			for (const [what, detail] of problems) {
 				fail(`${r.label} — ${what}`, [detail])

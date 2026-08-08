@@ -28,7 +28,9 @@
 		<FilterBar :query="query"
 			:count="countLabel"
 			:fetched-at="sanitaryAlerts.fetched_at"
-			@update:query="query = $event">
+			:active="activeFilters"
+			@update:query="query = $event"
+			@clear="clearFilter">
 			<FilterMenu :label="t('epidemiologia', 'Año')"
 				radio-name="isp-year"
 				:any-label="t('epidemiologia', 'Todos los años')"
@@ -245,7 +247,7 @@ watch(() => props.family, () => {
 const yearOf = (a) => (a.date ?? '').slice(0, 4)
 const monthOf = (a) => (a.date ?? '').slice(0, 7)
 
-const { query, year, month, years, months, matches } = useFilters(sanitaryAlerts.items, {
+const { query, year, month, years, months, matches, active, clear } = useFilters(sanitaryAlerts.items, {
 	yearOf,
 	monthOf,
 	// The categories are searchable too: "dispositivo" has to find device alerts whose
@@ -259,6 +261,33 @@ const shown = computed(() => matches.value.filter((a) =>
 	// hide the 43 % of alerts that straddle two.
 	(props.family === null || (a.categories ?? []).some((c) => familiaOf(c) === props.family))
 	&& (!kind.value || (a.categories ?? []).includes(kind.value))))
+
+/**
+ * The shared three, plus the one only this pane has.
+ *
+ * Composed on top rather than folded into useFilters, for the reason its docblock
+ * already gives about the predicates: the category is genuinely this pane's, and
+ * pushing it down there would give that composable an interface as complex as its
+ * body. The label is `kindLabel`, the same wording the rail and the row buttons use.
+ *
+ * The family is deliberately NOT here — it is set from the navigation, and giving it
+ * a token is its own change.
+ */
+const activeFilters = computed(() => (kind.value
+	? [...active.value, { id: 'kind', label: kindLabel(kind.value) }]
+	: active.value))
+
+/**
+ * @param {string} id - which token was dismissed
+ */
+function clearFilter(id) {
+	if (id === 'kind') {
+		kind.value = null
+	} else {
+		// Anything else belongs to useFilters, which ignores ids it does not own.
+		clear(id)
+	}
+}
 
 const countLabel = computed(() => {
 	const total = sanitaryAlerts.items.length

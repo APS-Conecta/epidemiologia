@@ -10,6 +10,15 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Changed
+
+- Both alert panes keep their toolbar on screen while the list scrolls, and show what is narrowing
+  it as dismissible tokens beside the count. The ISP archive is 276 rows and ~18.500px tall; past
+  the fortieth row nothing said which year, month, search or category was applied, while the empty
+  state said *"Ninguna alerta del ISP coincide con esos filtros"* about filters that had scrolled
+  out of sight. Clearing one is now a click on the token rather than hunting for the control that
+  set it.
+
 ### Added
 
 - A shared accent-folding conformance table, read by both suites. `fold()` exists twice — PHP for

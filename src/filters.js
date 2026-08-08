@@ -7,6 +7,7 @@
  * jsdom. state.js stays derivation over plain data; this is the reactive half.
  */
 import { computed, ref, watch } from 'vue'
+import { t } from '@nextcloud/l10n'
 import { fold, monthOptions, yearOptions } from './state.js'
 
 /**
@@ -55,5 +56,51 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 			&& (!month.value || monthOf(i) === month.value))
 	})
 
-	return { query, year, month, years, months, matches }
+	/**
+	 * The three filters as dismissible tokens, worded for a reader.
+	 *
+	 * Here rather than in each pane because both panes carry exactly these three, and
+	 * the last time a pane worded a shared control for itself it shipped
+	 * `undefined (12)` to clinicians (#44). A pane with a filter of its own — the
+	 * ISP's category — appends to this, the same way it composes its own predicates
+	 * on top of `matches`.
+	 *
+	 * The month's wording is read off `months` rather than re-derived, so a token can
+	 * never name a month differently from the menu that set it.
+	 */
+	const active = computed(() => {
+		const out = []
+		if (query.value.trim()) {
+			out.push({ id: 'query', label: t('epidemiologia', '«{texto}»', { texto: query.value.trim() }) })
+		}
+		if (year.value) {
+			out.push({ id: 'year', label: year.value })
+		}
+		if (month.value) {
+			out.push({ id: 'month', label: months.value.find((m) => m.id === month.value)?.label ?? month.value })
+		}
+
+		return out
+	})
+
+	/**
+	 * Dismiss one token. Unknown ids are ignored, so a pane can hand its own straight
+	 * through without first checking whether this owns it.
+	 *
+	 * @param {string} id - the token's id
+	 */
+	function clear(id) {
+		if (id === 'query') {
+			query.value = ''
+		} else if (id === 'year') {
+			// The month goes with the year. Keeping it would strand a month inside no
+			// year — the same pair the watch above exists to prevent from the other side.
+			year.value = null
+			month.value = null
+		} else if (id === 'month') {
+			month.value = null
+		}
+	}
+
+	return { query, year, month, years, months, matches, active, clear }
 }
