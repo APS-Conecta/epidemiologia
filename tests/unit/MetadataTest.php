@@ -64,10 +64,20 @@ class MetadataTest extends TestCase {
 	/**
 	 * info.xml declares AGPL. The AGPL requires conveying a copy of itself with the
 	 * work, so declaring it and shipping no text is a compliance defect, not a tidiness one.
+	 *
+	 * The value is matched against a SET rather than one string because the appstore
+	 * schema accepts two spellings and prefers one: `info.xsd` enumerates the SPDX
+	 * identifiers alongside the old short codes and marks `agpl`, `mit`, `mpl`,
+	 * `apache` and `gpl3` **deprecated**. This app declares `AGPL-3.0-or-later`. The
+	 * deprecated spelling stays recognised so that the compliance check below keeps
+	 * applying to a manifest that still uses it, rather than the whole test turning
+	 * into a spelling assertion and quietly stopping.
 	 */
+	private const AGPL = ['AGPL-3.0-or-later', 'AGPL-3.0-only', 'agpl'];
+
 	public function testTheDeclaredLicenceIsActuallyShipped(): void {
 		$info = simplexml_load_string((string)file_get_contents(self::root() . '/appinfo/info.xml'));
-		self::assertSame('agpl', (string)$info->licence, 'this test only knows how to check the AGPL');
+		self::assertContains((string)$info->licence, self::AGPL, 'this test only knows how to check the AGPL');
 
 		$candidates = array_filter(
 			array_map(
