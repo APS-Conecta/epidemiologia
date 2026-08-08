@@ -201,6 +201,13 @@ const props = defineProps({
 	family: { type: String, default: null },
 })
 
+/**
+ * The family is applied from OUTSIDE this pane — the navigation owns it — so the
+ * pane cannot clear it on its own. It asks, and App.vue puts the navigation back on
+ * the whole archive, which also moves the highlighted row. One state, one place.
+ */
+const emit = defineEmits(['clear-family'])
+
 const kind = ref(null)
 
 /** The heading, and the rail's own "all" chip, both named after the navigation row. */
@@ -239,8 +246,15 @@ const rail = computed(() => categoriesIn(sanitaryAlerts.items, props.family))
 
 // Switching family must clear a chip from the previous one, or the pane shows an
 // empty list filtered by a category the rail no longer offers.
-watch(() => props.family, () => {
-	kind.value = null
+//
+// Widening to the whole archive is the exception, and it only became reachable when
+// the family grew a token: there the rail offers EVERY category, so the chip is still
+// valid and clearing it would make one dismissal remove two filters. A token that
+// says "Medicamentos" must take Medicamentos with it and nothing else.
+watch(() => props.family, (family) => {
+	if (family !== null) {
+		kind.value = null
+	}
 })
 // The filter pair, its menus and its stranding rule live in src/filters.js, shared with
 // AlertsPane. What stays here is what is genuinely this pane's: the family and the
@@ -274,15 +288,28 @@ const shown = computed(() => matches.value.filter((a) =>
  * The family is deliberately NOT here — it is set from the navigation, and giving it
  * a token is its own change.
  */
-const activeFilters = computed(() => (kind.value
-	? [...active.value, { id: 'kind', label: kindLabel(kind.value) }]
-	: active.value))
+const activeFilters = computed(() => {
+	const out = []
+	// First, because it narrows first: `shown` applies the family before anything
+	// else, and the tokens read in the order the list is cut down.
+	if (props.family !== null) {
+		out.push({ id: 'family', label: familiaName(props.family) })
+	}
+	out.push(...active.value)
+	if (kind.value) {
+		out.push({ id: 'kind', label: kindLabel(kind.value) })
+	}
+
+	return out
+})
 
 /**
  * @param {string} id - which token was dismissed
  */
 function clearFilter(id) {
-	if (id === 'kind') {
+	if (id === 'family') {
+		emit('clear-family')
+	} else if (id === 'kind') {
 		kind.value = null
 	} else {
 		// Anything else belongs to useFilters, which ignores ids it does not own.

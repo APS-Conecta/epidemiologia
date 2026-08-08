@@ -111,7 +111,12 @@
 				-->
 				<InicioPane v-show="current === 'inicio'" @open="open" />
 				<AlertsPane v-show="current === 'alertas'" />
-				<IspPane v-show="current === 'isp'" :family="ispFamily" />
+				<!-- Dismissing the family token lands on the whole archive, and the
+				     navigation follows because both read `ispFamily`. That is the
+				     property #64 lost: one destination, one state, one highlighted row. -->
+				<IspPane v-show="current === 'isp'"
+					:family="ispFamily"
+					@clear-family="ispFamily = null" />
 				<ReportPane v-show="current === 'informe'" />
 				<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
 				<EpivigilaPane v-show="current === 'epivigila'" />
