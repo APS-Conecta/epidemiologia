@@ -17,8 +17,14 @@
 -->
 <template>
 	<li class="epi-alert">
+		<!--
+			The whole title is always here, in the link and in the accessibility tree.
+			When a preamble repeats a tag on this row it is only rendered quietly — see
+			src/titles.js for why nothing is ever removed.
+		-->
 		<a class="epi-alert__title" :href="url" target="_blank" rel="noopener noreferrer">
-			{{ title }}
+			<template v-if="split"><span class="epi-alert__pre">{{ split.prefix }}</span> {{ split.rest }}</template>
+			<template v-else>{{ title }}</template>
 		</a>
 		<p v-if="$slots.meta" class="epi-alert__meta">
 			<slot name="meta" />
@@ -27,10 +33,21 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { splitTitle } from '../titles.js'
+
+const props = defineProps({
 	title: { type: String, required: true },
 	url: { type: String, required: true },
+	/**
+	 * The category labels this row shows. The preamble is quietened only when one of
+	 * them already says what it says, so a pane that carries no tags — AlertsPane, whose
+	 * meta line is a year — renders exactly as it did before.
+	 */
+	tags: { type: Array, default: () => [] },
 })
+
+const split = computed(() => splitTitle(props.title, props.tags))
 </script>
 
 <style scoped>
@@ -82,6 +99,18 @@ defineProps({
 .epi-alert__title:hover,
 .epi-alert__title:focus-visible {
 	text-decoration: underline;
+}
+
+/*
+	The preamble, quietened rather than removed: --color-text-maxcontrast is the token
+	the platform guarantees legible on the main background, in both themes, so this
+	stays readable — it is de-emphasised, not hidden. Dropping to the body weight is
+	what actually does the work; the title around it carries --font-weight-heading, so
+	the product name gains the contrast the preamble gives up.
+*/
+.epi-alert__pre {
+	color: var(--color-text-maxcontrast);
+	font-weight: normal;
 }
 
 .epi-alert__meta {

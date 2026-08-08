@@ -12,6 +12,16 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Changed
 
+- The four ISP families the publisher names in its own slugs — medicamentos, dispositivos,
+  cosméticos, desinfectantes — carry a distinct icon in the navigation instead of sharing one.
+  *Sin familia declarada por el ISP* deliberately keeps none, because a glyph there would invent the
+  classification the shared icon existed to prevent.
+  [ADR-0013](docs/adr/0013-family-icons-where-the-isp-names-the-family.md).
+- An ISP alert whose title opens by repeating a category tag on its own row now shows that preamble
+  quietly, so the eye lands on the product rather than on the fourth *ALERTA DE RETIRO DEL MERCADO*
+  in a column. **Nothing is removed** — the whole title stays in the link and in the accessibility
+  tree — and a title whose preamble is not repeated on its row is untouched. Measured on the real
+  feeds: three consecutive retiro alerts share 63 identical characters before the product name.
 - Both alert panes keep their toolbar on screen while the list scrolls, and show what is narrowing
   it as dismissible tokens beside the count. The ISP archive is 276 rows and ~18.500px tall; past
   the fortieth row nothing said which year, month, search or category was applied, while the empty
