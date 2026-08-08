@@ -87,7 +87,8 @@
 			<AlertRow v-for="alert in shown"
 				:key="alert.url"
 				:title="alert.title"
-				:url="alert.url">
+				:url="alert.url"
+				:tags="(alert.categories ?? []).map(kindLabel)">
 				<template #meta>
 					<span class="epi-alert__date">{{ fecha(alert.date) }}</span>
 					<!-- The ISP edits an alert in place to add affected lots, and those
