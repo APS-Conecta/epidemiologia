@@ -7,7 +7,9 @@
 		<FilterBar :query="query"
 			:count="countLabel"
 			:fetched-at="alerts.fetched_at"
-			@update:query="query = $event">
+			:active="active"
+			@update:query="query = $event"
+			@clear="clear">
 			<FilterMenu :label="t('epidemiologia', 'Año')"
 				radio-name="alertas-year"
 				:any-label="t('epidemiologia', 'Todos los años')"
@@ -83,7 +85,7 @@ import { useFilters } from '../filters.js'
 const yearOf = (a) => a.year
 const monthOf = (a) => a.month
 
-const { query, year, month, years, months, matches } = useFilters(alerts.items, {
+const { query, year, month, years, months, matches, active, clear } = useFilters(alerts.items, {
 	yearOf,
 	monthOf,
 	textOf: (a) => a.title,

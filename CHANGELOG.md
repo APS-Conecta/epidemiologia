@@ -22,6 +22,12 @@ made belongs in the commit, the issue, or a comment beside the code.
   in a column. **Nothing is removed** — the whole title stays in the link and in the accessibility
   tree — and a title whose preamble is not repeated on its row is untouched. Measured on the real
   feeds: three consecutive retiro alerts share 63 identical characters before the product name.
+- Both alert panes keep their toolbar on screen while the list scrolls, and show what is narrowing
+  it as dismissible tokens beside the count. The ISP archive is 276 rows and ~18.500px tall; past
+  the fortieth row nothing said which year, month, search or category was applied, while the empty
+  state said *"Ninguna alerta del ISP coincide con esos filtros"* about filters that had scrolled
+  out of sight. Clearing one is now a click on the token rather than hunting for the control that
+  set it.
 
 ### Added
 
