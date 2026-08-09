@@ -1,5 +1,6 @@
 # Tests follow branching, not layering
 
+**Status: accepted, 2026-08-03.**
 A class in `lib/` gets a unit test when it contains a **decision** — a branch, a loop over a list, a
 fallback, or a policy expressed as a dependency — and is left to `scripts/smoke.sh` when it only
 delegates. This replaces *"the repository is the single seam"*, which treated everything else as thin

@@ -1,5 +1,7 @@
 # Epidemiología
 
+## What this is
+
 Nextcloud 34 app for APS Conecta Gestión, surfacing what MINSAL and the ISP publish inside the
 intranet and linking to what cannot be. **It rehosts no state documents, creates no database tables
 and touches no patient data.** UI in Spanish, everything else English ([`AGENTS.md`](AGENTS.md)).
@@ -13,6 +15,43 @@ AGPL-3.0-or-later; data from the Departamento de Epidemiología (MINSAL) and the
 | **Alertas del ISP** | Recalls, falsifications, pharmacovigilance, device withdrawals | 24 hourly RSS feeds on `ispch.gob.cl` |
 | **Tablero ETI e IRAG** | The national dashboard, embedded | Power BI *"Publish to web"* |
 | **EPIVIGILA** | What it is, how to get in, and the real access situation | A link, never embedded |
+
+## Status
+
+**0.8.0, 2026-08-08.** All six views ship and the OCS contract is settled at one route
+([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` carries eight commits past
+`v0.8.0`, listed under `[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md); `info.xml`, `package.json`
+and an instance's `installed_version` all read 0.8.0.
+
+Not done, and each for a reason: the OCS route carries no `#[CORS]`, which needs a concrete origin
+rather than a wildcard; nothing propagates the establishment to this app, so it reads
+`notify_groups` and its own probe counters and nothing else
+([ADR-0003](docs/adr/0003-establishment-is-instance-configuration.md)); `scripts/smoke.sh` and
+`scripts/layout.sh` are run by hand. The six tags `v0.3.0`…`v0.8.0` have **no GitHub release page**
+and are not owed one: a clinic installs the tarball `gestion` vendors from a tag, and `gestion` bumps
+it at a milestone rather than at every tag — that decision and the one command that builds the
+tarball live in
+[`gestion`'s `provisioning/apps/epidemiologia/VENDOR`](https://github.com/APS-Conecta/gestion/blob/main/provisioning/apps/epidemiologia/VENDOR).
+
+## Quickstart
+
+Four steps, on a machine already running the `gestion` stack.
+
+1. **Clone this repo into `gestion/apps/epidemiologia`** (on the host). `gestion` gitignores
+   `apps/*` and bind-mounts the directory at `/var/www/html/custom_apps`, so nothing is copied.
+   Provisioning will not clone for you: with the directory absent it installs the vendored release
+   tarball instead, and with a half-clone it stops and prints the `git clone` to run.
+2. **Enable the app.** `make seed` in `gestion` does it (phase 12), and so does, in the container,
+   `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ app:enable epidemiologia`.
+   It answers `epidemiologia … enabled`, or `epidemiologia already enabled` if it was on already.
+3. **Prove the daily probe registered** (in the container):
+   `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ background-job:list | grep ProbeJob`.
+   Exactly one row is right. **No row means the enable did not register it** — see *Things that
+   bite* below.
+4. **Open `http://localhost:8180/apps/epidemiologia`** (the host port `gestion/.env` publishes;
+   `http://localhost/…` is the *in-container* base, which is why `scripts/smoke.sh` uses it and a
+   browser cannot). Inicio lists what was published most recently,
+   newest first. From the shell, `scripts/smoke.sh` asserts the same wiring and more.
 
 ## How it works
 
@@ -97,14 +136,30 @@ against what those sites actually publish, quirks included.
 
 ## Installation
 
-The directory goes in `gestion/apps/` (mounted at `custom_apps`), enabled with
-`occ app:enable epidemiologia`. **No migrations**: the app creates no tables. `js/` and `css/` **are
-committed**, so deploying is a `git pull` with no Node on the server; anyone touching `src/` runs
+The quickstart's first two steps *are* the install; what differs on a real instance is updating. **No
+migrations**: the app creates no tables, so there is nothing to run after a `git pull`. `js/` and
+`css/` **are committed**, so deploying needs no Node on the server; anyone touching `src/` runs
 `npm run build` and commits the result, and `scripts/smoke.sh` flags a bundle that has fallen behind.
+Raising `<version>` in `info.xml` is not free — see *Things that bite*.
 
 > **`node_modules` should not live in the webroot of a production instance.** `.htaccess` closes it
 > off — Apache-dependent, and to *anyone*, authenticated or not; see its comments. The right fix is
 > to build elsewhere and deploy only what is needed.
+
+## Configuration
+
+One setting is meant to be changed, and it has a working default; everything else in the app's
+config is written by the app itself.
+
+| Setting | What it does | Default | Where it lives |
+| --- | --- | --- | --- |
+| `notify_groups` | Which groups are told when a fuente has been unreachable for 2, 7 or 30 days | `["admin"]`, compiled in — a fresh install has no row | App config: `occ config:app:set epidemiologia notify_groups --value='["admin","epi"]' --type=array` |
+| `probe_failures_<fuente>`, `probe_failing_since_<fuente>` | The consecutive-failure counts the notification and *Administración → Visión general* both read | absent until the first probe | App config, written only by `ProbeRecord` — **do not set by hand** |
+| `EPI_CONTAINER`, `EPI_USER` | Which container and user the dev scripts talk to | `apsconecta-gestion-nextcloud-1`, `admin` | Environment, read by `scripts/*.sh` |
+
+Cache lifetimes are constants, not settings: one hour fresh, thirty days kept as the last good copy
+(`MinsalRepository`, `IspRepository`). A setting there would let an instance configure itself into
+showing an alerta MINSAL has withdrawn as though it were still vigente.
 
 ## Licence
 
@@ -112,7 +167,8 @@ AGPL-3.0-or-later — see [`LICENSE`](LICENSE).
 
 This is not a free choice. The app compiles `@nextcloud/vue` (AGPL-3.0-or-later) into the
 bundles under `js/`, along with Nextcloud packages under GPL-3.0-or-later, so the copyleft
-is inherited from what it links. [ADR-0010](../../aps-conecta-web/docs/adr/0010-agpl-across-the-org.md)
+is inherited from what it links.
+[gestion ADR-0010](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0010-agpl-across-the-org.md)
 records the organisation-wide decision that followed from it.
 
 Because the AGPL's section 13 covers network use, staff who use this app over the intranet

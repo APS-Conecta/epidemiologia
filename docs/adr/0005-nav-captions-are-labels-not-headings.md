@@ -1,5 +1,6 @@
 # Navigation group captions are labels, not headings
 
+**Status: accepted, 2026-08-02.**
 The navigation groups the panes by institution using `NcAppNavigationCaption` **without**
 `is-heading`, each caption's `headingId` wired to its `NcAppNavigationList` via `aria-labelledby` —
 against the component's docs (*"Enable when used as a heading e.g. Before NcAppNavigationList"*).

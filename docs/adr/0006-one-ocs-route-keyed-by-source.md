@@ -1,5 +1,6 @@
 # The OCS contract is one route keyed by source, not a route per source
 
+**Status: accepted, 2026-08-03.**
 `GET /ocs/v2.php/apps/epidemiologia/api/v1/sources` returns every source this app publishes in one
 response, keyed by source id, each value carrying `updated_at`, `degraded` and `items`. Recorded
 because it looks un-REST, to stop the next reader splitting it back into the `/alerts`, `/reports`,
