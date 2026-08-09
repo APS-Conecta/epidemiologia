@@ -9,7 +9,7 @@ Muestra dentro de la intranet la información epidemiológica que el MINSAL publ
 las alertas epidemiológicas vigentes, el informe semanal de vigilancia ETI e IRAG,
 el tablero nacional, y el acceso a EPIVIGILA. Suma las alertas sanitarias del ISP
 —retiros de mercado, falsificaciones, farmacovigilancia y dispositivos médicos—,
-que la clínica no recibía por ningún otro medio.
+que el ISP publica solo en sus propios canales RSS.
 
 Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
 no guarda datos en base de datos y no contiene información de pacientes.
@@ -41,7 +41,8 @@ no guarda datos en base de datos y no contiene información de pacientes.
                  dark variant. -->
             <icon>epidemiologia.svg</icon>
             <!-- Deliberate: ahead of the apps with no <order>, which land at 100.
-                 Alertas vigentes is consulted daily in the CESFAM. -->
+                 Vigencia is the whole point of Alertas vigentes — an alert nobody
+                 sees while it is in force is the failure this app exists to prevent. -->
             <order>5</order>
         </navigation>
     </navigations>

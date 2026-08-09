@@ -48,10 +48,10 @@ class ProbeJob extends TimedJob {
 	 * job exists to produce.
 	 *
 	 * Two days, not the three that updatenotification uses for its own connection
-	 * errors: a pending software update can wait, a stale list of epidemiological
-	 * alerts is consulted daily in the CESFAM. One day would be too eager — the read
-	 * path already refreshes hourly, so a single failed probe is usually a blip that
-	 * has healed by itself.
+	 * errors: a pending software update can wait, whereas a stale list of alertas
+	 * vigentes hides an alert while it is in force. One day would be too eager —
+	 * the read path already refreshes hourly, so a single failed probe is usually a
+	 * blip that has healed by itself.
 	 */
 	private const NOTIFY_AT = [2, 7, 30];
 
