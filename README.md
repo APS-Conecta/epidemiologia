@@ -48,7 +48,9 @@ Four steps, on a machine already running the `gestion` stack.
    `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ background-job:list | grep ProbeJob`.
    Exactly one row is right. **No row means the enable did not register it** — see *Things that
    bite* below.
-4. **Open `http://localhost/apps/epidemiologia`.** Inicio lists what was published most recently,
+4. **Open `http://localhost:8180/apps/epidemiologia`** (the host port `gestion/.env` publishes;
+   `http://localhost/…` is the *in-container* base, which is why `scripts/smoke.sh` uses it and a
+   browser cannot). Inicio lists what was published most recently,
    newest first. From the shell, `scripts/smoke.sh` asserts the same wiring and more.
 
 ## How it works

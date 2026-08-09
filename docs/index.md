@@ -19,11 +19,18 @@ REM terms are **not** defined here: `analizador_rem` owns them
 
 ## What this repo does not carry
 
-`CONTRIBUTING.md` and `SECURITY.md` are served organisation-wide from the public
+`CONTRIBUTING.md` and `SECURITY.md` are **to be** served organisation-wide from the public
 [`APS-Conecta/.github`](https://github.com/APS-Conecta/.github) repository — the workflow, the
 documentation rules, the ADR rules and how to report a vulnerability all live there, and a local copy
 would exist only to contradict it. What cannot be inherited, and so stays here, is `CODEOWNERS`,
 `.github/workflows/` and `.githooks/`.
+
+> **Not live yet.** GitHub serves organisation defaults only from the default branch of
+> `APS-Conecta/.github`, and both files are still on an unmerged branch there
+> ([PR #1](https://github.com/APS-Conecta/.github/pull/1)). Until it merges this repository has
+> no contributing or security document from any source. The docs gate reads the local clone, so
+> it already counts them as present — that is deliberate, to keep the check offline, and it is
+> why these close on **merge**, not on commit.
 
 ## A note on the ADR numbers
 
