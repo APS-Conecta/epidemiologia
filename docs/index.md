@@ -41,5 +41,7 @@ cannot be superseded reads as live forever.
 
 Decisions that reach past this app belong in the trunk repository, not here — see
 [gestion ADR-0011](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0011-org-wide-facts-live-in-gestion.md).
-[ADR-0003](adr/0003-establishment-is-instance-configuration.md) is the open case: it binds *"every app
-here"* while living in one leaf repo.
+[ADR-0003](adr/0003-establishment-is-instance-configuration.md) was that case — it bound *"every app
+here"* from one leaf repo — and moved to the trunk on 2026-08-09 as
+[gestion ADR-0013](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0013-the-establishment-is-instance-configuration.md).
+The number keeps a stub and is never reused.

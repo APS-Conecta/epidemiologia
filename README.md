@@ -26,7 +26,7 @@ and an instance's `installed_version` all read 0.8.0.
 Not done, and each for a reason: the OCS route carries no `#[CORS]`, which needs a concrete origin
 rather than a wildcard; nothing propagates the establishment to this app, so it reads
 `notify_groups` and its own probe counters and nothing else
-([ADR-0003](docs/adr/0003-establishment-is-instance-configuration.md)); `scripts/smoke.sh` and
+([gestion ADR-0013](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0013-the-establishment-is-instance-configuration.md)); `scripts/smoke.sh` and
 `scripts/layout.sh` are run by hand. The six tags `v0.3.0`…`v0.8.0` have **no GitHub release page**
 and are not owed one: a clinic installs the tarball `gestion` vendors from a tag, and `gestion` bumps
 it at a milestone rather than at every tag — that decision and the one command that builds the
