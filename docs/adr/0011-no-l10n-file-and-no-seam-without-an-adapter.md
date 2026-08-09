@@ -17,10 +17,10 @@ Spanish *is* correcting the source.
 
 ## The seam has no adapter
 
-Nothing injects `IAppManager`, so "the sibling app is not installed" has no seam: ADR-0001 gives REM
-to `analizador_rem`, and the first read of its data would fail as an exception rather than as a
-state. But `IAppManager` appears zero times in `lib/`, and nothing in this app reads anything from
-`analizador_rem` at any code path today. A seam with no adapter is designed against an imagined
+Nothing injects `IAppManager`, so "the sibling app is not installed" has no seam: REM lives outside
+this app, and the first read of its data would fail as an exception rather than as a
+state. But `IAppManager` appears zero times in `lib/`, and nothing in this app reads REM
+at any code path today. A seam with no adapter is designed against an imagined
 caller, and the first real one nearly always wants a different shape. The failure it would prevent —
 an uncaught exception where a "no está instalada" state belongs — cannot happen until something calls
 across, and whatever makes that call will know what it needs when the app is absent.
@@ -29,5 +29,5 @@ across, and whatever makes that call will know what it needs when the app is abs
 
 - **a locale other than Spanish is wanted** — then `es.json` is still the identity map but `en.json`
   is not, and the catalogue starts earning the drift risk it carries;
-- **anything in `lib/` reads `analizador_rem`** — build the seam in that change, where the
+- **anything in `lib/` reads an external REM source** — build the seam in that change, where the
   requirement is visible instead of guessed.
