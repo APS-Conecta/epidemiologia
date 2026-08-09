@@ -1,5 +1,6 @@
 # Navigation groups do not collapse
 
+**Status: accepted, 2026-08-03.**
 The navigation's captioned groups — MINSAL and ISP — stay as `NcAppNavigationCaption` labels over
 always-visible lists, **not** `NcAppNavigationItem` parents with `allowCollapse`, which is how Files
 nests its own navigation. The opposite was planned, carried as a ticket, and dropped after measuring.

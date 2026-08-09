@@ -1,5 +1,6 @@
 # We do not rasterise PDFs
 
+**Status: accepted, 2026-08-02.**
 Thumbnailing each ETI/IRAG informe's first page was designed and then dropped: **the official
 `nextcloud:34-apache` image ships the `imagick` PHP extension but no Ghostscript**, and ImageMagick
 delegates PDF decoding to `gs` at run time. Informes render as semana-epidemiológica cards linking to

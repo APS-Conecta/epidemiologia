@@ -1,5 +1,6 @@
 # `analizador_rem` owns REM; consumers read it over OCS
 
+**Status: accepted, 2026-08-02.**
 REM serves more than one app, so it needs one owner, not a copy per consumer: **`analizador_rem`**.
 Its `oc_rem_fact` denormalises `serie`, `deis`, `anio`, `periodo` onto every fact row, indexed as
 `rem_fact_slice_idx`, and it holds the cell map, the DEIS código dictionaries, the determinism

@@ -15,9 +15,12 @@ parent context whenever you work here. Its rules still apply; nothing below repl
 | `README.md`, `CHANGELOG.md`, `CONTEXT.md`, `docs/` | **English** |
 | `scripts/` output | **English** |
 
-**Commit messages and issue comments stay Spanish**, matching the existing log and tracker: a history
-that switches language halfway is harder to read than one consistently in either. Issue *bodies*
-written as specs are English, as #1, #25 and #37 are.
+**Commit messages and issue comments are English, from 2026-08-08.** They were Spanish, and
+everything up to that date stays Spanish — history is not rewritten. The carve-out went because it
+contradicted the paragraph above it: `gestion/AGENTS.md` puts commits in English, and *"nothing below
+replaces them"* is what makes nesting this repo inside that one work at all. Between a promise and an
+exception to it, the promise is the load-bearing sentence. Issue *bodies* written as specs were
+already English, as #1, #25 and #37 are.
 
 ## Agent skills
 
