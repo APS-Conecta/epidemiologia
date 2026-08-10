@@ -2,9 +2,9 @@
 
 The context of surfacing public epidemiological information to a CESFAM: what MINSAL and the ISP
 publish nationally. No patient data enters this context. These are the terms *this* app consumes.
-**It does not fetch REM**: [ADR-0001](docs/adr/0001-analizador-rem-owns-rem.md) gives that to
-`analizador_rem`, whose `docs/GLOSARIO.md` is authoritative for serie, corte, prevalencia, PIV,
-compensación, población en control and every other REM term. Read them there, not here.
+**It does not fetch REM**, and no REM term is defined here — serie, corte, prevalencia, PIV,
+compensación, población en control and the rest belong to whatever consumes REM, which is not
+this app.
 
 ## What is published nationally
 
@@ -91,5 +91,5 @@ None of the three fuentes publishes at that grain: an alerta vigente is an ofici
 sanitaria is a product notice, an informe ETI/IRAG is one weekly PDF per semana epidemiológica.
 Grouping any of them under a disease means classifying documents by a term this context has no word
 for — which is the paragraph above, arriving as layout instead of vocabulary. REM is not the way
-round it either: ADR-0001 gives it to `analizador_rem`, and it yields counts per corte, not a
+round it either: it is not this app's to read, and it yields counts per corte, not a
 per-disease view.
