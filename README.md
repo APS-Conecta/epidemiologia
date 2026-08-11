@@ -155,7 +155,7 @@ config is written by the app itself.
 | --- | --- | --- | --- |
 | `notify_groups` | Which groups are told when a fuente has been unreachable for 2, 7 or 30 days | `["admin"]`, compiled in — a fresh install has no row | App config: `occ config:app:set epidemiologia notify_groups --value='["admin","epi"]' --type=array` |
 | `probe_failures_<fuente>`, `probe_failing_since_<fuente>` | The consecutive-failure counts the notification and *Administración → Visión general* both read | absent until the first probe | App config, written only by `ProbeRecord` — **do not set by hand** |
-| `EPI_CONTAINER`, `EPI_USER` | Which container and user the dev scripts talk to | `apsconecta-gestion-nextcloud-1`, `admin` | Environment, read by `scripts/*.sh` |
+| `EPI_CONTAINER`, `EPI_USER`, `EPI_BASE` | Qué contenedor, usuario y URL base usan los scripts | `apsconecta-gestion-nextcloud-1`, `admin`, `http://localhost:8180` | Environment, read by `scripts/*.sh` |
 
 Cache lifetimes are constants, not settings: one hour fresh, thirty days kept as the last good copy
 (`MinsalRepository`, `IspRepository`). A setting there would let an instance configure itself into
