@@ -23,7 +23,7 @@ import { t } from '@nextcloud/l10n'
  * `Alertas del ISP` is the one name that carries its publisher, because its row is
  * the only one outside the MINSAL group — see ADR-0008 and App.vue's navigation.
  */
-export const PANE_NAMES = {
+const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
 	alertas: () => t('epidemiologia', 'Alertas vigentes'),
 	informe: () => t('epidemiologia', 'Informe semanal ETI e IRAG'),

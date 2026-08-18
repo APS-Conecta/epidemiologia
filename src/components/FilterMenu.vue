@@ -6,12 +6,6 @@
 	that takes a label, a box and a caret whether or not anyone is filtering; this
 	is a 34px button that costs nothing until it is used. That difference is most of
 	why the alert panes spent 200px before their first row.
-
-	`groups` exists for one case: the ISP's Tipo. Its 14 live categories fall into
-	families the ISP itself names — the `-dp` suffix, `cosmet…`, `desinfectante…` —
-	so grouping them reads its nomenclature. The eight terms it does NOT adscribe to
-	a family are passed as one group labelled as such, rather than distributed by
-	resemblance, which would assert a classification the ISP never published.
 -->
 <template>
 	<NcActions :menu-name="menuName" type="tertiary">
@@ -41,10 +35,7 @@
 			{{ anyLabel }}
 		</NcActionRadio>
 
-		<template v-for="group in shownGroups" :key="group.name ?? 'all'">
-			<NcActionSeparator v-if="group.name" />
-			<NcActionCaption v-if="group.name" :name="group.name" />
-			<!--
+		<!--
 				ONE interpolation, never markup. NcActionRadio takes its label from
 				ActionGlobalMixin.getText(), which is
 
@@ -56,21 +47,20 @@
 				parens, just a menu that had never once shown a number. Anything that
 				has to appear here goes into `optionText`, as one string.
 			-->
-			<NcActionRadio v-for="option in group.options"
-				:key="option.id"
-				:name="radioName"
-				:model-value="modelValue ?? ANY"
-				:value="option.id"
-				@update:model-value="$emit('update:modelValue', option.id)">
-				{{ optionText(option) }}
-			</NcActionRadio>
-		</template>
+		<NcActionRadio v-for="option in options"
+			:key="option.id"
+			:name="radioName"
+			:model-value="modelValue ?? ANY"
+			:value="option.id"
+			@update:model-value="$emit('update:modelValue', option.id)">
+			{{ optionText(option) }}
+		</NcActionRadio>
 	</NcActions>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { NcActionCaption, NcActionRadio, NcActionSeparator, NcActions } from '@nextcloud/vue'
+import { NcActionRadio, NcActions } from '@nextcloud/vue'
 
 const props = defineProps({
 	/** What the button says when nothing is chosen: "Año", "Tipo", "Mes". */
@@ -79,10 +69,8 @@ const props = defineProps({
 	radioName: { type: String, required: true },
 	/** The "no filter" option's wording, e.g. "Todos los años". */
 	anyLabel: { type: String, required: true },
-	/** [{ id, label, count }] — flat menus. */
+	/** [{ id, label, count }] — the menu's options. */
 	options: { type: Array, default: () => [] },
-	/** [{ name, options }] — grouped menus; `name: null` renders ungrouped. */
-	groups: { type: Array, default: null },
 	modelValue: { type: [String, null], default: null },
 })
 
@@ -90,8 +78,6 @@ defineEmits(['update:modelValue'])
 
 /** Stands in for "no filter": NcActionRadio's value is a string, so null cannot be one. */
 const ANY = '\u0000any'
-
-const shownGroups = computed(() => props.groups ?? [{ name: null, options: props.options }])
 
 /**
  * The label with its count, as a single string.
@@ -101,7 +87,7 @@ const shownGroups = computed(() => props.groups ?? [{ name: null, options: props
  * opening. Absent or zero, it is left off rather than printed as "(0)" — an
  * option nothing matches is not offered in the first place.
  *
- * @param {object} option - One entry of `options` or of a group's `options`.
+ * @param {object} option - One entry of `options`.
  * @return {string} Its menu label.
  */
 const optionText = (option) => (option.count
@@ -113,7 +99,6 @@ const menuName = computed(() => {
 	if (props.modelValue === null) {
 		return props.label
 	}
-	const all = shownGroups.value.flatMap((g) => g.options)
-	return all.find((o) => o.id === props.modelValue)?.label ?? props.label
+	return props.options.find((o) => o.id === props.modelValue)?.label ?? props.label
 })
 </script>
