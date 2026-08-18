@@ -12,7 +12,6 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
-use OCP\ICache;
 use OCP\ICacheFactory;
 use OCP\IMemcache;
 use PHPUnit\Framework\TestCase;
@@ -146,7 +145,7 @@ class IspRepositoryTest extends TestCase {
 	/**
 	 * Seven of 168 live titles carry whitespace `trim()` cannot see — a leading U+00A0,
 	 * a trailing U+2002. The leading ones render as a visible indent. MinsalRepository has
-	 * normalised these since 0.1.0 and says why; this parser only called `trim()`.
+	 * normalised these since 0.1.0; this parser only called `trim()`.
 	 */
 	public function testTitlesCarryNoWhitespaceTrimCannotSee(): void {
 		$body = $this->rss([
@@ -283,7 +282,7 @@ class IspRepositoryTest extends TestCase {
 
 		$outage = array_filter(
 			$this->logged,
-			static fn (array $l): bool => str_contains($l['message'], 'No se pudo contactar'),
+			static fn (array $l): bool => str_contains($l['message'], 'could be reached'),
 		);
 		self::assertSame([], $outage, 'nothing was asked, so nothing can be reported as unreachable');
 	}

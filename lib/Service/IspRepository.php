@@ -228,7 +228,7 @@ class IspRepository {
 		 * archive and the Año menu offers fewer years, silently.
 		 */
 		if ($stored === []) {
-			$this->logger->warning('El archivo del ISP está vacío; se reconstruye a {pages} páginas por hora', [
+			$this->logger->warning('ISP archive is empty; rebuilding at {pages} pages per hour', [
 				'pages' => self::BACKFILL_PAGES,
 			]);
 		}
@@ -299,7 +299,7 @@ class IspRepository {
 			// `$attempted`, not count(TERMS). refresh() keeps the two apart for the
 			// degradation decision and then logged the constant, so "24 intentos" could
 			// mean one — in the only line an admin diagnoses an outage from.
-			$this->logger->warning('No se pudo contactar ningún feed del ISP ({total} intentos de {feeds})', [
+			$this->logger->warning('No ISP feed could be reached ({total} attempts of {feeds})', [
 				'total' => $attempted, 'feeds' => count(self::TERMS),
 			]);
 
@@ -317,7 +317,7 @@ class IspRepository {
 		 */
 		$parsedSomething = array_filter($fetched, static fn (array $f): bool => $f['items'] !== []);
 		if ($attempted > 0 && $confirmed === 0 && $parsedSomething === [] && $this->merge($stored) !== []) {
-			$this->logger->warning('Los {total} feeds del ISP consultados respondieron sin nada que interpretar', [
+			$this->logger->warning('All {total} ISP feeds queried answered with nothing parseable', [
 				'total' => $attempted,
 			]);
 
@@ -427,7 +427,7 @@ class IspRepository {
 					continue;
 				}
 
-				$this->logger->warning('Página {page} de {term} ilegible {n} veces, backfill la salta', [
+				$this->logger->warning('Page {page} of {term} unreadable {n} times, backfill skips it', [
 					'term' => $term, 'page' => $page, 'n' => $stalls,
 				]);
 				$this->cache->set(
@@ -478,7 +478,7 @@ class IspRepository {
 			if (str_contains($e->getMessage(), '404')) {
 				return [];
 			}
-			$this->logger->debug('Página {page} de {term} no disponible', [
+			$this->logger->debug('Page {page} of {term} unavailable', [
 				'term' => $term, 'page' => $page, 'exception' => $e,
 			]);
 
@@ -494,7 +494,7 @@ class IspRepository {
 		 */
 		$body = (string)$response->getBody();
 		if (strlen($body) > self::MAX_BYTES) {
-			$this->logger->warning('Página {page} de {term} de {bytes} bytes, descartada', [
+			$this->logger->warning('Page {page} of {term} of {bytes} bytes, discarded', [
 				'term' => $term, 'page' => $page, 'bytes' => strlen($body),
 			]);
 
@@ -588,10 +588,11 @@ class IspRepository {
 		$items = [];
 		foreach ($feed->channel->item as $node) {
 			$url = trim((string)$node->link);
-			// The same normalisation MinsalRepository does, and for the reason its comment
-			// gives: `\s` does not match U+00A0 even under /u, so `trim()` leaves it. Seven
-			// of 168 live ISP titles carry a leading NBSP or a trailing EN SPACE, and the
-			// leading ones render as a visible indent on the pane's first row.
+			// The same normalisation MinsalRepository does. Seven of 168 live ISP titles
+			// carry a leading NBSP or a trailing EN SPACE, and the leading ones render as
+			// a visible indent on the pane's first row. This used to say `\s` cannot match
+			// those under /u; measured, it can — see MinsalRepository::text(). The named
+			// codepoints stay because they cost nothing, not because `trim()` needs them.
 			$title = trim((string)preg_replace('/[\s\x{00A0}\x{2000}-\x{200A}\x{202F}\x{205F}\x{3000}]+/u', ' ', (string)$node->title));
 
 			// Same guard as the MINSAL parser and for the same reason: htmlspecialchars
@@ -664,7 +665,7 @@ class IspRepository {
 		} catch (Throwable $e) {
 			// Per-feed failure is not reported: with 24 feeds a single blip would be
 			// noise, and refresh() judges the set. Only reaching none of them is news.
-			$this->logger->debug('Feed del ISP {term} no disponible', ['term' => $term, 'exception' => $e]);
+			$this->logger->debug('ISP feed {term} unavailable', ['term' => $term, 'exception' => $e]);
 
 			return null;
 		}
@@ -679,7 +680,7 @@ class IspRepository {
 		 * and kept for thirty days. Here it counts as unreachable, which is what it is.
 		 */
 		if (strlen($body) > self::MAX_BYTES) {
-			$this->logger->warning('Respuesta de {term} de {bytes} bytes, descartada', [
+			$this->logger->warning('Response from {term} of {bytes} bytes, discarded', [
 				'term' => $term, 'bytes' => strlen($body),
 			]);
 
@@ -917,7 +918,7 @@ class IspRepository {
 		 * the rail is derived from the data that is loaded. Here, and not at each failed
 		 * request, so it is news once per escalation rather than hourly noise.
 		 */
-		$this->logger->warning('Categoría {term} del ISP frenada {n} vez/veces, {wait}s', [
+		$this->logger->warning('ISP category {term} under freno {n} time(s), {wait}s', [
 			'term' => $term, 'n' => $n, 'wait' => $wait,
 		]);
 

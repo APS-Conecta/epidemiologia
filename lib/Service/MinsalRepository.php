@@ -106,7 +106,7 @@ class MinsalRepository {
 		if ($items === []) {
 			// No 'app' key: the injected LoggerInterface is already app-scoped —
 			// DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
-			$this->logger->warning('MINSAL devolvió 0 elementos para el feed {feed}', [
+			$this->logger->warning('MINSAL returned 0 items for feed {feed}', [
 				'feed' => $feed,
 			]);
 
@@ -184,8 +184,15 @@ class MinsalRepository {
 	}
 
 	/**
-	 * Decoded, with every kind of space collapsed. `\s` does not match U+00A0 even under
-	 * /u, and these titles are full of `&nbsp;`.
+	 * Decoded, with every kind of space collapsed — these titles are full of `&nbsp;`.
+	 *
+	 * The `\x{00A0}` is belt-and-braces, not the load-bearing part, and the comment that
+	 * used to be here said the opposite: "`\s` does not match U+00A0 even under /u".
+	 * Measured, that is false at both ends of the supported range — PHP 8.1 with PCRE2
+	 * 10.39 and PHP 8.5 with PCRE2 10.44 both match U+00A0, U+2000-U+200A, U+202F,
+	 * U+205F and U+3000 with `\s` alone, because PHP's /u carries UCP semantics. Kept
+	 * anyway: it costs nothing and does not depend on that holding. IspRepository's copy
+	 * names more codepoints for the same reason, and the difference is unobservable.
 	 */
 	private function text(string $html): string {
 		$decoded = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -314,7 +321,7 @@ class MinsalRepository {
 
 		if ($rejected > 0) {
 			$this->logger->warning(
-				'Se descartaron {rejected} enlaces del feed {feed} por no ser https',
+				'Dropped {rejected} non-https links from feed {feed}',
 				['rejected' => $rejected, 'feed' => $feed],
 			);
 		}
@@ -387,7 +394,7 @@ class MinsalRepository {
 			 * over. A body this size is not a WordPress page, whatever it claims to be.
 			 */
 			if (strlen($body) > self::MAX_BYTES) {
-				$this->logger->warning('Respuesta de MINSAL de {bytes} bytes, descartada', [
+				$this->logger->warning('MINSAL response of {bytes} bytes, discarded', [
 					'slug' => $slug, 'bytes' => strlen($body),
 				]);
 
@@ -400,7 +407,7 @@ class MinsalRepository {
 			// checks isset($entry['exception']) and serialises the class, the trace and
 			// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
-			$this->logger->warning('No se pudo contactar a MINSAL ({slug})', [
+			$this->logger->warning('Could not reach MINSAL ({slug})', [
 				'slug' => $slug,
 				'exception' => $e,
 			]);
