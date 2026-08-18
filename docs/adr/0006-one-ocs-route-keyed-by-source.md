@@ -42,3 +42,23 @@ not for a caller's typo, which must not be a 500.
 **Its premise is withdrawn.** It was argued from "~357 KB of JSON in the HTML of every page load";
 [ADR-0009](0009-the-isp-archive-ships-whole.md) measured the wire — the page is gzipped: 41 KB whole,
 ISP payload 15,4 KB, ~126 KB projected at the full archive. The parameters stay, for other apps.
+
+## Correction — 2026-08-18, `updated_at` removed from the envelope
+
+This ADR describes each value as carrying `updated_at`, `degraded` and `items`, and the amendment
+below adds `total` and `has_more`. **`updated_at` is gone as of 0.9.0**, and the decision itself —
+one route keyed by source — is untouched.
+
+It was removed because it was two different facts under one key and read by nobody. MINSAL's
+producer filled it with the WordPress page's `modified`; the ISP's filled it with the newest
+archived item's publication date. Nothing in `lib/`, `src/` or any consumer read it, and it could
+not answer the one question a freshness key exists for — whether the fuente is currently
+reachable — because a degraded read serves the last good copy and its `updated_at` along with it.
+`fetched_at` and `degraded` are what answer that, and both stay.
+
+It was also the last repository-internal value riding out to every browser on a public contract,
+which is a small but real reason to prefer its absence.
+
+Removing a published key is a breaking change to the OCS contract, which is why it is a release
+and not a patch. The published spec had never named it correctly anyway: the same commit fixes
+`openapi.json`, which had been declaring four keys while the route returned six.

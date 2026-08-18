@@ -2,10 +2,10 @@
     "openapi": "3.0.3",
     "info": {
         "title": "epidemiologia",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "description": "Alertas del MINSAL y del ISP, informes IRAG y tablero nacional",
         "license": {
-            "name": "agpl"
+            "name": "AGPL-3.0-or-later"
         }
     },
     "components": {
@@ -51,6 +51,7 @@
             "get": {
                 "operationId": "api-sources",
                 "summary": "Everything this app publishes, keyed by source — or one source, narrowed",
+                "description": "`total` and `has_more` are OPTIONAL and appear only when a source is named: omitting `?source` returns every source whole, so there is no page and nothing to report about one. They were added when the 100-item cap turned out to be invisible — a narrowed response of 100 looked exactly like a complete one — and this docblock, which is what openapi.json is generated from, was not updated with them. The published contract has been describing an envelope narrower than the one the route returns ever since.",
                 "tags": [
                     "api"
                 ],
@@ -131,16 +132,11 @@
                                                     "additionalProperties": {
                                                         "type": "object",
                                                         "required": [
-                                                            "updated_at",
                                                             "fetched_at",
                                                             "degraded",
                                                             "items"
                                                         ],
                                                         "properties": {
-                                                            "updated_at": {
-                                                                "type": "string",
-                                                                "nullable": true
-                                                            },
                                                             "fetched_at": {
                                                                 "type": "integer",
                                                                 "format": "int64",
@@ -157,6 +153,13 @@
                                                                         "type": "string"
                                                                     }
                                                                 }
+                                                            },
+                                                            "total": {
+                                                                "type": "integer",
+                                                                "format": "int64"
+                                                            },
+                                                            "has_more": {
+                                                                "type": "boolean"
                                                             }
                                                         }
                                                     }
@@ -193,16 +196,11 @@
                                                     "additionalProperties": {
                                                         "type": "object",
                                                         "required": [
-                                                            "updated_at",
                                                             "fetched_at",
                                                             "degraded",
                                                             "items"
                                                         ],
                                                         "properties": {
-                                                            "updated_at": {
-                                                                "type": "string",
-                                                                "nullable": true
-                                                            },
                                                             "fetched_at": {
                                                                 "type": "integer",
                                                                 "format": "int64",
@@ -219,6 +217,13 @@
                                                                         "type": "string"
                                                                     }
                                                                 }
+                                                            },
+                                                            "total": {
+                                                                "type": "integer",
+                                                                "format": "int64"
+                                                            },
+                                                            "has_more": {
+                                                                "type": "boolean"
                                                             }
                                                         }
                                                     }
@@ -255,16 +260,11 @@
                                                     "additionalProperties": {
                                                         "type": "object",
                                                         "required": [
-                                                            "updated_at",
                                                             "fetched_at",
                                                             "degraded",
                                                             "items"
                                                         ],
                                                         "properties": {
-                                                            "updated_at": {
-                                                                "type": "string",
-                                                                "nullable": true
-                                                            },
                                                             "fetched_at": {
                                                                 "type": "integer",
                                                                 "format": "int64",
@@ -281,6 +281,13 @@
                                                                         "type": "string"
                                                                     }
                                                                 }
+                                                            },
+                                                            "total": {
+                                                                "type": "integer",
+                                                                "format": "int64"
+                                                            },
+                                                            "has_more": {
+                                                                "type": "boolean"
                                                             }
                                                         }
                                                     }
@@ -327,7 +334,7 @@
     "tags": [
         {
             "name": "api",
-            "description": "The contract other apps read — and, once it has a home, the front webpage. OCSController rather than a plain Controller because the manual calls it the state-of-the-art surface and, more concretely, because a browser on another origin cannot be served any other way: enabling CORS on a plain Controller is \"generally and highly discouraged\", since the CSRF check then fails unless security is disabled. The planned dashboard is exactly that case. Consumers send `OCS-APIRequest: true` and get the OCS envelope back: GET /ocs/v2.php/apps/epidemiologia/api/v1/sources { \"ocs\": { \"meta\": {…}, \"data\": { \"alerts\": { \"updated_at\": …, \"degraded\": false, \"items\": [ … ] }, \"reports\": { … }, \"sanitary_alerts\": { … } } } } ONE route keyed by source, not a route per source — see ADR-0006. Nextcloud serves the one kind of consumer this contract exists for exactly this way: `dashboard.rst` returns `ocs.data` keyed by widget id, and `cloud/capabilities` keyed by app. Resource-per-endpoint, as groupfolders does it, is for mutable things with ids and a CRUD surface, which this app has none of. No #[CORS] yet: it needs a concrete origin and the dashboard does not have one. Adding it blind would widen the surface for nobody."
+            "description": "The contract other apps read — and, once it has a home, the front webpage. OCSController rather than a plain Controller because the manual calls it the state-of-the-art surface and, more concretely, because a browser on another origin cannot be served any other way: enabling CORS on a plain Controller is \"generally and highly discouraged\", since the CSRF check then fails unless security is disabled. The planned dashboard is exactly that case. Consumers send `OCS-APIRequest: true` and get the OCS envelope back: GET /ocs/v2.php/apps/epidemiologia/api/v1/sources { \"ocs\": { \"meta\": {…}, \"data\": { \"alerts\": { \"fetched_at\": …, \"degraded\": false, \"items\": [ … ] }, \"reports\": { … }, \"sanitary_alerts\": { … } } } } ONE route keyed by source, not a route per source — see ADR-0006. Nextcloud serves the one kind of consumer this contract exists for exactly this way: `dashboard.rst` returns `ocs.data` keyed by widget id, and `cloud/capabilities` keyed by app. Resource-per-endpoint, as groupfolders does it, is for mutable things with ids and a CRUD surface, which this app has none of. No #[CORS] yet: it needs a concrete origin and the dashboard does not have one. Adding it blind would widen the surface for nobody."
         }
     ]
 }

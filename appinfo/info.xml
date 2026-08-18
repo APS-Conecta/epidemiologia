@@ -14,7 +14,7 @@ que el ISP publica solo en sus propios canales RSS.
 Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
 no guarda datos en base de datos y no contiene información de pacientes.
     ]]></description>
-    <version>0.8.0</version>
+    <version>0.9.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>

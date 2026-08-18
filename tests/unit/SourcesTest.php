@@ -229,10 +229,53 @@ class SourcesTest extends TestCase {
 		];
 	}
 
+	/**
+	 * The published contract must NAME every key the route can return.
+	 *
+	 * `total` and `has_more` were added to page() so a capped response could be told from a
+	 * complete one — and the docblock the OpenAPI extractor reads was not updated with them, so
+	 * openapi.json has been describing a narrower envelope than the route returns. A consumer
+	 * reading the spec cannot discover that paging exists at all, which is the defect those two
+	 * keys were added to fix, one level up.
+	 *
+	 * Against `properties` and not `required`: the route answers in two shapes. Omitting
+	 * `?source` returns every source whole, with no page to report on, so the two paging keys
+	 * are genuinely optional and asserting them as required would be asserting something false.
+	 *
+	 * Read from the COMMITTED spec, not from the docblock: comparing the docblock to the spec it
+	 * generates would pass by construction.
+	 */
+	public function testThePublishedContractNamesEveryKeyTheRouteCanReturn(): void {
+		$sources = $this->sources($this->threeAlerts());
+		$returned = array_unique(array_merge(
+			array_keys((array)$sources->page(Sources::SANITARY_ALERTS)),
+			array_keys($sources->all()[Sources::SANITARY_ALERTS]),
+		));
+		sort($returned);
+
+		$spec = json_decode(
+			(string)file_get_contents(dirname(__DIR__, 2) . '/openapi.json'),
+			true,
+			512,
+			JSON_THROW_ON_ERROR,
+		);
+		$declared = array_keys($spec['paths']['/ocs/v2.php/apps/epidemiologia/api/v1/sources']['get']
+			['responses']['200']['content']['application/json']['schema']
+			['properties']['ocs']['properties']['data']['additionalProperties']['properties']);
+		sort($declared);
+
+		self::assertSame($returned, $declared, sprintf(
+			'openapi.json names [%s] but the route can return [%s] — fix the @return on '
+			. 'ApiController::sources() and regenerate with scripts/openapi.sh',
+			implode(', ', $declared),
+			implode(', ', $returned),
+		));
+	}
+
 	// -----------------------------------------------------------------------
 
 	private function sources(array $items = []): Sources {
-		$payload = ['items' => $items, 'updated_at' => null, 'fetched_at' => null, 'degraded' => false];
+		$payload = ['items' => $items, 'fetched_at' => null, 'degraded' => false];
 
 		$minsal = $this->createMock(MinsalRepository::class);
 		$minsal->method('get')->willReturn($payload);

@@ -4,7 +4,7 @@ import { getCanonicalLocale, t } from '@nextcloud/l10n'
 const APP = 'epidemiologia'
 
 /** Every source shares this shape; see MinsalRepository::present(). */
-const EMPTY = { items: [], updated_at: null, fetched_at: null, degraded: false }
+const EMPTY = { items: [], fetched_at: null, degraded: false }
 
 /**
  * One key, not one per source. Each loadState key is a contract with
