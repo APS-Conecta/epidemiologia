@@ -14,6 +14,7 @@ parent context whenever you work here. Its rules still apply; nothing below repl
 | Code, identifiers, comments, test names, docblocks | **English** |
 | `README.md`, `CHANGELOG.md`, `CONTEXT.md`, `docs/` | **English** |
 | `scripts/` output | **English** |
+| `nextcloud.log` lines — every `LoggerInterface` message | **English** |
 
 **Commit messages and issue comments are English, from 2026-08-08.** They were Spanish, and
 everything up to that date stays Spanish — history is not rewritten. The carve-out went because it
