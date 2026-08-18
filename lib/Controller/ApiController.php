@@ -31,7 +31,7 @@ use OCP\IRequest;
  *
  *     GET /ocs/v2.php/apps/epidemiologia/api/v1/sources
  *     { "ocs": { "meta": {…}, "data": {
- *         "alerts":          { "updated_at": …, "degraded": false, "items": [ … ] },
+ *         "alerts":          { "fetched_at": …, "degraded": false, "items": [ … ] },
  *         "reports":         { … },
  *         "sanitary_alerts": { … } } } }
  *
@@ -68,10 +68,17 @@ class ApiController extends OCSController {
 	/**
 	 * Everything this app publishes, keyed by source — or one source, narrowed
 	 *
+	 * `total` and `has_more` are OPTIONAL and appear only when a source is named: omitting
+	 * `?source` returns every source whole, so there is no page and nothing to report about
+	 * one. They were added when the 100-item cap turned out to be invisible — a narrowed
+	 * response of 100 looked exactly like a complete one — and this docblock, which is what
+	 * openapi.json is generated from, was not updated with them. The published contract has
+	 * been describing an envelope narrower than the one the route returns ever since.
+	 *
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category A category slug of that source; omit for all of them
 	 * @param ?int $olderThan Only items published strictly before this epoch
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{updated_at: ?string, fetched_at: ?int, degraded: bool, items: list<array<string, string>>}>, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array<string, string>>, total?: int, has_more?: bool}>, array{}>
 	 *
 	 * 200: Each source asked for, with its items, its freshness and its own degraded flag
 	 * 400: That source cannot be narrowed the way you asked

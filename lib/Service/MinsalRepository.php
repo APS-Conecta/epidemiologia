@@ -65,7 +65,7 @@ class MinsalRepository {
 	/**
 	 * @param self::ALERTS|self::IRAG $feed
 	 *
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(string $feed): array {
 		$stored = $this->stored($feed);
@@ -93,7 +93,7 @@ class MinsalRepository {
 	 *
 	 * Private: nothing outside this class calls it, and `$stored` is the raw cache entry.
 	 *
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(string $feed, ?array $stored = null): array {
 		$page = $this->fetch($feed, 'content,modified');
@@ -418,12 +418,11 @@ class MinsalRepository {
 	}
 
 	/**
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function present(?array $stored, bool $degraded): array {
 		return [
 			'items' => $stored['items'] ?? [],
-			'updated_at' => $stored['modified'] ?? null,
 			'fetched_at' => $stored['fetched_at'] ?? null,
 			'degraded' => $degraded,
 		];

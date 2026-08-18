@@ -63,7 +63,6 @@ class MinsalRepositoryTest extends TestCase {
 		// 74, not the fixture's 75 anchors: MINSAL links one PDF from two rows of its
 		// own table, and the same alert is not two alerts.
 		self::assertCount(74, $alerts['items']);
-		self::assertSame('2026-07-31T22:15:04', $alerts['updated_at']);
 	}
 
 	public function testEveryAlertCarriesATitleAUrlAndAYear(): void {
@@ -322,7 +321,10 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertTrue($after['degraded']);
 		self::assertCount(74, $after['items']);
-		self::assertSame($good['updated_at'], $after['updated_at']);
+		// CONTEXT.md: "a freno never makes a stale fuente look fresh". This is the first assertion
+		// anywhere that a degraded read leaves `fetched_at` where it was — the property that would
+		// silently make an outage look like a successful fetch if it ever stopped holding.
+		self::assertSame($good['fetched_at'], $after['fetched_at']);
 	}
 
 	public function testWithNothingCachedAndMinsalDownItSaysDegradedRatherThanEmpty(): void {
@@ -330,7 +332,6 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertTrue($result['degraded']);
 		self::assertSame([], $result['items']);
-		self::assertNull($result['updated_at']);
 	}
 
 	public function testServesTheCacheWithoutRefetchingWhileItIsFresh(): void {

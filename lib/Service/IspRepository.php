@@ -142,7 +142,7 @@ class IspRepository {
 	}
 
 	/**
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(): array {
 		$stored = $this->storedAll();
@@ -214,7 +214,7 @@ class IspRepository {
 	 * behaviour. `get()`, `probe()`, `search()` and `ALERTS` are what a caller needs.
 	 *
 	 * @param ?array<string, array> $stored
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
 		$stored ??= $this->storedAll();
@@ -882,7 +882,6 @@ class IspRepository {
 
 		return [
 			'items' => $items,
-			'updated_at' => $items[0]['date'] ?? null,
 			'fetched_at' => $this->oldestFetch($stored),
 			'degraded' => $degraded,
 		];

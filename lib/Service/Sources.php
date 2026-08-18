@@ -79,7 +79,7 @@ class Sources {
 	 * Every source with its freshness and its state — the whole payload of the page
 	 * and of the OCS route.
 	 *
-	 * @return array<string, array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}>
+	 * @return array<string, array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}>
 	 */
 	public function all(): array {
 		$sources = [];
@@ -106,7 +106,7 @@ class Sources {
 	 *
 	 * @param ?string $category one of the source's own category slugs, or null for all
 	 * @param ?int    $olderThan epoch; only items published strictly before it
-	 * @return ?array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return ?array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool, total: int, has_more: bool}
 	 */
 	public function page(string $id, ?string $category = null, ?int $olderThan = null): ?array {
 		$source = $this->get($id);
@@ -172,7 +172,7 @@ class Sources {
 	}
 
 	/**
-	 * @return array{items: list<array<string, string>>, updated_at: ?string, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(string $id): array {
 		// No default arm on purpose, here and below: an id added to ALL and nowhere
