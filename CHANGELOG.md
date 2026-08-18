@@ -10,6 +10,13 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- The "could not reach" and "nothing published" notices now name the source instead of printing a
+  literal `%s`. Both called `t()` with printf syntax and an array; it substitutes `{nombre}` from an
+  object, so the placeholder reached the screen. They render only when a fuente is unreachable —
+  the one path a working network never exercises.
+
 ### Changed
 
 - The four ISP families the publisher names in its own slugs — medicamentos, dispositivos,

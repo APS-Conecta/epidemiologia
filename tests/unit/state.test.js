@@ -8,7 +8,7 @@
  * shape of an option is pinned here, where it costs milliseconds.
  */
 import { describe, expect, it } from 'vitest'
-import { fecha, monthOptions, tally, yearOptions } from '../../src/state.js'
+import { degradedText, emptyText, fecha, monthOptions, tally, yearOptions } from '../../src/state.js'
 
 /**
  * Shaped like what the panes actually hold: MINSAL carries year/month, the ISP a date.
@@ -117,5 +117,17 @@ describe('fecha', () => {
 		expect(fecha(null)).toBe('')
 		expect(fecha('')).toBe('')
 		expect(fecha('2026-07')).toBe('')
+	})
+})
+
+describe('degradedText / emptyText', () => {
+	// t() substitutes {nombre} and %n. printf's %s is not a token it knows, so both
+	// sentences shipped the literal "%s" to clinicians on the degraded path, at six
+	// render sites, invisible to PHPUnit and to a reviewer reading the source.
+	// toBe and not toContain: a placeholder that survives has to fail here, and with
+	// vars an object and no count, t() also runs .replace(/%n/g,"undefined") on these.
+	it('puts the source into the sentence', () => {
+		expect(degradedText('MINSAL')).toBe('No hemos podido contactar con MINSAL, así que esta lista puede estar incompleta.')
+		expect(emptyText('El ISP')).toBe('El ISP no trae alertas en este momento.')
 	})
 })

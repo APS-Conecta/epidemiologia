@@ -86,7 +86,7 @@ export function mes(monthKey) {
  * "el ISP", and one sentence that works for both beats two that drift.
  */
 export function degradedText(fuente) {
-	return t('epidemiologia', 'No hemos podido contactar con %s, así que esta lista puede estar incompleta.', [fuente])
+	return t('epidemiologia', 'No hemos podido contactar con {fuente}, así que esta lista puede estar incompleta.', { fuente })
 }
 
 /**
@@ -101,7 +101,7 @@ export function degradedText(fuente) {
  * possessive named something that does not exist.
  */
 export function emptyText(fuente) {
-	return t('epidemiologia', '%s no trae alertas en este momento.', [fuente])
+	return t('epidemiologia', '{fuente} no trae alertas en este momento.', { fuente })
 }
 
 /**
