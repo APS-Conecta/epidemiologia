@@ -126,7 +126,7 @@
 </template>
 
 <script setup>
-import { markRaw, ref, watch } from 'vue'
+import { markRaw, ref, watch, defineAsyncComponent } from 'vue'
 import {
 	NcAppContent,
 	NcAppNavigation,
@@ -150,11 +150,11 @@ import { familiasPresent } from './familias.js'
 import { paneName } from './panes.js'
 import { sanitaryAlerts } from './state.js'
 import InicioPane from './components/InicioPane.vue'
-import AlertsPane from './components/AlertsPane.vue'
-import ReportPane from './components/ReportPane.vue'
-import TableroPane from './components/TableroPane.vue'
-import IspPane from './components/IspPane.vue'
-import EpivigilaPane from './components/EpivigilaPane.vue'
+const AlertsPane = defineAsyncComponent(() => import('./components/AlertsPane.vue'))
+const ReportPane = defineAsyncComponent(() => import('./components/ReportPane.vue'))
+const TableroPane = defineAsyncComponent(() => import('./components/TableroPane.vue'))
+const IspPane = defineAsyncComponent(() => import('./components/IspPane.vue'))
+const EpivigilaPane = defineAsyncComponent(() => import('./components/EpivigilaPane.vue'))
 
 const current = ref('inicio')
 
