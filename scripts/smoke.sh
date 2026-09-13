@@ -35,14 +35,24 @@ occ() { docker exec -u www-data "$CONTAINER" php occ "$@"; }
 # argument: argv is readable from /proc/*/cmdline by any local user for the length of the
 # run. Not the environment either — /proc/*/environ is the same shape of leak, one step
 # narrower. App passwords are alphanumeric, so nothing here needs quoting beyond this.
+#
+# --max-time is not tuning, it is the difference between a gate that fails and a gate that
+# hangs. /sources walks 24 ISP feeds plus up to 2 backfill pages, each bounded at 15 s in
+# IspRepository — 435 s of wall clock in the worst case, and an observed run took 363 s
+# with this script printing nothing at all meanwhile. 600 is IspRepository::LOCK_FOR: the
+# window that class already reserves for one walk. Anything under ~440 s would kill a slow
+# but succeeding walk and report it as a defect of ours.
 web() {
 	printf 'user = "%s:%s"\n' "$USER_ID" "$TOKEN" \
-		| docker exec -i -u www-data "$CONTAINER" curl -sS -K - "$@" 2>/dev/null
+		| docker exec -i -u www-data "$CONTAINER" curl -sS --max-time 600 -K - "$@" 2>/dev/null
 }
 
 failures=0
 pass() { printf '  ok    %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
+# The third outcome, in the shape the bundle check below already prints it: a check
+# that could not be made, named, and counted against nothing.
+skip() { printf '  --    %s\n' "$1"; }
 
 # $1 haystack, $2 needle, $3 message on success, $4 message on failure
 expect() {
@@ -87,11 +97,29 @@ if [ -z "$TOKEN" ]; then
 fi
 
 sources="$(web -H "$OCSH" "$OCS/sources?format=json")"
+
+# Three of the assertions below can only be made when MINSAL and the ISP answered.
+# The envelope says when they did not — degraded:true, served with the last good copy
+# — and a release gate that failed there would be calling a foreign publisher's outage
+# a regression of ours. It names what it could not check instead.
+#
+# This reads the RESPONSE, not the network: a web() that hit its own --max-time returns
+# nothing, matches nothing here, and every assertion still runs and still fails. An
+# outage is theirs; a hang is ours, and only one of the two is allowed to be quiet.
+degraded=''
+case "$sources" in
+	*'"degraded":true'*) degraded=1 ;;
+esac
+
 # grep -c counts matching *lines*, and the whole payload is one line.
 count="$(printf '%s' "$sources" | grep -o '"title"' | wc -l | tr -d ' ')"
-[ "$count" -ge 1 ] \
-	&& pass "/ocs/…/api/v1/sources answers with $count items" \
-	|| fail "/ocs/…/api/v1/sources returned no items at all"
+if [ -n "$degraded" ]; then
+	skip "a fuente is degraded: not checking how many items /ocs/…/api/v1/sources answers with"
+elif [ "$count" -ge 1 ]; then
+	pass "/ocs/…/api/v1/sources answers with $count items"
+else
+	fail "/ocs/…/api/v1/sources returned no items at all"
+fi
 
 # Every source keyed by its own id. A missing key means Sources::ALL and the
 # payload have drifted apart, which is the failure the registry exists to stop.
@@ -132,13 +160,20 @@ oldcount="$(printf '%s' "$empty" | grep -o '"title"' | wc -l | tr -d ' ')"
 	&& pass "olderThan= narrows to nothing when nothing is older" \
 	|| fail "olderThan= returned $oldcount items when nothing is older than epoch 1"
 
-expect "$sources" '"degraded":false' \
-	"the data arrives undegraded" \
-	"some source is degraded — it did not answer, or stopped parsing"
+# Not the same statement as the guard above: this one also fails on a payload that
+# publishes no degraded key at all, which is the envelope losing a documented field.
+if [ -n "$degraded" ]; then
+	skip "a fuente is degraded: not checking that the data arrives undegraded"
+	skip "a fuente is degraded: not checking the semana epidemiológica"
+else
+	expect "$sources" '"degraded":false' \
+		"the data arrives undegraded" \
+		"some source is degraded — it did not answer, or stopped parsing"
 
-expect "$sources" '"se"' \
-	"the reports expose the semana epidemiológica" \
-	"the reports do not expose the semana epidemiológica"
+	expect "$sources" '"se"' \
+		"the reports expose the semana epidemiológica" \
+		"the reports do not expose the semana epidemiológica"
+fi
 
 # The envelope is the contract, not an implementation detail: a consumer parses
 # ocs.data, so losing it is a breaking change even if the payload is intact.
@@ -184,11 +219,17 @@ esac
 # carrying sourcesContent for all 350 sources, and it was in neither .htaccess list.
 #
 # Unauthenticated on purpose: an authenticated probe would pass while the hole was open.
+# Bounded like web(), but nowhere near as generously: these four paths are answered by
+# Apache out of .htaccess, before Nextcloud is involved, so there is no feed walk behind
+# them and nothing here can legitimately take minutes. 000 is curl's own "never answered",
+# and it gets its own line — reported as "check .htaccess" it would name a cause nobody
+# checked, which is the defect this script's header is about.
 for path in js/$APP-main.mjs.map vitest.config.js vite.config.js src/state.js; do
 	code="$(docker exec -u www-data "$CONTAINER" \
-		curl -sS -o /dev/null -w '%{http_code}' "http://localhost/custom_apps/$APP/$path")"
+		curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "http://localhost/custom_apps/$APP/$path")"
 	case "$code" in
 		404|403) pass "$path is not served to anonymous callers" ;;
+		000) fail "$path did not answer within 30 s — that is the instance, not the .htaccess" ;;
 		*) fail "$path answers $code with NO credentials — check .htaccess" ;;
 	esac
 done
