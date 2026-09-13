@@ -8,34 +8,16 @@ Written in English, like the rest of this repo outside the UI — see [`AGENTS.m
 **One line per change, naming what moved for someone using the app or its API.** Why a change was
 made belongs in the commit, the issue, or a comment beside the code.
 
-## [0.9.0] — 2026-08-18
-
-### Removed
-
-- **`updated_at` is gone from the OCS envelope.** It was two different facts under one key —
-  MINSAL's WordPress `modified` on one fuente, the newest archived item's date on the other — and
-  nothing read it. It could not answer the question a freshness key exists for, because a degraded
-  read serves the last good copy and its `updated_at` with it; `fetched_at` and `degraded` answer
-  that and both stay. Removing a published key is a breaking change to the contract, hence a minor
-  release. See [ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md) § Correction.
-
-### Fixed
-
-- **`openapi.json` was describing a narrower envelope than the route returns.** `total` and
-  `has_more` were added so a capped response could be told from a complete one, and the docblock
-  the extractor reads was never updated — so the published contract named four keys while the
-  route returned six, and a consumer reading the spec could not discover that paging exists. The
-  spec now names all five and marks the two paging keys optional, which is what they are: they
-  appear only when a source is named.
-
 ## [Unreleased]
 
-### Fixed
+## [0.9.0] — 2026-08-18
 
-- The "could not reach" and "nothing published" notices now name the source instead of printing a
-  literal `%s`. Both called `t()` with printf syntax and an array; it substitutes `{nombre}` from an
-  object, so the placeholder reached the screen. They render only when a fuente is unreachable —
-  the one path a working network never exercises.
+### Added
+
+- A shared accent-folding conformance table, read by both suites. `fold()` exists twice — PHP for
+  OCS and global search, JS for the in-browser filter — and the two agreed only by coincidence, so
+  a change to either could make searching and filtering return different sets for the same query
+  with nothing going red. One edit to `tests/unit/fold-cases.json` now fails a test in each.
 
 ### Changed
 
@@ -53,7 +35,6 @@ made belongs in the commit, the issue, or a comment beside the code.
   dismissing it returns to the whole archive — heading, highlighted row and tokens moving together.
   Widening that way keeps a chosen category, which switching between families still clears: a token
   saying *Medicamentos* takes Medicamentos with it and nothing else.
-
 - Both alert panes keep their toolbar on screen while the list scrolls, and show what is narrowing
   it as dismissible tokens beside the count. The ISP archive is 276 rows and ~18.500px tall; past
   the fortieth row nothing said which year, month, search or category was applied, while the empty
@@ -61,12 +42,27 @@ made belongs in the commit, the issue, or a comment beside the code.
   out of sight. Clearing one is now a click on the token rather than hunting for the control that
   set it.
 
-### Added
+### Removed
 
-- A shared accent-folding conformance table, read by both suites. `fold()` exists twice — PHP for
-  OCS and global search, JS for the in-browser filter — and the two agreed only by coincidence, so
-  a change to either could make searching and filtering return different sets for the same query
-  with nothing going red. One edit to `tests/unit/fold-cases.json` now fails a test in each.
+- **`updated_at` is gone from the OCS envelope.** It was two different facts under one key —
+  MINSAL's WordPress `modified` on one fuente, the newest archived item's date on the other — and
+  nothing read it. It could not answer the question a freshness key exists for, because a degraded
+  read serves the last good copy and its `updated_at` with it; `fetched_at` and `degraded` answer
+  that and both stay. Removing a published key is a breaking change to the contract, hence a minor
+  release. See [ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md) § Correction.
+
+### Fixed
+
+- The "could not reach" and "nothing published" notices now name the source instead of printing a
+  literal `%s`. Both called `t()` with printf syntax and an array; it substitutes `{nombre}` from an
+  object, so the placeholder reached the screen. They render only when a fuente is unreachable —
+  the one path a working network never exercises.
+- **`openapi.json` was describing a narrower envelope than the route returns.** `total` and
+  `has_more` were added so a capped response could be told from a complete one, and the docblock
+  the extractor reads was never updated — so the published contract named four keys while the
+  route returned six, and a consumer reading the spec could not discover that paging exists. The
+  spec now names all five and marks the two paging keys optional, which is what they are: they
+  appear only when a source is named.
 
 ## [0.8.0] — 2026-08-06
 

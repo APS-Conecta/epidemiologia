@@ -18,16 +18,16 @@ AGPL-3.0-or-later; data from the Departamento de Epidemiología (MINSAL) and the
 
 ## Status
 
-**0.8.0, 2026-08-08.** All six views ship and the OCS contract is settled at one route
-([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` carries eight commits past
-`v0.8.0`, listed under `[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md); `info.xml`, `package.json`
-and an instance's `installed_version` all read 0.8.0.
+**0.9.0, 2026-09-13.** All six views ship and the OCS contract is settled at one route
+([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` is tagged `v0.9.0` and
+`[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md) is empty; `info.xml`, `package.json` and an
+instance's `installed_version` all read 0.9.0.
 
 Not done, and each for a reason: the OCS route carries no `#[CORS]`, which needs a concrete origin
 rather than a wildcard; nothing propagates the establishment to this app, so it reads
 `notify_groups` and its own probe counters and nothing else
 ([gestion ADR-0013](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0013-the-establishment-is-instance-configuration.md)); `scripts/smoke.sh` and
-`scripts/layout.sh` are run by hand. The six tags `v0.3.0`…`v0.8.0` have **no GitHub release page**
+`scripts/layout.sh` are run by hand. The seven tags `v0.3.0`…`v0.9.0` have **no GitHub release page**
 and are not owed one: a clinic installs the tarball `gestion` vendors from a tag, and `gestion` bumps
 it at a milestone rather than at every tag — that decision and the one command that builds the
 tarball live in
