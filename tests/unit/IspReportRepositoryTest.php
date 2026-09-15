@@ -145,6 +145,25 @@ class IspReportRepositoryTest extends TestCase {
 	}
 
 	/**
+	 * `Semana 05` and `Semana 5` are one week typed two ways by the same WordPress
+	 * editor the `/u` flag defends against, and the accumulation keys on those digits:
+	 * PHP keeps '05' a string key and turns '5' into int 5, so a republish that dropped
+	 * the zero wrote a SECOND row — and ReportPane prints `se` verbatim, so a clinician
+	 * saw "Semana 05" and "Semana 5" as two different weeks.
+	 */
+	public function testAZeroPaddedSemanaIsTheSameWeekAsAnUnpaddedOne(): void {
+		$page = (string)file_get_contents(__DIR__ . '/fixtures/isp-informes.html');
+		$padded = str_replace('Semana 35', 'Semana 05', $page);
+		$bare = str_replace(['Semana 35', '-V3.pdf'], ['Semana 5', '-V4.pdf'], $page);
+
+		$this->repository($padded)->get();
+		$items = $this->repository($bare, reuseCache: true)->get()['items'];
+
+		self::assertCount(1, $items, 'the same week, typed twice, is not two informes');
+		self::assertSame('5', $items[0]['se'], 'the semana is stored canonically, not as typed');
+	}
+
+	/**
 	 * Newest first by the month the informe was filed under, THEN by semana — not by
 	 * semana alone. Semanas restart every January, so sorting on the number alone would
 	 * put the current informe at the bottom of the pane for the whole first month of a
@@ -166,6 +185,31 @@ class IspReportRepositoryTest extends TestCase {
 		$items = $this->repository($week01, reuseCache: true)->get()['items'];
 
 		self::assertSame(['1', '52'], array_column($items, 'se'));
+	}
+
+	/**
+	 * The other half of keeping an informe we could not file: it must not sink.
+	 *
+	 * parse() keeps an informe published outside /uploads/YYYY/MM/, because the semana is
+	 * its identity — and the ISP already serves a PDF on this page from a second path
+	 * convention, so this is a shape the page has. Ordering by month alone put that
+	 * informe LAST, since '' is below every real month: the week just read fell to the
+	 * bottom of the pane and off InicioPane's three-row card, which is exactly the
+	 * outcome keeping it was meant to avoid.
+	 */
+	public function testAnInformeFiledOutsideTheUploadFolderIsNotPushedToTheBottom(): void {
+		$filed = (string)file_get_contents(__DIR__ . '/fixtures/isp-informes.html');
+		$unfiled = str_replace(
+			['Semana 35', '/wp-content/uploads/2026/09/Informe'],
+			['Semana 36', '/sites/default/files/documento/2026/09/Informe'],
+			$filed,
+		);
+
+		$this->repository($filed)->get();
+		$items = $this->repository($unfiled, reuseCache: true)->get()['items'];
+
+		self::assertSame('', $items[0]['month'], 'precondition: the newer informe carries no month');
+		self::assertSame(['36', '35'], array_column($items, 'se'), 'the informe just read must come first');
 	}
 
 	// --- failure: zero items is a failure, never a result ---------------------

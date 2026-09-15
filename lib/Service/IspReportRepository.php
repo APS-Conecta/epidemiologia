@@ -155,6 +155,12 @@ class IspReportRepository {
 		 * `+` and not array_merge: the fresh reading wins on a key both sides hold, which
 		 * is exactly what a reissue is.
 		 *
+		 * The key carries no YEAR, so SE n of a later year replaces SE n of an earlier
+		 * one. Stated rather than fixed: an entry lives KEEP_FOR at most and ADR-0012
+		 * empties the cache on every app update, so the series cannot span a full year to
+		 * collide with itself — and if it ever did, the informe being kept is the newer
+		 * one, which is the one that matters.
+		 *
 		 * ADR-0012 applies: this is a cache, so any app update on the instance empties it
 		 * and the series restarts from the current week. That is accepted — this app has
 		 * no database, and the current informe is the one that matters.
@@ -218,7 +224,20 @@ class IspReportRepository {
 				'url' => $url,
 				'year' => $filed ? $when[1] : '',
 				'month' => $filed ? $when[1] . '-' . $when[2] : '',
-				'se' => $semana[1],
+				/*
+				 * Canonical digits, not the label's: `Semana 05` and `Semana 5` are one
+				 * week typed two ways, and the accumulation below keys on this value.
+				 * PHP would key them APART — '05' stays a string key, '5' becomes int 5 —
+				 * so a republish that dropped the zero produced a second row, and
+				 * ReportPane prints `se` verbatim: "Semana 05" and "Semana 5", side by
+				 * side, for the same week. That is the duplicate the pane cannot tell
+				 * apart, arriving through the key meant to prevent it.
+				 *
+				 * Same class of variance as the whitespace `/u` defends against, from the
+				 * same WordPress editor, and it was the half left undefended. sort() has
+				 * always cast to int; now the key agrees with it.
+				 */
+				'se' => (string)(int)$semana[1],
 			];
 		}
 
@@ -238,10 +257,34 @@ class IspReportRepository {
 	 * @return list<array<string, string>>
 	 */
 	private function sort(array $items): array {
+		/*
+		 * An informe with no month sorts FIRST, not last.
+		 *
+		 * parse() keeps an informe filed outside /uploads/YYYY/MM/ rather than dropping
+		 * it, because the semana is its identity and the folder is only decoration — and
+		 * the ISP already serves a PDF on this very page from a second path convention
+		 * (/sites/default/files/documento/…), so this is a shape the page has rather than
+		 * one imagined for it. Ordering it by '' undid that decision: '' is lower than
+		 * every real month, so the informe just read sank to the bottom of the pane and
+		 * off InicioPane's three-row card entirely.
+		 *
+		 * The sentinel is a SORT key and is never stored or rendered: `month` stays empty,
+		 * because the app does not invent a publication date it was not given. First is
+		 * the right place for it — this page only ever publishes the current informe, so
+		 * one we could not file is one we have just read.
+		 *
+		 * The price, stated because it is real: an unfiled informe outranks filed ones for
+		 * as long as the cache holds it, so a later filed week would appear beneath it.
+		 * That is the lesser error. Sorting it last hides the current informe; sorting it
+		 * first shows a stale one above a newer one, on a pane that prints the month
+		 * beside each row.
+		 */
+		$when = static fn (array $i): string => $i['month'] === '' ? '9999-99' : $i['month'];
+
 		usort(
 			$items,
 			static fn (array $a, array $b): int
-				=> [$b['month'], (int)$b['se']] <=> [$a['month'], (int)$a['se']],
+				=> [$when($b), (int)$b['se']] <=> [$when($a), (int)$a['se']],
 		);
 
 		return $items;
