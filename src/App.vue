@@ -103,24 +103,31 @@
 		</NcAppNavigation>
 
 		<NcAppContent :page-heading="t('epidemiologia', 'Epidemiología')">
-			<div class="epi">
-				<!--
-					v-show, never v-if. The tablero pane holds an iframe whose Power BI
-					report takes 15–20 s to paint; unmounting it on every tab switch would
-					re-pay that each time. This is the single easiest thing to get wrong here.
-				-->
-				<InicioPane v-show="current === 'inicio'" @open="open" />
-				<AlertsPane v-show="current === 'alertas'" />
-				<!-- Dismissing the family token lands on the whole archive, and the
-				     navigation follows because both read `ispFamily`. That is the
-				     property #64 lost: one destination, one state, one highlighted row. -->
-				<IspPane v-show="current === 'isp'"
-					:family="ispFamily"
-					@clear-family="ispFamily = null" />
-				<ReportPane v-show="current === 'informe'" />
-				<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
-				<EpivigilaPane v-show="current === 'epivigila'" />
-			</div>
+			<!-- Around `.epi`, not inside it. The panes are selected as `.epi > section`
+			     by scripts/layout.mjs, and `.epi:has(> .epi-inicio…)` below sizes Inicio
+			     to the viewport — both are direct-child rules, so the boundary stays
+			     outside the element they are written about rather than relying on a
+			     fragment root staying transparent. -->
+			<ErrorBoundary>
+				<div class="epi">
+					<!--
+						v-show, never v-if. The tablero pane holds an iframe whose Power BI
+						report takes 15–20 s to paint; unmounting it on every tab switch would
+						re-pay that each time. This is the single easiest thing to get wrong here.
+					-->
+					<InicioPane v-show="current === 'inicio'" @open="open" />
+					<AlertsPane v-show="current === 'alertas'" />
+					<!-- Dismissing the family token lands on the whole archive, and the
+					     navigation follows because both read `ispFamily`. That is the
+					     property #64 lost: one destination, one state, one highlighted row. -->
+					<IspPane v-show="current === 'isp'"
+						:family="ispFamily"
+						@clear-family="ispFamily = null" />
+					<ReportPane v-show="current === 'informe'" />
+					<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
+					<EpivigilaPane v-show="current === 'epivigila'" />
+				</div>
+			</ErrorBoundary>
 		</NcAppContent>
 	</NcContent>
 </template>
@@ -149,6 +156,7 @@ import Stethoscope from 'vue-material-design-icons/Stethoscope.vue'
 import { familiasPresent } from './familias.js'
 import { paneName } from './panes.js'
 import { sanitaryAlerts } from './state.js'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
 import ReportPane from './components/ReportPane.vue'

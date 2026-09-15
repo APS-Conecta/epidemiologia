@@ -109,6 +109,50 @@ class MetadataTest extends TestCase {
 		self::assertSame([], $missing, 'these files carry no SPDX licence header');
 	}
 
+	/**
+	 * Both entry points stay reachable by someone who is not an administrator.
+	 *
+	 * This app is for clinicians, and `#[NoAdminRequired]` is the whole of what says so:
+	 * without it Nextcloud's SecurityMiddleware answers 403 to every non-admin, and the
+	 * pane and the OCS route become admin-only. Deleting one attribute is a one-line,
+	 * user-facing authorization change.
+	 *
+	 * Nothing would notice. `scripts/smoke.sh` runs as `${EPI_USER:-admin}`, so every
+	 * assertion it makes about the route and the page keeps passing while no clinician
+	 * can open either — the check holds while the property it stands for does not.
+	 *
+	 * It asserts the ATTRIBUTE and not a response, deliberately. The rule is enforced by
+	 * middleware, so a unit test that instantiates the controller and calls the method
+	 * bypasses exactly the thing under test and would prove nothing; the middleware
+	 * itself is Nextcloud's, and asserting it here would be asserting the platform.
+	 * What belongs to this app is the decision to carry the attribute, and that is what
+	 * is pinned.
+	 *
+	 * Against [ADR-0007](../../docs/adr/0007-tests-follow-branching-not-layering.md)'s
+	 * Consequences line, which names both controllers as deliberately untested — and
+	 * FOR that ADR's own rule, which counts "a policy expressed as a dependency" as a
+	 * decision worth a test. Between the rule and the list of classes it was applied to,
+	 * the rule is the load-bearing half.
+	 */
+	public function testBothControllersStayReachableByPeopleWhoAreNotAdministrators(): void {
+		$entryPoints = [
+			\OCA\Epidemiologia\Controller\ApiController::class => 'sources',
+			\OCA\Epidemiologia\Controller\PageController::class => 'index',
+		];
+
+		foreach ($entryPoints as $class => $method) {
+			$attributes = (new \ReflectionMethod($class, $method))
+				->getAttributes(\OCP\AppFramework\Http\Attribute\NoAdminRequired::class);
+
+			self::assertCount(1, $attributes, sprintf(
+				'%s::%s() lost #[NoAdminRequired] — every non-admin now gets 403, while '
+				. 'smoke.sh, which runs as admin, stays green',
+				$class,
+				$method,
+			));
+		}
+	}
+
 	/** @return list<string> */
 	private function phpFilesIn(string $dir): array {
 		$files = [];

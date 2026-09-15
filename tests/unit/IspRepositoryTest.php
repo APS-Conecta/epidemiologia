@@ -201,6 +201,39 @@ class IspRepositoryTest extends TestCase {
 		self::assertTrue($alerts['degraded']);
 	}
 
+	/**
+	 * The outage line has to say WHY, because on a default instance it is the only line.
+	 *
+	 * Per-feed failures go to `debug` on purpose — 24 feeds, one blip is noise — but
+	 * Nextcloud's default loglevel is warn, so the cause is written nowhere an admin
+	 * looks and the visible line named none. This class's own docblock records the fault
+	 * that produces exactly that state: an instance without the ISP's intermediate
+	 * certificate, where the app "is a no-op that reads as an outage". Measured on this
+	 * instance 2026-09-15 — the ISP had rotated to a CA whose intermediate was not
+	 * imported, every feed failed cURL error 60, and the log said only "No ISP feed
+	 * could be reached".
+	 *
+	 * Asserted on 'exception' because that is the key Nextcloud's log pipeline
+	 * serialises specially; the double json-encodes the context, so the key appearing is
+	 * the cause being carried. The line is asserted to EXIST first — an emptied log
+	 * satisfies a "does not say the wrong thing" assertion perfectly.
+	 */
+	public function testTheOutageLineCarriesWhatActuallyFailed(): void {
+		$this->repository(offlineAll: true)->get();
+
+		$outage = array_values(array_filter(
+			$this->logged,
+			static fn (array $l): bool => str_contains($l['message'], 'No ISP feed could be reached'),
+		));
+
+		self::assertCount(1, $outage, 'the one line an admin reads on an ISP outage');
+		self::assertStringContainsString(
+			'exception',
+			$outage[0]['message'],
+			'the outage was reported without saying what failed',
+		);
+	}
+
 	public function testOneUnreachableFeedDoesNotDegradeTheRest(): void {
 		$alerts = $this->repository(offline: ['anamed'])->get();
 
@@ -661,8 +694,18 @@ class IspRepositoryTest extends TestCase {
 
 	/**
 	 * With nothing stored there is no copy to serve, and answering "no alerts" would be
-	 * the lie the whole degraded/empty distinction exists to prevent. A cold start is
-	 * once per instance; the herd this guards against is the hourly one.
+	 * the lie the whole degraded/empty distinction exists to prevent, so a cold reader
+	 * walks rather than waits.
+	 *
+	 * This docblock used to add "a cold start is once per instance; the herd this guards
+	 * against is the hourly one", which is the premise ADR-0012 disproves by measurement:
+	 * any app on the instance being installed, enabled, disabled or updated empties this
+	 * cache, and it happened twice on 2026-08-05. So what this test pins is a deliberate
+	 * trade made in a RECURRING window, not a one-off — see the comment it is written
+	 * against in IspRepository::get(), which now names the cost and the upgrade path.
+	 *
+	 * The assertions below are unchanged: this is the behaviour the app has, and the
+	 * correction is to the reason given for it.
 	 */
 	public function testAColdCacheFetchesEvenWhileAnotherReaderHoldsTheLock(): void {
 		$this->locks['refresh-' . IspRepository::ALERTS] = true;
