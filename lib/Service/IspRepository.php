@@ -196,8 +196,28 @@ class IspRepository {
 		 * an hour older than the one being fetched.
 		 *
 		 * Only when there IS a copy. With nothing stored, answering "no alerts" would be
-		 * the exact lie the empty-versus-degraded rule exists to prevent, and a cold start
-		 * happens once per instance while the herd this guards against is hourly.
+		 * the exact lie the empty-versus-degraded rule exists to prevent, so a cold reader
+		 * walks rather than waits.
+		 *
+		 * KNOWN COST, and it is bigger than this once read. The reasoning here used to end
+		 * "a cold start happens once per instance while the herd this guards against is
+		 * hourly" — which [ADR-0012](../../docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)
+		 * disproves with a measurement: `Memcache\Factory::getGlobalPrefix()` hashes every
+		 * ENABLED app's name and version, so ANY app on the instance being installed,
+		 * enabled, disabled or updated empties this cache — it happened twice on
+		 * 2026-08-05. A cold start is therefore recurring, not once, and during that window
+		 * `$stored` is [] for every concurrent reader, so each one walks unlocked: exactly
+		 * the pile-up described above, in a window the ADR says comes back.
+		 *
+		 * Left as it is deliberately, because the alternative trades it for a worse first
+		 * impression: locking here means the losers have nothing to serve and must show the
+		 * degraded banner while the ISP is perfectly healthy. The upgrade, when the pool
+		 * exhaustion is actually observed rather than reasoned about, is to take the lock
+		 * unconditionally and let a cold loser return `present([], true)`.
+		 *
+		 * ponytail: what is NOT acceptable is the premise. A comment whose justification
+		 * the repo's own ADR measures as false is how the next reader concludes the case is
+		 * handled.
 		 */
 		$held = $stored !== [] && $this->lock->add($this->lockKey(), 1, self::LOCK_FOR);
 

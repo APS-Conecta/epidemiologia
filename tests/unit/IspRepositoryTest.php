@@ -694,8 +694,18 @@ class IspRepositoryTest extends TestCase {
 
 	/**
 	 * With nothing stored there is no copy to serve, and answering "no alerts" would be
-	 * the lie the whole degraded/empty distinction exists to prevent. A cold start is
-	 * once per instance; the herd this guards against is the hourly one.
+	 * the lie the whole degraded/empty distinction exists to prevent, so a cold reader
+	 * walks rather than waits.
+	 *
+	 * This docblock used to add "a cold start is once per instance; the herd this guards
+	 * against is the hourly one", which is the premise ADR-0012 disproves by measurement:
+	 * any app on the instance being installed, enabled, disabled or updated empties this
+	 * cache, and it happened twice on 2026-08-05. So what this test pins is a deliberate
+	 * trade made in a RECURRING window, not a one-off — see the comment it is written
+	 * against in IspRepository::get(), which now names the cost and the upgrade path.
+	 *
+	 * The assertions below are unchanged: this is the behaviour the app has, and the
+	 * correction is to the reason given for it.
 	 */
 	public function testAColdCacheFetchesEvenWhileAnotherReaderHoldsTheLock(): void {
 		$this->locks['refresh-' . IspRepository::ALERTS] = true;
