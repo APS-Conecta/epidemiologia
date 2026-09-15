@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Notification\Notifier;
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
@@ -106,6 +107,7 @@ class NotifierTest extends TestCase {
 		$sources = new Sources(
 			$this->createMock(MinsalRepository::class),
 			$this->createMock(IspRepository::class),
+			$this->createMock(IspReportRepository::class),
 		);
 
 		return new Notifier($factory, $urls, $sources);

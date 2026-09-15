@@ -24,13 +24,11 @@ use Throwable;
  */
 class MinsalRepository {
 	public const ALERTS = 'alerts';
-	public const IRAG = 'irag';
 
 	private const API = 'https://epi.minsal.cl/wp-json/wp/v2/pages';
 
 	/** Resolve pages by slug, never by ID — IDs change when MINSAL republishes. */
 	private const ALERTS_SLUG = 'alertas-epidemiologicas-vigentes';
-	private const IRAG_SLUG = 'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-%d';
 
 	/** The largest response we will read; IspRepository::parse() carries the measurement. */
 	private const MAX_BYTES = 512 * 1024;
@@ -63,7 +61,7 @@ class MinsalRepository {
 	}
 
 	/**
-	 * @param self::ALERTS|self::IRAG $feed
+	 * @param self::ALERTS $feed
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
@@ -96,8 +94,8 @@ class MinsalRepository {
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(string $feed, ?array $stored = null): array {
-		$page = $this->fetch($feed, 'content,modified');
-		$items = $page === null ? [] : $this->parse($feed, (string)($page['content']['rendered'] ?? ''));
+		$page = $this->fetch('content,modified');
+		$items = $page === null ? [] : $this->parse((string)($page['content']['rendered'] ?? ''));
 
 		// A parse returning zero items is a failure, never a result. Caching it
 		// would replace every real alert with an empty list, which a clinician
@@ -152,7 +150,7 @@ class MinsalRepository {
 	 *              can no longer parse. Either way a human has to look.
 	 */
 	public function probe(string $feed): bool {
-		$page = $this->fetch($feed, 'modified');
+		$page = $this->fetch('modified');
 		if ($page === null) {
 			return false;
 		}
@@ -223,9 +221,9 @@ class MinsalRepository {
 	/**
 	 * The name each PDF is given by its own table row, keyed by URL.
 	 *
-	 * Empty when the page is not a table, which is the IRAG page: 29 anchors, no rows at
-	 * all. So this adds a better title where one exists and changes nothing where it does
-	 * not — the anchor scan above still finds every link either way.
+	 * Empty when the page is not a table at all. So this adds a better title where one
+	 * exists and changes nothing where it does not — the anchor scan above still finds
+	 * every link either way.
 	 *
 	 * @return array<string, string>
 	 */
@@ -259,7 +257,7 @@ class MinsalRepository {
 	/**
 	 * @return list<array<string, string>>
 	 */
-	private function parse(string $feed, string $html): array {
+	private function parse(string $html): array {
 		if (preg_match_all('#<a[^>]+href="([^"]+\.pdf)"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER) === 0) {
 			return [];
 		}
@@ -328,10 +326,6 @@ class MinsalRepository {
 				'month' => $when[1] . '-' . $when[2],
 			];
 
-			if ($feed === self::IRAG) {
-				$item['se'] = preg_match('/SE\s*(\d{1,2})/i', $title, $se) === 1 ? $se[1] : '';
-			}
-
 			// Keyed by URL, because MINSAL links the same PDF from two rows of its own
 			// table. AlertsPane keys on the url, so a duplicate was a duplicate Vue key
 			// as well as a row printed twice. IspRepository has deduped by link since
@@ -340,13 +334,15 @@ class MinsalRepository {
 		}
 
 		if ($rejected > 0) {
+			// No longer says which feed: there is one page left here, and naming it in
+			// every line was only ever worth the words while the informes shared the class.
 			$this->logger->warning(
-				'Dropped {rejected} non-https links from feed {feed}',
-				['rejected' => $rejected, 'feed' => $feed],
+				'Dropped {rejected} non-https links from the MINSAL alerts page',
+				['rejected' => $rejected],
 			);
 		}
 
-		return $this->sort($feed, array_values($items));
+		return $this->sort(array_values($items));
 	}
 
 	/**
@@ -363,40 +359,19 @@ class MinsalRepository {
 	 *
 	 * @return list<array<string, string>>
 	 */
-	private function sort(string $feed, array $items): array {
-		usort($items, $feed === self::IRAG
-			? static fn (array $a, array $b): int => (int)$b['se'] <=> (int)$a['se']
-			: static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
+	private function sort(array $items): array {
+		usort($items, static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
 
 		return $items;
 	}
 
-	private function fetch(string $feed, string $fields): ?array {
-		foreach ($this->slugs($feed) as $slug) {
-			$page = $this->request($slug, $fields);
-			if ($page !== null) {
-				return $page;
-			}
-		}
-
-		return null;
-	}
-
 	/**
-	 * The IRAG page is year-templated, so every January it would 404 until MINSAL
-	 * puts the new year up. Falling back one year survives the rollover with no
-	 * code change and no ticket in the first week of January.
-	 *
-	 * @return list<string>
+	 * One page, one slug. The fallback loop went with the informes: the year-templated
+	 * slug was theirs — every January it would 404 until MINSAL put the new year up —
+	 * and this page has never carried a year at all.
 	 */
-	private function slugs(string $feed): array {
-		if ($feed === self::ALERTS) {
-			return [self::ALERTS_SLUG];
-		}
-
-		$year = (int)date('Y', $this->time->getTime());
-
-		return [sprintf(self::IRAG_SLUG, $year), sprintf(self::IRAG_SLUG, $year - 1)];
+	private function fetch(string $fields): ?array {
+		return $this->request(self::ALERTS_SLUG, $fields);
 	}
 
 	private function request(string $slug, string $fields): ?array {

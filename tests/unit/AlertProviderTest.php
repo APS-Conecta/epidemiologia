@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Search\AlertProvider;
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
@@ -167,13 +168,16 @@ class AlertProviderTest extends TestCase {
 		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 		// Every way in that can reach the network. `refresh()` is no longer among them:
 		// it is private, so `get()` and `probe()` are the whole surface a provider could
-		// trip over — which is the point of it being private.
-		foreach ([$minsal, $isp] as $repository) {
+		// trip over — which is the point of it being private. The informes repository is
+		// armed the same way and carries no search() at all, so the provider cannot reach
+		// the ISP's informe page even by asking for it.
+		$informes = $this->createMock(IspReportRepository::class);
+		foreach ([$minsal, $isp, $informes] as $repository) {
 			$repository->method('get')->willThrowException(new RuntimeException('a search provider must not fetch'));
 			$repository->method('probe')->willThrowException(new RuntimeException('a search provider must not fetch'));
 		}
 
-		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query(self::IN_BOTH));
+		$result = $this->provider(new Sources($minsal, $isp, $informes))->search($this->user(), $this->query(self::IN_BOTH));
 
 		self::assertCount(2, $result->jsonSerialize()['entries']);
 	}
@@ -187,7 +191,8 @@ class AlertProviderTest extends TestCase {
 		$isp = $this->createMock(IspRepository::class);
 		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 
-		$result = $this->provider(new Sources($minsal, $isp))->search($this->user(), $this->query($term, $limit));
+		$result = $this->provider(new Sources($minsal, $isp, $this->createMock(IspReportRepository::class)))
+			->search($this->user(), $this->query($term, $limit));
 
 		// SearchResult hands back SearchResultEntry objects; each serialises itself.
 		// Going through that is deliberate: it is the shape the client receives, so

@@ -28,7 +28,7 @@ use RuntimeException;
 class MinsalRepositoryTest extends TestCase {
 	use Doubles;
 
-	/** 2026-08-01T12:00:00Z — fixed so the year-templated IRAG slug is deterministic. */
+	/** 2026-08-01T12:00:00Z — fixed, so every freshness assertion is relative to it. */
 	private const NOW = 1785585600;
 
 	private array $store = [];
@@ -209,41 +209,6 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertCount(2, $july);
 		self::assertStringContainsString('15844', $july[0]['title']);
 		self::assertStringContainsString('17264', $july[1]['title']);
-	}
-
-	// --- IRAG --------------------------------------------------------------
-
-	public function testPicksTheCurrentSemanaEpidemiologicaFirst(): void {
-		$reports = $this->repository()->get(MinsalRepository::IRAG);
-
-		self::assertFalse($reports['degraded']);
-		self::assertSame('29', $reports['items'][0]['se']);
-
-		$weeks = array_map('intval', array_column($reports['items'], 'se'));
-		self::assertSame($weeks, array_reverse(array_reverse($weeks)));
-		for ($i = 1, $n = count($weeks); $i < $n; $i++) {
-			self::assertGreaterThanOrEqual($weeks[$i], $weeks[$i - 1]);
-		}
-	}
-
-	/**
-	 * Every January the year-templated slug would 404 until MINSAL puts the new
-	 * year up. Falling back one year survives the rollover with no code change.
-	 */
-	public function testFallsBackOneYearWhenThisYearsIragPageIsNotThereYet(): void {
-		$repository = $this->repository(missing: ['-ano-2026']);
-
-		$reports = $repository->get(MinsalRepository::IRAG);
-
-		self::assertFalse($reports['degraded']);
-		self::assertNotEmpty($reports['items']);
-		self::assertSame(
-			[
-				'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-2026',
-				'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-2025',
-			],
-			$this->requested,
-		);
 	}
 
 	// --- trust boundary: MINSAL's HTML is not ours ---------------------------
@@ -465,18 +430,6 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame($good['items'], $during['items']);
 	}
 
-	/** One feed's outage must not silence another's fetch. */
-	public function testTheCooldownIsPerFeedNotGlobal(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
-		$this->repository(missing: ['alertas-epidemiologicas-vigentes'], now: self::NOW + 7200)
-			->get(MinsalRepository::ALERTS);
-		$this->requested = [];
-
-		$this->repository(now: self::NOW + 7260)->get(MinsalRepository::IRAG);
-
-		self::assertNotSame([], $this->requested, 'the IRAG feed was silenced by the alerts outage');
-	}
-
 	// --- search --------------------------------------------------------------
 
 	public function testFoldsAccentsSoSarampionFindsSarampion(): void {
@@ -510,27 +463,6 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame([], $repository->search('   '));
 	}
 
-	/**
-	 * The informes are not searched, asserted where the exclusion actually lives.
-	 *
-	 * An informe is identified by its semana epidemiológica, so matching one by
-	 * subject happens only by coincidence — and a clínico/a searching for a disease
-	 * does not want a weekly PDF that merely shares a word.
-	 *
-	 * Both fuentes are loaded first, so the cache genuinely holds the informes and
-	 * this cannot pass by their simply being absent. "SE 29" appears in one informe
-	 * title and in no alert title, which is what makes it a probe rather than a
-	 * coincidence.
-	 */
-	public function testTheInformesAreNotSearchable(): void {
-		$repository = $this->repository();
-		$repository->get(MinsalRepository::ALERTS);
-		$reports = $repository->get(MinsalRepository::IRAG);
-
-		self::assertNotEmpty($reports['items'], 'the informes must be cached, or this asserts nothing');
-		self::assertSame([], $repository->search('SE 29'));
-	}
-
 	// --- probe ---------------------------------------------------------------
 
 	public function testTheProbeIsQuietWhenMinsalHasNotChanged(): void {
@@ -555,29 +487,22 @@ class MinsalRepositoryTest extends TestCase {
 	// --- doubles -------------------------------------------------------------
 
 	/**
-	 * @param string|null  $body    served for every request, instead of the fixtures
-	 * @param list<string> $missing request-key fragments that should 404
-	 * @param int|null     $now     later than NOW to push a cached copy past its freshness window
+	 * @param string|null $body served for every request, instead of the fixtures
+	 * @param int|null    $now  later than NOW to push a cached copy past its freshness window
 	 */
 	private function repository(
 		?string $body = null,
-		array $missing = [],
 		bool $offline = false,
 		?int $now = null,
 	): MinsalRepository {
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
-			function (string $url, array $options) use ($body, $missing, $offline): IResponse {
+			function (string $url, array $options) use ($body, $offline): IResponse {
 				$key = $this->requestKey($url, $options);
 				$this->requested[] = $key;
 
 				if ($offline) {
 					throw new RuntimeException('cURL error 6: Could not resolve host');
-				}
-				foreach ($missing as $fragment) {
-					if (str_contains($key, $fragment)) {
-						throw new RuntimeException('HTTP 404');
-					}
 				}
 
 				$response = $this->createMock(IResponse::class);
@@ -632,7 +557,7 @@ class MinsalRepositoryTest extends TestCase {
 	 * How a request is identified — the string recorded in $requested, matched by
 	 * $missing, and used to pick a fixture.
 	 *
-	 * MINSAL serves both feeds from ONE url and tells them apart by slug, so the
+	 * MINSAL serves its pages from ONE url and tells them apart by slug, so the
 	 * slug is the request's identity there; every assertion on $requested is
 	 * written in slugs. Any other source is identified by its url.
 	 *
@@ -656,7 +581,6 @@ class MinsalRepositoryTest extends TestCase {
 	 * synthetic markup would only prove the parser can read markup we wrote for it.
 	 */
 	private const FIXTURES = [
-		'irag' => 'irag',
 		'alertas-epidemiologicas-vigentes' => 'alerts',
 	];
 

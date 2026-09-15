@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
@@ -287,6 +288,13 @@ class SourcesTest extends TestCase {
 		$isp->method('probe')->willReturn(true);
 		$isp->method('search')->willReturn([['title' => 'Una alerta del ISP', 'url' => 'https://y/b']]);
 
-		return new Sources($minsal, $isp);
+		// No search arm: the informes are not searchable, and the repository that owns
+		// them has no search() at all — which is the structural half of what
+		// testSearchLeavesTheInformesOut asserts.
+		$informes = $this->createMock(IspReportRepository::class);
+		$informes->method('get')->willReturn($payload);
+		$informes->method('probe')->willReturn(true);
+
+		return new Sources($minsal, $isp, $informes);
 	}
 }

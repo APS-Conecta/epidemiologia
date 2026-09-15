@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\ProbeRecord;
@@ -214,15 +215,21 @@ class SourcesReachableTest extends TestCase {
 	private function check(bool $explosive = false): SourcesReachable {
 		$minsal = $this->createMock(MinsalRepository::class);
 		$isp = $this->createMock(IspRepository::class);
+		$informes = $this->createMock(IspReportRepository::class);
 
 		if ($explosive) {
 			foreach (['get', 'probe', 'search'] as $read) {
 				$minsal->method($read)->willThrowException(new RuntimeException('a setup check must not fetch'));
 				$isp->method($read)->willThrowException(new RuntimeException('a setup check must not fetch'));
 			}
+			// Every way in that can reach the network. There is no search() to arm: the
+			// informes are not searchable, so the class does not carry one.
+			foreach (['get', 'probe'] as $read) {
+				$informes->method($read)->willThrowException(new RuntimeException('a setup check must not fetch'));
+			}
 		}
 
-		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $isp), $this->l10n());
+		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $isp, $informes), $this->l10n());
 	}
 
 	/** Real, over the shared config double — see ProbeJobTest for why it is not a mock. */

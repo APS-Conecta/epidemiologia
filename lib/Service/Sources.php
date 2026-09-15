@@ -18,10 +18,13 @@ use OCP\IL10N;
  * three were not separate bugs; they were the same omission, and the next source
  * would have produced it again. So: one list here, and everything else asks.
  *
- * It is a catalogue, NOT a base class. MinsalRepository and IspRepository are not
- * merged and must not be: MINSAL is one page whose emptiness is always a failure,
- * while the ISP is 24 feeds of which several are legitimately empty. That
- * disagreement is the whole reason the second class exists — see its docblock.
+ * It is a catalogue, NOT a base class. Its three owners are not merged and must not
+ * be: MinsalRepository is one page whose emptiness is always a failure, IspRepository
+ * is 24 feeds of which several are legitimately empty, and IspReportRepository is one
+ * page that ACCUMULATES what it reads, because the ISP publishes only the current
+ * informe and its year archive renders client-side. Those disagreements are the whole
+ * reason there are three classes — see each one's docblock. Sharing a host is not
+ * sharing a rule: the last two read the same server and agree on nothing else.
  * This maps ids to owners; the owners keep their rules.
  *
  * Outside a repository, a source is identified by the id below. The repositories
@@ -72,6 +75,7 @@ class Sources {
 	public function __construct(
 		private MinsalRepository $minsal,
 		private IspRepository $isp,
+		private IspReportRepository $informes,
 	) {
 	}
 
@@ -182,7 +186,7 @@ class Sources {
 		// front of a clinician.
 		$source = match ($id) {
 			self::ALERTS => $this->minsal->get(MinsalRepository::ALERTS),
-			self::REPORTS => $this->minsal->get(MinsalRepository::IRAG),
+			self::REPORTS => $this->informes->get(),
 			self::SANITARY_ALERTS => $this->isp->get(),
 		};
 
@@ -199,7 +203,7 @@ class Sources {
 	public function probe(string $id): bool {
 		return match ($id) {
 			self::ALERTS => $this->minsal->probe(MinsalRepository::ALERTS),
-			self::REPORTS => $this->minsal->probe(MinsalRepository::IRAG),
+			self::REPORTS => $this->informes->probe(),
 			self::SANITARY_ALERTS => $this->isp->probe(),
 		};
 	}
