@@ -130,6 +130,24 @@ against what those sites actually publish, quirks included.
   client, curl and Python all fail; browsers hide it by chasing the AIA. `gestion`'s provisioning
   phase `07-certs` imports the intermediate; without it this app is a no-op that reads as an outage.
   **Never `verify=False`.**
+
+  **And the intermediate is not a permanent fact.** On 2026-09-15 the ISP's leaf was reissued under
+  `GlobalSign GCC R6 AlphaSSL CA 2025`, while the imported certificate was still the
+  `GlobalSign RSA OV SSL CA 2018` one — so every feed failed `cURL error 60` and the fuente was dead
+  with nothing saying why. An import pins one issuer; the publisher rotates on its own schedule and
+  nothing here detects it. When the ISP goes quiet, read the chain before assuming an outage:
+
+  ```
+  # what the ISP is signed by TODAY, and where its intermediate lives
+  openssl s_client -connect www.ispch.gob.cl:443 -servername www.ispch.gob.cl </dev/null 2>/dev/null \
+    | openssl x509 -noout -issuer -ext authorityInfoAccess
+  # then, if it has changed:
+  occ security:certificates:import <the CA Issuers .crt from that output>
+  ```
+
+  The app cannot repair this, but since 0.9.x it no longer hides it: the *"No ISP feed could be
+  reached"* warning carries the transport error, so the cURL code is in `nextcloud.log` without
+  turning the loglevel down to `debug`.
 - **The ISP's WAF answers a literal `curl/*` User-Agent with an empty reply**, and 200 to anything
   else — which reads exactly like a TLS fault. `IClientService` sends its own UA, so the app is fine;
   do not "simplify" a reproduction down to curl and conclude the host is down.

@@ -10,6 +10,35 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Added
+
+- A render error in any pane now shows *"No pudimos mostrar esta sección"* instead of a blank page.
+  The panes are shown with `v-show`, so all six are mounted at once and one throwing pane took the
+  whole app down on load — and an empty page looks exactly like the instance being broken. The error
+  still reaches the browser console and any app-level handler, so the fallback does not cost a
+  diagnosis.
+
+### Changed
+
+- The *"Ver en el sitio oficial"* link in the ISP's degraded notice now opens the ISP's alert index
+  rather than the `anamed` category. It is shown exactly when the app cannot reach the ISP, and it
+  sent a reader to one of the 24 categories with nothing saying the other 23 exist.
+- **An ISP outage now says what failed.** The single warning an administrator sees carries the
+  underlying error — `cURL error 60: SSL certificate problem`, for instance — instead of only *"No
+  ISP feed could be reached"*. Per-feed causes stay at `debug`, which Nextcloud does not log by
+  default, so that line was the only one there was.
+- **A MINSAL feed that could not be read no longer reports itself as one that returned nothing.**
+  Both degrade and both serve the last good copy, but *"returned 0 items"* is a claim about MINSAL
+  that is false when MINSAL was never reached — and a body that is not a page (a WAF block, a proxy
+  error) previously produced no log line at all.
+
+### Fixed
+
+- The OCS route's published description said `total` and `has_more` were missing from the contract.
+  They have been in it since 0.9.0; the sentence was a record of the fixed defect left in the present
+  tense, and because the docblock *is* the spec source it was served to every consumer as the
+  contract's own description of itself.
+
 ## [0.9.0] — 2026-08-18
 
 ### Added
