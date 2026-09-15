@@ -131,6 +131,23 @@ class IspRepository {
 
 	private IMemcache $lock;
 
+	/**
+	 * Why the last feed request failed, for the one line an admin actually reads.
+	 *
+	 * Per-feed failures are logged at `debug` on purpose — with 24 feeds a single blip
+	 * is noise, and refresh() judges the SET. But Nextcloud's default loglevel is warn,
+	 * so on a default instance the reason is written nowhere, and the only visible line
+	 * is "No ISP feed could be reached", which names no cause. That is the state a
+	 * deployment missing the ISP's intermediate certificate sits in: this class's own
+	 * docblock records that it then "is a no-op that reads as an outage", and the
+	 * adjacent WAF behaviour "has already cost one wrong diagnosis".
+	 *
+	 * So: keep the last one and attach it where the set is judged. Not a list — 24
+	 * stack traces to say one thing — and not a level change, which would put 24 lines
+	 * an hour in front of an admin for a fault the freno already handles.
+	 */
+	private ?Throwable $lastError = null;
+
 	public function __construct(
 		private IClientService $clients,
 		private ITimeFactory $time,
@@ -218,6 +235,8 @@ class IspRepository {
 	 */
 	private function refresh(?array $stored = null, bool $ignoreBrakes = false): array {
 		$stored ??= $this->storedAll();
+		// Per run, so the line below reports THIS walk and never a previous one's ghost.
+		$this->lastError = null;
 
 		/*
 		 * An empty archive is worth one line, because it is usually not a new instance.
@@ -299,9 +318,23 @@ class IspRepository {
 			// `$attempted`, not count(TERMS). refresh() keeps the two apart for the
 			// degradation decision and then logged the constant, so "24 intentos" could
 			// mean one — in the only line an admin diagnoses an outage from.
-			$this->logger->warning('No ISP feed could be reached ({total} attempts of {feeds})', [
-				'total' => $attempted, 'feeds' => count(self::TERMS),
-			]);
+			/*
+			 * With the cause attached. 'exception' is the key Nextcloud's log pipeline
+			 * treats specially — Log.php serialises the class, the trace and the previous
+			 * chain — so this one line carries "cURL error 60: SSL certificate problem"
+			 * instead of leaving an admin to turn the loglevel down to debug and wait an
+			 * hour to find out whether the ISP is down or the certificate chain is.
+			 *
+			 * Conditional, because $attempted > 0 does not imply a THROWN failure: a feed
+			 * that answers 200 with something unparseable, or one over MAX_BYTES, returns
+			 * null without an exception. Passing a null under this key would make the
+			 * pipeline serialise nothing while the message implied a cause.
+			 */
+			$this->logger->warning(
+				'No ISP feed could be reached ({total} attempts of {feeds})',
+				['total' => $attempted, 'feeds' => count(self::TERMS)]
+				+ ($this->lastError === null ? [] : ['exception' => $this->lastError]),
+			);
 
 			return $this->degrade($stored);
 		}
@@ -666,6 +699,8 @@ class IspRepository {
 			// Per-feed failure is not reported: with 24 feeds a single blip would be
 			// noise, and refresh() judges the set. Only reaching none of them is news.
 			$this->logger->debug('ISP feed {term} unavailable', ['term' => $term, 'exception' => $e]);
+			// ...but keep it, so that when NONE of them is reached the news can say why.
+			$this->lastError = $e;
 
 			return null;
 		}
