@@ -70,10 +70,9 @@ class ApiController extends OCSController {
 	 *
 	 * `total` and `has_more` are OPTIONAL and appear only when a source is named: omitting
 	 * `?source` returns every source whole, so there is no page and nothing to report about
-	 * one. They were added when the 100-item cap turned out to be invisible — a narrowed
-	 * response of 100 looked exactly like a complete one — and this docblock, which is what
-	 * openapi.json is generated from, was not updated with them. The published contract has
-	 * been describing an envelope narrower than the one the route returns ever since.
+	 * one. `total` counts the NARROWING, not the fuente, and `has_more` says whether the
+	 * 100-item cap left anything out — without them a capped response of 100 reads exactly
+	 * like a complete one.
 	 *
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category A category slug of that source; omit for all of them
