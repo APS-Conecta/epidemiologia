@@ -145,12 +145,15 @@ fi
 
 # An unknown id must not reach Sources::get()'s default-less match, which would
 # throw UnhandledMatchError and answer 500 to what is a caller's typo.
-unknown="$(web -H "$OCSH" "$OCS/sources?format=json&source=no-such-source")"
-if printf '%s' "$unknown" | grep -q '"alerts"'; then
-	fail "an unknown source id fell through to the whole payload"
-else
-	pass "an unknown source id does not fall through to the whole payload"
-fi
+#
+# Asserted on the STATUS, not on the body. This read the body and checked only that
+# it did not contain "alerts" — which a 500 error page does not either, nor does an
+# empty response, nor does a request that never completed. The check passed on
+# precisely the failure the paragraph above it describes, which is the one thing it
+# existed to catch. The %{http_code} idiom is the one three checks below already use.
+expect "$(web -H "$OCSH" -o /dev/null -w '%{http_code}' "$OCS/sources?format=json&source=no-such-source")" '404' \
+	"an unknown source id answers 404" \
+	"an unknown source id does NOT answer 404 — a 500 here is UnhandledMatchError"
 
 # olderThan=1 is before anything the ISP has published, so a route that honours it
 # returns no items and one that ignores it returns the archive.
