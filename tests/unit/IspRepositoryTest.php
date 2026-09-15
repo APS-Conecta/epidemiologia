@@ -207,12 +207,11 @@ class IspRepositoryTest extends TestCase {
 	 *
 	 * Per-feed failures go to `debug` on purpose — 24 feeds, one blip is noise — but
 	 * Nextcloud's default loglevel is warn, so the cause is written nowhere an admin
-	 * looks and the visible line named none. This class's own docblock records the fault
-	 * that produces exactly that state: an instance without the ISP's intermediate
-	 * certificate, where the app "is a no-op that reads as an outage". Measured on this
-	 * instance 2026-09-15 — the ISP had rotated to a CA whose intermediate was not
-	 * imported, every feed failed cURL error 60, and the log said only "No ISP feed
-	 * could be reached".
+	 * looks and the visible line named none. Before CertificateBundle existed, this
+	 * was the state an instance missing the ISP's intermediate certificate sat in.
+	 * Measured on this instance 2026-09-15 — the ISP had rotated to a CA whose
+	 * intermediate was not imported, every feed failed cURL error 60, and the log
+	 * said only "No ISP feed could be reached".
 	 *
 	 * Asserted on 'exception' because that is the key Nextcloud's log pipeline
 	 * serialises specially; the double json-encodes the context, so the key appearing is

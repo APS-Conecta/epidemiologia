@@ -139,10 +139,11 @@ class IspRepository {
 	 * Per-feed failures are logged at `debug` on purpose — with 24 feeds a single blip
 	 * is noise, and refresh() judges the SET. But Nextcloud's default loglevel is warn,
 	 * so on a default instance the reason is written nowhere, and the only visible line
-	 * is "No ISP feed could be reached", which names no cause. That is the state a
-	 * deployment missing the ISP's intermediate certificate sits in: this class's own
-	 * docblock records that it then "is a no-op that reads as an outage", and the
-	 * adjacent WAF behaviour "has already cost one wrong diagnosis".
+	 * is "No ISP feed could be reached", which names no cause. That is the state an
+	 * instance whose merged CA bundle cannot be built sits in — CertificateBundle
+	 * degrades to the instance's own anchors and the ISP's TLS handshake then fails
+	 * exactly as it did before this class existed. The adjacent WAF behaviour, this
+	 * class's own docblock notes, "has already cost one wrong diagnosis".
 	 *
 	 * So: keep the last one and attach it where the set is judged. Not a list — 24
 	 * stack traces to say one thing — and not a level change, which would put 24 lines
