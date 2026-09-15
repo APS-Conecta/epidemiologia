@@ -21,9 +21,21 @@
 		     and land on another, which is why panes.js exists at all. -->
 		<PaneHeader :title="familyName" />
 
+		<!-- The escape hatch, and it is rendered exactly when the app cannot reach the
+		     ISP — so it is the one link here that has to land somewhere useful under a
+		     label reading "Ver en el sitio oficial". It named `categorias-alertas/anamed/`,
+		     which is ONE of the 24 categories: a reader sent there during an outage saw
+		     ANAMED and no sign that the other 23 exist.
+
+		     `/alertas/` and not the institution's home page. The parallel is what MINSAL's
+		     notice does — `epi.minsal.cl/`, the Departamento de Epidemiología's own alert
+		     surface, not `minsal.cl` — so the matching move is the ISP's alert index, not
+		     `ispch.gob.cl/`. Measured rather than guessed: `/alertas/` answers 200 under
+		     `<h1>Alertas e Información de Seguridad de Productos Sanitarios</h1>`, while
+		     the `/categorias-alertas/` parent that the feed URLs suggest is a 404. -->
 		<DegradedNotice v-if="sanitaryAlerts.degraded"
 			source="el ISP"
-			url="https://www.ispch.gob.cl/categorias-alertas/anamed/" />
+			url="https://www.ispch.gob.cl/alertas/" />
 
 		<FilterBar :query="query"
 			:count="countLabel"
