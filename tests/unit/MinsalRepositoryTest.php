@@ -39,10 +39,14 @@ class MinsalRepositoryTest extends TestCase {
 	/** @var list<string> request keys that matched no fixture; see fixture() */
 	private array $unmatched = [];
 
+	/** @var list<array{level: string, message: string, context: array}> what the repository logged */
+	private array $logged = [];
+
 	protected function setUp(): void {
 		$this->store = [];
 		$this->requested = [];
 		$this->unmatched = [];
+		$this->logged = [];
 	}
 
 	/** Runs outside the repository's catch, which is the only place this can bite. */
@@ -387,6 +391,60 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertTrue($alerts['degraded'], 'unread is not the same as empty');
 	}
 
+	/**
+	 * "Returned 0 items" and "was never read" are different faults, and the log said
+	 * the first for both.
+	 *
+	 * `refresh()` computes `$items = $page === null ? [] : parse(...)`, so a fetch that
+	 * failed outright arrives at the zero-items guard looking exactly like a page that
+	 * parsed to nothing — and the one line an admin diagnoses from claimed MINSAL had
+	 * answered with an empty list when MINSAL had not answered at all. Under the WAF
+	 * this instance is actually behind (403, 5.481 bytes of HTML, measured 2026-09-15)
+	 * that sentence sends the reader to look for a MINSAL that stopped publishing.
+	 *
+	 * It is the same correction IspRepository already carries, where logging
+	 * `count(TERMS)` instead of `$attempted` meant "24 intentos" could mean one.
+	 *
+	 * Asserted on the LOG and never on the payload: both faults degrade, both serve the
+	 * last good copy, and the payload is byte-identical. The sentence is the whole
+	 * difference, which is why it is the thing pinned here.
+	 */
+	public function testAFeedThatCouldNotBeReadIsNotReportedAsOneThatAnsweredEmpty(): void {
+		$waf = '<!DOCTYPE html><html><head><title>403 Forbidden</title></head>'
+			. '<body><h1>Access denied</h1></body></html>';
+
+		$alerts = $this->repository(body: $waf)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($alerts['degraded'], 'a body we cannot read is not an empty list');
+		self::assertNotSame([], $this->loggedAt('warning'), 'an unreadable feed must say so');
+		self::assertStringNotContainsStringIgnoringCase(
+			'0 items',
+			implode(' | ', $this->loggedAt('warning')),
+			'MINSAL was never read — reporting it as having returned nothing names the wrong fault',
+		);
+	}
+
+	/**
+	 * The other side of the pair, so the correction above cannot be made by deleting the
+	 * distinction: a page that WAS read and genuinely parsed to nothing must still say
+	 * so, in those words. This is the fault the never-overwrite rule exists for — MINSAL
+	 * restructuring its page into something the parser no longer recognises.
+	 */
+	public function testAPageThatWasReadAndParsedToNothingStillReportsZeroItems(): void {
+		// A well-formed WordPress page whose rendered content carries no PDF anchor at
+		// all: read successfully, parsed honestly, nothing in it.
+		$empty = json_encode([['content' => ['rendered' => '<p>Sin alertas publicadas.</p>'], 'modified' => '']]);
+
+		$alerts = $this->repository(body: (string)$empty)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($alerts['degraded'], 'zero items never overwrites a good copy');
+		self::assertStringContainsString(
+			'0 items',
+			implode(' | ', $this->loggedAt('warning')),
+			'a page that was read and parsed to nothing is exactly what this sentence is for',
+		);
+	}
+
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
 		$this->repository()->get(MinsalRepository::ALERTS);
 		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
@@ -538,7 +596,36 @@ class MinsalRepositoryTest extends TestCase {
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
-		return new MinsalRepository($clients, $time, $this->createMock(LoggerInterface::class), $cacheFactory);
+		return new MinsalRepository($clients, $time, $this->logger(), $cacheFactory);
+	}
+
+	/**
+	 * A logger that records instead of discarding.
+	 *
+	 * Here because one failure path is only observable as a log line: a body that is
+	 * not a WordPress page degrades correctly and silently, so "degraded" is true
+	 * whether or not anything was written down. Asserting the payload cannot tell the
+	 * two apart, and the difference is the whole of an admin's diagnosis.
+	 */
+	private function logger(): LoggerInterface {
+		$logger = $this->createMock(LoggerInterface::class);
+		foreach (['warning', 'info', 'debug', 'error'] as $level) {
+			$logger->method($level)->willReturnCallback(
+				function (string|\Stringable $message, array $context = []) use ($level): void {
+					$this->logged[] = ['level' => $level, 'message' => (string)$message, 'context' => $context];
+				},
+			);
+		}
+
+		return $logger;
+	}
+
+	/** Every message logged at $level, for an assertion that names the sentence. */
+	private function loggedAt(string $level): array {
+		return array_values(array_map(
+			static fn (array $l): string => $l['message'],
+			array_filter($this->logged, static fn (array $l): bool => $l['level'] === $level),
+		));
 	}
 
 	/**

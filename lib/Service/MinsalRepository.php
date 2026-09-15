@@ -104,11 +104,31 @@ class MinsalRepository {
 		// reads as "no hay alertas vigentes" — the most dangerous thing this app
 		// could do. So: leave the last good copy alone and say we are degraded.
 		if ($items === []) {
-			// No 'app' key: the injected LoggerInterface is already app-scoped —
-			// DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
-			$this->logger->warning('MINSAL returned 0 items for feed {feed}', [
-				'feed' => $feed,
-			]);
+			/*
+			 * Two different faults reach this guard, and naming them apart is the whole
+			 * value of the line: `$items` is [] both when MINSAL answered with a page
+			 * that parses to nothing — the restructure this rule exists to survive —
+			 * and when nothing was read at all, because `$page` is null.
+			 *
+			 * It said "returned 0 items" for both, which is a claim about MINSAL that is
+			 * false in the second case: an unreachable host, an oversize body and a WAF
+			 * block page all became "MINSAL is publishing an empty list", sending whoever
+			 * read it to look for a MINSAL that had stopped publishing. Measured on this
+			 * instance 2026-09-15: epi.minsal.cl answers 403 with 5.481 bytes of HTML,
+			 * which request() drops as "not a page" — until now, without a line anywhere.
+			 *
+			 * Same correction IspRepository already carries, where logging count(TERMS)
+			 * rather than $attempted let "24 intentos" mean one.
+			 *
+			 * No 'app' key: the injected LoggerInterface is already app-scoped —
+			 * DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
+			 */
+			$this->logger->warning(
+				$page === null
+					? 'MINSAL could not be read for feed {feed}'
+					: 'MINSAL returned 0 items for feed {feed}',
+				['feed' => $feed],
+			);
 
 			return $this->degrade($feed, $stored);
 		}
