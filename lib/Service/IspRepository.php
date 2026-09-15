@@ -34,9 +34,11 @@ use Throwable;
  * Two facts about the ISP, both measured 2026-08-02 and neither guessable:
  *
  *  - The host serves ONLY its leaf certificate. Nextcloud's HTTP client fails
- *    verification and returns nothing until the intermediate is imported, which
- *    provisioning phase 07-certs does. Without that phase this class is a no-op
- *    that looks like an outage.
+ *    verification unless the intermediate is added to the anchors it trusts —
+ *    a browser recovers by chasing the certificate's AIA extension, PHP does
+ *    not. CertificateBundle carries that intermediate and merges it in at
+ *    request time (see the two `get()` calls below), so this no longer depends
+ *    on a hand import done once on one machine.
  *  - The WAF answers a literal `curl/*` User-Agent with an EMPTY REPLY and 200
  *    to anything else. That reads exactly like a TLS fault and has already cost
  *    one wrong diagnosis. IClientService sends its own UA, so we are fine — but
@@ -150,6 +152,7 @@ class IspRepository {
 
 	public function __construct(
 		private IClientService $clients,
+		private CertificateBundle $bundle,
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
 		ICacheFactory $cacheFactory,
@@ -522,7 +525,7 @@ class IspRepository {
 		try {
 			$response = $this->clients->newClient()->get(
 				sprintf(self::FEED, $term) . '?paged=' . $page,
-				['timeout' => 15],
+				['timeout' => 15, 'verify' => $this->bundle->path()],
 			);
 		} catch (Throwable $e) {
 			// WordPress answers 404 past the last page, and the client throws on it. That
@@ -714,6 +717,7 @@ class IspRepository {
 			$response = $this->clients->newClient()->get(sprintf(self::FEED, $term), [
 				'timeout' => 15,
 				'headers' => $headers,
+				'verify' => $this->bundle->path(),
 			]);
 		} catch (Throwable $e) {
 			// Per-feed failure is not reported: with 24 feeds a single blip would be

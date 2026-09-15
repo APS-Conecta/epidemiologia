@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
@@ -1261,8 +1262,14 @@ class IspRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 		$cacheFactory->method('createLocking')->willReturn($this->locking());
 
+		// The mocked $client above answers every request regardless of 'verify', so
+		// the path this double returns is never read from disk — only its presence
+		// as a constructor argument matters here.
+		$bundle = $this->createMock(CertificateBundle::class);
+		$bundle->method('path')->willReturn('/fake/ca-bundle.pem');
+
 		return new IspRepository(
-			$clients, $time, $this->logger(), $cacheFactory,
+			$clients, $bundle, $time, $this->logger(), $cacheFactory,
 		);
 	}
 
