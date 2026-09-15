@@ -3,8 +3,14 @@
  *
  * Its own file, not state.js, because state.js is deliberately testable under vitest's
  * `node` environment — its docblock in vitest.config.js says so and gives the reason. A
- * composable needs Vue, Vue needs a DOM at import, so it lives here and its test asks for
- * jsdom. state.js stays derivation over plain data; this is the reactive half.
+ * composable needs Vue, and Vue touches `document` once at import. state.js stays
+ * derivation over plain data; this is the reactive half.
+ *
+ * That import is answered by the three lines of `tests/setup.js`, NOT by jsdom: this
+ * line used to say its test "asks for jsdom", which vitest.config.js and
+ * tests/unit/filters.test.js both contradict in writing. Nothing had to change for the
+ * sentence to stop being true — it never was — and it is the one line a reader would
+ * consult before adding the jsdom dependency both of those files exist to refuse.
  */
 import { computed, ref, watch } from 'vue'
 import { t } from '@nextcloud/l10n'
