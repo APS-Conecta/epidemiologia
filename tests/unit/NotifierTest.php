@@ -46,10 +46,10 @@ class NotifierTest extends TestCase {
 	}
 
 	public function testAnIragOutageIsDistinguishableFromAnAlertsOutage(): void {
-		self::assertStringContainsString(
-			'los informes semanales ETI/IRAG',
-			$this->render(Sources::REPORTS),
-		);
+		$subject = $this->render(Sources::REPORTS);
+
+		self::assertStringContainsString('los informes semanales ETI/IRAG del ISP', $subject);
+		self::assertStringNotContainsString('MINSAL', $subject);
 	}
 
 	/**

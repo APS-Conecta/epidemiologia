@@ -2,7 +2,7 @@
 	<section>
 		<PaneHeader :title="paneName('alertas')" />
 
-		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
+		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/" />
 
 		<FilterBar :query="query"
 			:count="countLabel"

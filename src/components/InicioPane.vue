@@ -91,7 +91,7 @@
 			<NcEmptyContent v-if="!reports.items.length"
 				class="epi-card__empty"
 				:name="t('epidemiologia', 'Sin informes')"
-				:description="t('epidemiologia', 'MINSAL no ha publicado el informe de esta semana.')">
+				:description="t('epidemiologia', 'El ISP no ha publicado el informe de esta semana.')">
 				<template #icon>
 					<CheckCircle :size="20" />
 				</template>

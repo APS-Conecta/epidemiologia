@@ -17,8 +17,11 @@ import { t } from '@nextcloud/l10n'
  * - **No word the surrounding chrome already says.** "Alertas epidemiológicas" is
  *   redundant inside an app called Epidemiología, and "Tablero MINSAL" sat directly
  *   under a navigation caption reading MINSAL.
- * - **Keep a word that carries a fact.** ETI e IRAG stays, because it says which
- *   surveillance the informe and the tablero are about, and nothing else does.
+ * - **Keep a word that carries a fact.** ETI e IRAG stays on the tablero, because it
+ *   says which surveillance MINSAL's own Power BI report is about, and nothing else
+ *   does. The informe dropped it: that fuente now reads from the ISP, whose own name
+ *   for it is Circulación de Virus Respiratorios, and ETI e IRAG was the dead MINSAL
+ *   page's name, not this one's (see Sources::name(REPORTS)).
  *
  * `Alertas del ISP` is the one name that carries its publisher, because its row is
  * the only one outside the MINSAL group — see ADR-0008 and App.vue's navigation.
@@ -26,7 +29,7 @@ import { t } from '@nextcloud/l10n'
 const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
 	alertas: () => t('epidemiologia', 'Alertas vigentes'),
-	informe: () => t('epidemiologia', 'Informe semanal ETI e IRAG'),
+	informe: () => t('epidemiologia', 'Circulación de Virus Respiratorios'),
 	tablero: () => t('epidemiologia', 'Tablero ETI e IRAG'),
 	epivigila: () => t('epidemiologia', 'EPIVIGILA'),
 	isp: () => t('epidemiologia', 'Alertas del ISP'),

@@ -1,6 +1,13 @@
 <!--
-	A door, not a page. Everything here exists to get someone into EPIVIGILA, or —
-	when Red MINSAL will not have them — to the PDF that replaces it.
+	A door, not a page. Everything here exists to get someone into EPIVIGILA.
+
+	It used to carry a second button to the PDF forms that replace EPIVIGILA when Red
+	MINSAL will not have a clinician, on the same dead MINSAL host App.vue's footer
+	comment names. That host returns 403 to every network and has since October 2025,
+	and no equivalent page was found on www.minsal.cl, degreyd.minsal.cl or
+	deis.minsal.cl when the fuentes moved — so the button is gone rather than pointed
+	somewhere that 403s. The NcNoteCard below still tells a clinician what to do; it
+	just cannot hand them a working shortcut to the form.
 
 	The pane carried 878 characters of prose across four blocks: what EPIVIGILA is,
 	who may enter, why it is not embedded, and where that was verified. Three of the
@@ -25,15 +32,6 @@
 				</template>
 				{{ t('epidemiologia', 'Abrir EPIVIGILA') }}
 			</NcButton>
-			<NcButton variant="secondary"
-				href="https://epi.minsal.cl/formularios-de-notificacion-obligatoria/"
-				target="_blank"
-				rel="noopener noreferrer">
-				<template #icon>
-					<FilePdfBox :size="20" />
-				</template>
-				{{ t('epidemiologia', 'Formularios PDF de la SEREMI') }}
-			</NcButton>
 		</div>
 
 		<p class="epi-source">
@@ -46,7 +44,6 @@
 import { NcButton, NcNoteCard } from '@nextcloud/vue'
 import { t } from '@nextcloud/l10n'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
-import FilePdfBox from 'vue-material-design-icons/FilePdfBox.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 </script>

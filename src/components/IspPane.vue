@@ -28,9 +28,9 @@
 		     ANAMED and no sign that the other 23 exist.
 
 		     `/alertas/` and not the institution's home page. The parallel is what MINSAL's
-		     notice does — `epi.minsal.cl/`, the Departamento de Epidemiología's own alert
-		     surface, not `minsal.cl` — so the matching move is the ISP's alert index, not
-		     `ispch.gob.cl/`. Measured rather than guessed: `/alertas/` answers 200 under
+		     own notice does — the specific alerts page it links, not `minsal.cl` — so the
+		     matching move is the ISP's alert index, not `ispch.gob.cl/`. Measured rather
+		     than guessed: `/alertas/` answers 200 under
 		     `<h1>Alertas e Información de Seguridad de Productos Sanitarios</h1>`, while
 		     the `/categorias-alertas/` parent that the feed URLs suggest is a 404. -->
 		<DegradedNotice v-if="sanitaryAlerts.degraded"

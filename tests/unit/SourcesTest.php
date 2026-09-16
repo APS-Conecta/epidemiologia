@@ -60,7 +60,8 @@ class SourcesTest extends TestCase {
 		$l = $this->l10n();
 
 		self::assertStringContainsString('MINSAL', $sources->name(Sources::ALERTS, $l));
-		self::assertStringContainsString('MINSAL', $sources->name(Sources::REPORTS, $l));
+		self::assertStringContainsString('ISP', $sources->name(Sources::REPORTS, $l));
+		self::assertStringNotContainsString('MINSAL', $sources->name(Sources::REPORTS, $l));
 		self::assertStringContainsString('ISP', $sources->name(Sources::SANITARY_ALERTS, $l));
 		self::assertStringNotContainsString('MINSAL', $sources->name(Sources::SANITARY_ALERTS, $l));
 	}

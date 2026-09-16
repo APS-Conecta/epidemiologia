@@ -86,10 +86,12 @@
 
 				It named only MINSAL until 2026-08-03, while half the app was the ISP's,
 				and cited ADR-0004 for the obligation — an ADR about the DEIS REM
-				extracts, which this app never fetches. It reads epi.minsal.cl and
-				ispch.gob.cl and nothing else. The reason to credit them is simply that
-				neither publishes under a licence and both are named on every screen we
-				built out of their work.
+				extracts, which this app never fetches. It reads degreyd.minsal.cl and
+				ispch.gob.cl and nothing else — the MINSAL host this once named has
+				been unreachable from every network since October 2025, which is why
+				both fuentes that used to read it were repointed. The reason to credit
+				them is simply that neither publishes under a licence and both are
+				named on every screen we built out of their work.
 
 				The credit, and not a link beside it: every pane already links to the
 				source it came from, on the row that came from it. A second, permanent
