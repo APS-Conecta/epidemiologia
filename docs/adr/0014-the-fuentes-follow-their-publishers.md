@@ -64,7 +64,7 @@ navigation row moved under the ISP's caption, which is what
 
 **The intermediate certificate the ISP does not send ships in this repo.** `www.ispch.gob.cl` serves
 its leaf alone, and PHP, curl and Guzzle do not chase the AIA extension the way a browser does.
-`CertificateBundle` merges `certs/gsgccr6alphasslca2025.pem` with the instance's own anchors for the
+`CertificateBundle` merges `certs/gsgccr6alphasslca2025.crt` with the instance's own anchors for the
 ISP requests only; verification stays fully on and `verify => false` remains forbidden. Measured
 from this VPS on 2026-09-16: `cURL error 60` against the instance's anchors alone, **200** against
 the same anchors with that one file appended. A fresh install now works on any machine with no

@@ -29,7 +29,7 @@ use OCP\ITempManager;
  * remains forbidden.
  */
 class CertificateBundle {
-	private const SHIPPED = __DIR__ . '/../../certs/gsgccr6alphasslca2025.pem';
+	private const SHIPPED = __DIR__ . '/../../certs/gsgccr6alphasslca2025.crt';
 
 	public function __construct(
 		private ICertificateManager $certificates,

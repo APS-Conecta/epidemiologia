@@ -139,7 +139,7 @@ against what those sites actually publish, quirks included.
 
 - **`www.ispch.gob.cl` serves only its leaf certificate.** `ssl_verify_result=20` — Nextcloud's HTTP
   client, curl and Python all fail; browsers hide it by chasing the AIA. **The app carries the missing
-  link itself**: `certs/gsgccr6alphasslca2025.pem` ships in this repo, and `CertificateBundle` merges
+  link itself**: `certs/gsgccr6alphasslca2025.crt` ships in this repo, and `CertificateBundle` merges
   it with the instance's own anchors for the two ISP fuentes only. Verification stays fully on — a
   certificate in a CAfile is an *additional* anchor, not a way around checking one — so **never
   `verify=False`**, still. Measured on a host with no import, 2026-09-16: `cURL error 60` against the
@@ -164,7 +164,7 @@ against what those sites actually publish, quirks included.
   ```
 
   The `occ` import fixes one instance today; the durable fix is to replace
-  `certs/gsgccr6alphasslca2025.pem` with the CA Issuers certificate from that same output, which
+  `certs/gsgccr6alphasslca2025.crt` with the CA Issuers certificate from that same output, which
   [`certs/README.md`](certs/README.md) spells out, DER conversion included. Since 0.9.x nothing hides
   the fault either way: the *"No ISP feed could be reached"* warning carries the transport error, so
   the cURL code is in `nextcloud.log` without turning the loglevel down to `debug`.
