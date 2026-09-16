@@ -243,6 +243,31 @@ class IspReportRepositoryTest extends TestCase {
 		);
 	}
 
+	/**
+	 * ADR-0012: installing, enabling, disabling or updating ANY app on the instance
+	 * moves this app's whole cache namespace, and the accumulated series goes with it.
+	 * The sibling archive says so out loud; this one said nothing, and the asymmetry
+	 * ran the wrong way — the archive self-heals in about three days of walking, while
+	 * the series cannot heal at all, the back catalogue being unfetchable, which is the
+	 * whole reason this fuente accumulates. The pane just drops from N weeks to one.
+	 *
+	 * The second half is what keeps the line worth reading: a warning that also fires
+	 * when nothing was lost is one an administrator learns to skip past.
+	 */
+	public function testLosingTheAccumulatedSeriesIsSaidOutLoud(): void {
+		$html = (string)file_get_contents(__DIR__ . '/fixtures/isp-informes.html');
+
+		$this->repository($html)->get();
+		$onLoss = implode(' | ', $this->loggedAt('warning'));
+
+		$this->logged = [];
+		$this->repository($html, reuseCache: true)->get();
+		$onRefresh = implode(' | ', $this->loggedAt('warning'));
+
+		self::assertStringContainsString('series is empty', $onLoss, 'the series was lost and nothing said so');
+		self::assertSame('', $onRefresh, 'the series was still there; warning about it teaches the reader to ignore the line');
+	}
+
 	public function testWithNothingCachedAndTheIspDownItSaysDegradedRatherThanEmpty(): void {
 		$result = $this->repository('', offline: true)->get();
 

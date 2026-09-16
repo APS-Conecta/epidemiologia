@@ -124,6 +124,21 @@ class IspReportRepository {
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(?array $stored): array {
+		/*
+		 * Losing the series is worth a line, for the reason IspRepository says the same
+		 * thing about its archive: `Memcache\Factory::getGlobalPrefix()` hashes every
+		 * ENABLED app's name and version, so installing, enabling, disabling or updating
+		 * ANY app on the instance moves this app's whole cache namespace — ADR-0012. It
+		 * matters MORE here. The archive self-heals in about three days of walking; this
+		 * cannot heal at all, because the ISP publishes only the current informe and its
+		 * year archive renders client-side, which is the whole reason this fuente
+		 * accumulates. Every earlier semana is gone for good and the pane drops from N
+		 * weeks to one, silently.
+		 */
+		if ($stored === null) {
+			$this->logger->warning('ISP informe series is empty; the back catalogue cannot be refetched, so it restarts at the current semana');
+		}
+
 		$html = $this->request();
 		$fresh = $html === null ? [] : $this->parse($html);
 

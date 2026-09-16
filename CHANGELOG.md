@@ -35,7 +35,8 @@ made belongs in the commit, the issue, or a comment beside the code.
   and the fuente **accumulates one informe per semana
   epidemiológica**: the ISP publishes only the current one and its year archive renders client-side, so
   the back catalogue cannot be fetched at all. Any app update on the instance empties the accumulation
-  and it restarts from the current week
+  and it restarts from the current week, and **the log now says so when it happens** — the ISP archive
+  already did, and it is the one of the two that can walk itself back
   ([ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)).
 - **Installing no longer requires importing the ISP's intermediate certificate by hand.** The app ships
   the certificate `www.ispch.gob.cl` omits from its chain and merges it with the instance's own trust
