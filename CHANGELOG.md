@@ -42,8 +42,10 @@ made belongs in the commit, the issue, or a comment beside the code.
   anchors for its ISP requests only; verification is unchanged and `verify => false` is still forbidden.
   The ISP's leaf expires **2026-11-23** — if the issuer rotates, `certs/README.md` carries the one
   command that re-derives the replacement from the live certificate.
-- **The app's summary and description name what it actually shows.** Both advertised *informes IRAG*,
-  which was the previous publisher's name for a document this app no longer reads.
+- **The app's summary and description name what it actually shows, and so does the published OCS
+  contract.** All three advertised *informes IRAG*, which was the previous publisher's name for a
+  document this app no longer reads; `openapi.json` is generated from the summary and had not been
+  regenerated.
 - The *"Ver en el sitio oficial"* link in the ISP's degraded notice now opens the ISP's alert index
   rather than the `anamed` category. It is shown exactly when the app cannot reach the ISP, and it
   sent a reader to one of the 24 categories with nothing saying the other 23 exist.

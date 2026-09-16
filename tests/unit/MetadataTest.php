@@ -33,6 +33,13 @@ class MetadataTest extends TestCase {
 		return (string)$info->version;
 	}
 
+	/** Same authority, for the sentence: `<summary>` is what scripts/openapi.sh stamps into the spec. */
+	private static function declaredSummary(): string {
+		$info = simplexml_load_string((string)file_get_contents(self::root() . '/appinfo/info.xml'));
+
+		return trim((string)$info->summary);
+	}
+
 	public function testInfoXmlDeclaresAVersion(): void {
 		self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', self::declaredVersion());
 	}
@@ -59,6 +66,41 @@ class MetadataTest extends TestCase {
 
 			self::assertSame($expected, $found, "$file declares a version that info.xml does not");
 		}
+	}
+
+	/**
+	 * The same rule for the sentence as for the version, and for exactly the reason
+	 * the version rule exists.
+	 *
+	 * The version was gated here and the DESCRIPTION was not, so when this app stopped
+	 * reading the previous publisher's informes and info.xml was corrected, the
+	 * published contract went on advertising *"informes IRAG"* to consumers and 199
+	 * green tests said nothing. openapi.json is generated from info.xml by
+	 * `scripts/openapi.sh` — the cost of agreeing is running that script, and the cost
+	 * of disagreeing is a contract that describes an app nobody shipped.
+	 *
+	 * openapi.json must match EXACTLY, being a generated copy. package.json's
+	 * description is written by hand and adds where the app lives, so it must carry
+	 * the summary rather than equal it — which still fails the moment the summary is
+	 * reworded and that file is not.
+	 */
+	public function testEveryFileThatDescribesTheAppDescribesTheSameApp(): void {
+		$summary = self::declaredSummary();
+		self::assertNotSame('', $summary, 'info.xml declares no summary, so everything below would be vacuous');
+
+		$spec = json_decode((string)file_get_contents(self::root() . '/openapi.json'), true);
+		self::assertSame(
+			$summary,
+			$spec['info']['description'] ?? null,
+			'openapi.json describes the app differently from info.xml — it is generated, so run scripts/openapi.sh',
+		);
+
+		$package = json_decode((string)file_get_contents(self::root() . '/package.json'), true);
+		self::assertStringContainsString(
+			$summary,
+			(string)($package['description'] ?? ''),
+			'package.json describes the app differently from info.xml',
+		);
 	}
 
 	/**
