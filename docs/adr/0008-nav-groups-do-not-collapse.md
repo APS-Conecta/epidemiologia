@@ -11,8 +11,8 @@ re-measured after #52 below. On a phone the navigation is a full-height drawer, 
 not less. A disclosure control with nothing to relieve can only hide something a reader wanted.
 
 **A collapse arrow on a small group hides a single row.** The ISP group held one entry when this was
-written; it holds six since #52, and MINSAL holds four, EPIVIGILA among them rather than in a group
-of its own.
+written; it holds six since #52 and **seven** since the informe moved to its publisher's list in
+September 2026, and MINSAL holds **three**, EPIVIGILA among them rather than in a group of its own.
 
 **`allowCollapse` needs the group label to be a destination.** It is a prop of `NcAppNavigationItem`
 and collapses *that item's children*, so the parent is a navigation entry with a name, an icon and
@@ -44,3 +44,11 @@ which would have forced collapsing groups and retired this ADR.
 
 **The measurement is now a gate**, not a note — `scripts/layout.mjs` check 7 sums the lists against
 the column at every viewport. A comment cannot notice a seventh row; that check can.
+
+## Still true after the informe changed publisher (2026-09-16, ADR-0014)
+
+The informe's row left the MINSAL list for the ISP's, because
+[ADR-0014](0014-the-fuentes-follow-their-publishers.md) moved that fuente to the institution that
+publishes it: three entries and seven, where it was four and six. **Neither the total row count nor
+the caption count changed**, so both measurements above stand without being re-taken — and check 7
+re-takes them at every viewport regardless, which is the point of having made it a gate.
