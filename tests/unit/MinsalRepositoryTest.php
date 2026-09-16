@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use InvalidArgumentException;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
@@ -20,10 +21,11 @@ use RuntimeException;
  * lives behind it, and the controllers, the search provider and the probe job are
  * thin glue over it.
  *
- * Fixtures are real captured MINSAL responses, not synthetic markup. Synthetic
- * fixtures would only prove the parser can read markup we wrote for it; captured
- * ones prove it reads what MINSAL actually publishes — including the oddities
- * measured on 2026-08-01, which are what several of these tests pin down.
+ * The fixture is a real captured MINSAL response, not synthetic markup. A
+ * synthetic one would only prove the parser can read markup we wrote for it; a
+ * captured one proves it reads what MINSAL actually publishes — 11 PDF anchors,
+ * all 11 satisfying the parser's own rules, captured 2026-09-15 from the page
+ * this fuente moved to after its previous host stopped answering.
  */
 class MinsalRepositoryTest extends TestCase {
 	use Doubles;
@@ -33,10 +35,10 @@ class MinsalRepositoryTest extends TestCase {
 
 	private array $store = [];
 
-	/** @var list<string> request keys, in order — see requestKey() for what a key is */
+	/** @var list<string> requests made against the client, in order */
 	private array $requested = [];
 
-	/** @var list<string> request keys that matched no fixture; see fixture() */
+	/** @var list<string> request URLs that matched no fixture; see fixture() */
 	private array $unmatched = [];
 
 	/** @var list<array{level: string, message: string, context: array}> what the repository logged */
@@ -54,19 +56,43 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame(
 			[],
 			$this->unmatched,
-			'a request matched no fixture — add one to FIXTURES, or pass body:',
+			'a request matched no fixture — add one, or pass body:',
 		);
 	}
 
 	// --- parsing -----------------------------------------------------------
 
+	public function testAlertsComeFromThePageAndParseIntoItems(): void {
+		$repo = $this->repository((string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html'));
+
+		$result = $repo->get(MinsalRepository::ALERTS);
+
+		self::assertFalse($result['degraded']);
+		self::assertNotSame([], $result['items'], 'the fixture must carry alerts, or this test asserts nothing');
+		foreach ($result['items'] as $item) {
+			self::assertStringStartsWith('https://', $item['url']);
+			self::assertNotSame('', $item['title']);
+			self::assertMatchesRegularExpression('/^\d{4}$/', $item['year']);
+		}
+	}
+
+	public function testEveryAlertKeepsItsOwnTitle(): void {
+		// The page's own anchor labels are descriptive and unique, so no row may
+		// collapse into a shared link label. If MINSAL ever switches to a repeated
+		// "Descargar Documento", parse()'s rowTitles() fallback must carry it — and
+		// this assertion is what says so out loud.
+		$repo = $this->repository((string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html'));
+
+		$titles = array_column($repo->get(MinsalRepository::ALERTS)['items'], 'title');
+
+		self::assertSame(array_unique($titles), $titles);
+	}
+
 	public function testReadsEveryAlertMinsalPublishes(): void {
 		$alerts = $this->repository()->get(MinsalRepository::ALERTS);
 
 		self::assertFalse($alerts['degraded']);
-		// 74, not the fixture's 75 anchors: MINSAL links one PDF from two rows of its
-		// own table, and the same alert is not two alerts.
-		self::assertCount(74, $alerts['items']);
+		self::assertCount(11, $alerts['items']);
 	}
 
 	public function testEveryAlertCarriesATitleAUrlAndAYear(): void {
@@ -77,65 +103,11 @@ class MinsalRepositoryTest extends TestCase {
 		}
 	}
 
-	/**
-	 * 47 of the 75 titles carry no year at all, so a title-derived year would
-	 * leave most of the list unfilterable. The upload path is the only field with
-	 * full coverage, which is why it is the one we use.
-	 */
-	/**
-	 * MINSAL's alerts page is a TABLE — `Nombre de la alerta | Fecha | Descarga` — and for
-	 * the older half the anchor text is the literal string "Descargar Documento" while the
-	 * name sits in the row's first cell. Taking the anchor text as the title put **27 of
-	 * 75** identical rows in front of a clinician, 36 % of the pane, since 0.1.0.
-	 *
-	 * The fixture has carried the defect all along. Nothing asserted that two alerts are
-	 * told apart, so nothing saw it — and reading the parser could not, because the other
-	 * half of the same page does put the title in the anchor.
-	 */
-	public function testNoAlertIsTitledWithALinkLabel(): void {
-		$titles = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'title');
-
-		self::assertNotContains('Descargar Documento', $titles);
-		// The property, not the string: nothing a reader sees may be shared by rows that
-		// are otherwise identical to them. MINSAL's table does name two pairs of genuinely
-		// different alerts alike; those differ in the month the pane prints beside them.
-		$seen = array_map(
-			static fn (array $i): string => $i['title'] . '|' . $i['month'],
-			$this->repository()->get(MinsalRepository::ALERTS)['items'],
-		);
-
-		self::assertSame(array_unique($seen), $seen, 'two rows a reader cannot tell apart');
-	}
-
-	/** MINSAL links the same PDF from two rows of its own table. */
+	/** MINSAL does not repeat a PDF from two rows on this page, unlike the old one. */
 	public function testTheSamePdfIsListedOnce(): void {
 		$urls = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'url');
 
 		self::assertSame(array_unique($urls), $urls);
-	}
-
-	/** And the half that DOES name itself in the anchor keeps its oficio number. */
-	public function testAnAlertNamedInItsAnchorKeepsThatName(): void {
-		$titles = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'title');
-
-		self::assertNotEmpty(
-			array_filter($titles, static fn (string $t): bool => str_starts_with($t, 'OFICIO')),
-			'the anchor is the better title when it is one, and carries the oficio number',
-		);
-	}
-
-	public function testDerivesAYearForAlertsWhoseTitleHasNone(): void {
-		$items = $this->repository()->get(MinsalRepository::ALERTS)['items'];
-
-		$titleless = array_filter(
-			$items,
-			static fn (array $a): bool => preg_match('/\b20\d{2}\b/', $a['title']) !== 1,
-		);
-
-		self::assertGreaterThan(30, count($titleless), 'the fixture should still contain year-less titles');
-		foreach ($titleless as $alert) {
-			self::assertNotSame('', $alert['year']);
-		}
 	}
 
 	public function testUnescapesEntitiesAndCollapsesWhitespaceInTitles(): void {
@@ -151,32 +123,30 @@ class MinsalRepositoryTest extends TestCase {
 
 	// --- ordering ----------------------------------------------------------
 
-	/**
-	 * MINSAL's own page order is clean for the first ~35 anchors and then carries
-	 * 9 inversions. Rendering in document order shows a visibly jumbled list, so
-	 * this is the regression that matters most.
-	 */
 	public function testSortsAlertsNewestFirstAllTheWayDown(): void {
-		$years = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'year');
+		$months = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'month');
 
-		self::assertSame($years, array_reverse(array_reverse($years)));
-		for ($i = 1, $n = count($years); $i < $n; $i++) {
+		for ($i = 1, $n = count($months); $i < $n; $i++) {
 			self::assertGreaterThanOrEqual(
-				$years[$i],
-				$years[$i - 1],
+				$months[$i],
+				$months[$i - 1],
 				"alert $i is newer than the one before it — the sort regressed to document order",
 			);
 		}
 	}
 
-	public function testTheFixtureStillContainsTheInversionsThisSortExistsToFix(): void {
-		// Guard against a future re-capture quietly removing the thing under test:
-		// if MINSAL ever sorts their own page, this test should fail loudly rather
-		// than let testSortsAlertsNewestFirstAllTheWayDown pass for free.
-		$page = json_decode((string)file_get_contents(__DIR__ . '/fixtures/alerts.json'), true);
+	/**
+	 * Guard against a future re-capture quietly removing the thing under test:
+	 * the page's own anchor order is not chronological — one 2026-06 alert
+	 * (`1781616195625_OFI.pdf`) sits after two 2026-05 alerts in the raw markup
+	 * — so if this ever stopped holding, testSortsAlertsNewestFirstAllTheWayDown
+	 * would be passing for free rather than exercising sort() at all.
+	 */
+	public function testTheFixtureStillContainsTheInversionThisSortExistsToFix(): void {
+		$html = (string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
 		preg_match_all(
 			'#<a[^>]+href="[^"]*/uploads/(\d{4})/(\d{2})/[^"]+\.pdf"#i',
-			(string)$page[0]['content']['rendered'],
+			$html,
 			$found,
 		);
 		$document = array_map(
@@ -184,7 +154,7 @@ class MinsalRepositoryTest extends TestCase {
 			$found[1],
 			$found[2],
 		);
-		self::assertCount(75, $document, 'the fixture should hold the 75 alerts that were measured');
+		self::assertCount(11, $document, 'the fixture should hold the 11 alerts that were measured');
 
 		$inversions = 0;
 		for ($i = 1, $n = count($document); $i < $n; $i++) {
@@ -193,29 +163,31 @@ class MinsalRepositoryTest extends TestCase {
 			}
 		}
 
-		self::assertSame(9, $inversions, 'the captured fixture no longer matches what was measured');
+		self::assertSame(1, $inversions, 'the captured fixture no longer matches what was measured');
 	}
 
 	/**
-	 * 75 alerts across 26 months means roughly three share every sort key. Within
-	 * a month MINSAL's own curation is the only ordering signal we have, so the
-	 * sort must be stable and preserve it.
+	 * The page's own June alerts are not chronological in the markup (see the
+	 * inversion test above), so this pins that a stable sort keeps them in the
+	 * page's own relative order once grouped by month, rather than in whatever
+	 * order a comparator with ties happens to leave them.
 	 */
 	public function testKeepsMinsalsOwnOrderWithinTheSameMonth(): void {
 		$items = $this->repository()->get(MinsalRepository::ALERTS)['items'];
 
-		$july = array_values(array_filter($items, static fn (array $a): bool => $a['month'] === '2026-07'));
+		$june = array_values(array_filter($items, static fn (array $a): bool => $a['month'] === '2026-06'));
 
-		self::assertCount(2, $july);
-		self::assertStringContainsString('15844', $july[0]['title']);
-		self::assertStringContainsString('17264', $july[1]['title']);
+		self::assertCount(3, $june);
+		self::assertStringContainsString('DECRETO-58', $june[0]['url']);
+		self::assertStringContainsString('17264_2026', $june[1]['url']);
+		self::assertStringContainsString('1781616195625', $june[2]['url']);
 	}
 
 	// --- trust boundary: MINSAL's HTML is not ours ---------------------------
 
 	/**
 	 * `p()` is htmlspecialchars: it escapes quotes and angle brackets and cannot
-	 * make a URL scheme safe. A defaced epi.minsal.cl serving
+	 * make a URL scheme safe. A defaced page serving
 	 * href="javascript:…/uploads/2026/01/x.pdf" satisfies the anchor pattern and
 	 * the upload-folder pattern, and would otherwise reach href unchanged — in the
 	 * page, in the API other apps read, and in core's search results.
@@ -227,19 +199,17 @@ class MinsalRepositoryTest extends TestCase {
 			'data:text/html;base64,PHNjcmlwdD4=/uploads/2026/01/c.pdf',
 			'vbscript:msgbox(1)/uploads/2026/01/d.pdf',
 			' javascript:alert(1)/uploads/2026/01/e.pdf',          // leading space
-			'http://epi.minsal.cl/uploads/2026/01/f.pdf',          // downgrade
+			'http://degreyd.minsal.cl/uploads/2026/01/f.pdf',      // downgrade
 		];
-		$anchors = '<a href="https://epi.minsal.cl/uploads/2026/01/real.pdf">Alerta real</a>';
+		$anchors = '<a href="https://degreyd.minsal.cl/uploads/2026/01/real.pdf">Alerta real</a>';
 		foreach ($hostile as $i => $url) {
 			$anchors .= sprintf('<a href="%s">Alerta %d</a>', $url, $i);
 		}
 
-		$items = $this->repository(
-			body: json_encode([['content' => ['rendered' => $anchors], 'modified' => '2026-08-02T09:00:00']]),
-		)->get(MinsalRepository::ALERTS)['items'];
+		$items = $this->repository(body: $anchors)->get(MinsalRepository::ALERTS)['items'];
 
 		self::assertCount(1, $items, 'only the https anchor may survive');
-		self::assertSame('https://epi.minsal.cl/uploads/2026/01/real.pdf', $items[0]['url']);
+		self::assertSame('https://degreyd.minsal.cl/uploads/2026/01/real.pdf', $items[0]['url']);
 	}
 
 	/** A page of nothing but hostile anchors parses to zero, which is a failure, not a result. */
@@ -248,10 +218,7 @@ class MinsalRepositoryTest extends TestCase {
 		$cached = $this->store;
 
 		$hostile = '<a href="javascript:alert(1)/uploads/2026/01/x.pdf">Alerta</a>';
-		$after = $this->repository(
-			body: json_encode([['content' => ['rendered' => $hostile], 'modified' => '2026-08-02T09:00:00']]),
-			now: self::NOW + 7200,
-		)->get(MinsalRepository::ALERTS);
+		$after = $this->repository(body: $hostile, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
@@ -269,16 +236,11 @@ class MinsalRepositoryTest extends TestCase {
 
 		// MINSAL restructures: the page still answers 200, but no PDF anchors left.
 		// An hour later, so the cached copy is stale and a real refresh is attempted.
-		$broken = $this->repository(
-			body: '{"0":{"content":{"rendered":"<p>En mantención</p>"},"modified":"2026-08-02T09:00:00"}}',
-			now: self::NOW + 7200,
-		);
-		$after = $broken->get(MinsalRepository::ALERTS);
+		$after = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7200)
+			->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
-		// The feed's own key, not the whole store: degrading also arms the cooldown that
-		// stops the outage being retried on every read, which is a second key.
 		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
 	}
 
@@ -289,7 +251,7 @@ class MinsalRepositoryTest extends TestCase {
 		$after = $offline->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($after['degraded']);
-		self::assertCount(74, $after['items']);
+		self::assertCount(11, $after['items']);
 		// CONTEXT.md: "a freno never makes a stale fuente look fresh". This is the first assertion
 		// anywhere that a degraded read leaves `fetched_at` where it was — the property that would
 		// silently make an outage look like a successful fetch if it ever stopped holding.
@@ -315,7 +277,7 @@ class MinsalRepositoryTest extends TestCase {
 	 * Degrading writes nothing, so the cache stays expired and every subsequent read
 	 * retries. PageController::index() fetches synchronously while someone waits, so
 	 * against a host that blackholes packets this is a gateway timeout rather than the
-	 * degraded banner. The ISP half carries the same rule, per feed.
+	 * degraded banner.
 	 */
 	public function testAnOutageIsNotRetriedOnEveryRead(): void {
 		$this->repository()->get(MinsalRepository::ALERTS);
@@ -331,15 +293,10 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	/**
-	 * The other half, and the one the old double could not express: the cooldown has to
-	 * END. Only "it was set" was ever asserted, so recovery being automatic rested on a
-	 * TTL nothing checked — raising COOLDOWN to a week would have kept the suite green and
-	 * pinned both feeds to degraded until someone flushed Redis.
-	 */
-	/**
-	 * `timeout` was the only bound on a response, so a decoder on an unbounded body
-	 * fatals the worker inside a page render — reproduced on the ISP side, where a 3 MB
-	 * feed exhausted 512 MB.
+	 * `timeout` was the only bound on a response, so an unbounded body risks the
+	 * worker's memory in preg_match_all() rather than in a decoder now that there
+	 * is no JSON envelope — reproduced on the ISP side, where a 3 MB feed
+	 * exhausted 512 MB.
 	 */
 	public function testAResponseTooBigToBeAPageIsNotRead(): void {
 		/*
@@ -347,8 +304,8 @@ class MinsalRepositoryTest extends TestCase {
 		 * alone and passed either way: with no PDF anchors it degraded on the parse, so
 		 * the cap was never what the assertion measured.
 		 */
-		$link = '<a href="https://epi.minsal.cl/wp-content/uploads/2026/07/x.pdf">Alerta</a>';
-		$huge = json_encode([['content' => ['rendered' => $link . str_repeat('<!-- pad -->', 60000)]]]);
+		$link = '<a href="https://degreyd.minsal.cl/wp-content/uploads/2026/07/x.pdf">Alerta</a>';
+		$huge = $link . str_repeat('<!-- pad -->', 60000);
 
 		$alerts = $this->repository(body: $huge)->get(MinsalRepository::ALERTS);
 
@@ -357,33 +314,23 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	/**
-	 * "Returned 0 items" and "was never read" are different faults, and the log said
-	 * the first for both.
+	 * "Carried no alerts" and "could not be read" are different faults. Since
+	 * there is no JSON envelope to fail decoding, the only way to land here is
+	 * the client throwing outright — a body that merely lacks PDF anchors is
+	 * genuinely read, and genuinely carries nothing, which is the other test
+	 * below.
 	 *
-	 * `refresh()` computes `$items = $page === null ? [] : parse(...)`, so a fetch that
-	 * failed outright arrives at the zero-items guard looking exactly like a page that
-	 * parsed to nothing — and the one line an admin diagnoses from claimed MINSAL had
-	 * answered with an empty list when MINSAL had not answered at all. Under the WAF
-	 * this instance is actually behind (403, 5.481 bytes of HTML, measured 2026-09-15)
-	 * that sentence sends the reader to look for a MINSAL that stopped publishing.
-	 *
-	 * It is the same correction IspRepository already carries, where logging
-	 * `count(TERMS)` instead of `$attempted` meant "24 intentos" could mean one.
-	 *
-	 * Asserted on the LOG and never on the payload: both faults degrade, both serve the
-	 * last good copy, and the payload is byte-identical. The sentence is the whole
-	 * difference, which is why it is the thing pinned here.
+	 * Asserted on the LOG and never on the payload: both faults degrade, both serve
+	 * the last good copy, and the payload is byte-identical. The sentence is the
+	 * whole difference, which is why it is the thing pinned here.
 	 */
-	public function testAFeedThatCouldNotBeReadIsNotReportedAsOneThatAnsweredEmpty(): void {
-		$waf = '<!DOCTYPE html><html><head><title>403 Forbidden</title></head>'
-			. '<body><h1>Access denied</h1></body></html>';
+	public function testAPageThatCouldNotBeReadIsNotReportedAsOneThatCarriedNoAlerts(): void {
+		$alerts = $this->repository(offline: true)->get(MinsalRepository::ALERTS);
 
-		$alerts = $this->repository(body: $waf)->get(MinsalRepository::ALERTS);
-
-		self::assertTrue($alerts['degraded'], 'a body we cannot read is not an empty list');
-		self::assertNotSame([], $this->loggedAt('warning'), 'an unreadable feed must say so');
+		self::assertTrue($alerts['degraded'], 'an unreachable host is not an empty list');
+		self::assertNotSame([], $this->loggedAt('warning'), 'an unreadable page must say so');
 		self::assertStringNotContainsStringIgnoringCase(
-			'0 items',
+			'carried no alerts',
 			implode(' | ', $this->loggedAt('warning')),
 			'MINSAL was never read — reporting it as having returned nothing names the wrong fault',
 		);
@@ -395,16 +342,12 @@ class MinsalRepositoryTest extends TestCase {
 	 * so, in those words. This is the fault the never-overwrite rule exists for — MINSAL
 	 * restructuring its page into something the parser no longer recognises.
 	 */
-	public function testAPageThatWasReadAndParsedToNothingStillReportsZeroItems(): void {
-		// A well-formed WordPress page whose rendered content carries no PDF anchor at
-		// all: read successfully, parsed honestly, nothing in it.
-		$empty = json_encode([['content' => ['rendered' => '<p>Sin alertas publicadas.</p>'], 'modified' => '']]);
-
-		$alerts = $this->repository(body: (string)$empty)->get(MinsalRepository::ALERTS);
+	public function testAPageThatWasReadAndParsedToNothingStillSaysSo(): void {
+		$alerts = $this->repository(body: '<p>Sin alertas publicadas.</p>')->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($alerts['degraded'], 'zero items never overwrites a good copy');
 		self::assertStringContainsString(
-			'0 items',
+			'carried no alerts',
 			implode(' | ', $this->loggedAt('warning')),
 			'a page that was read and parsed to nothing is exactly what this sentence is for',
 		);
@@ -428,6 +371,27 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertTrue($during['degraded'], 'a cooldown must never look like health');
 		self::assertSame($good['items'], $during['items']);
+	}
+
+	// --- an unknown feed is a caller's mistake, not a cache entry ------------
+
+	public function testAskingForAnUnknownFeedThrowsRatherThanMintingACacheEntry(): void {
+		$repository = $this->repository();
+
+		try {
+			$repository->get('bogus');
+			self::fail('an id other than ALERTS must not be answered');
+		} catch (InvalidArgumentException $e) {
+			// expected
+		}
+
+		self::assertArrayNotHasKey('feed-bogus', $this->store, 'a rejected feed must not mint a cache entry');
+	}
+
+	public function testProbingAnUnknownFeedAlsoThrows(): void {
+		$this->expectException(InvalidArgumentException::class);
+
+		$this->repository()->probe('bogus');
 	}
 
 	// --- search --------------------------------------------------------------
@@ -474,8 +438,26 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertCount($before + 1, $this->requested, 'an unchanged feed costs exactly one probe');
 	}
 
+	/**
+	 * degreyd's `modified` field read 2026-06-24 while its table listed alerts
+	 * dated 31 July 2026 — the field never tracked the content, which is why
+	 * probe() compares a digest of the parsed items instead. This is the test
+	 * that would have stayed green through that exact silent failure if probe()
+	 * still trusted a publication date.
+	 */
+	public function testProbeReportsChangeWhenTheContentChangesButTheDateDoesNot(): void {
+		$first = (string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
+		$second = str_replace('uploads/2026/06/', 'uploads/2026/08/', $first);
+
+		$repo = $this->repository($first);
+		$repo->get(MinsalRepository::ALERTS);
+
+		$changed = $this->repository($second, reuseCache: true);
+		self::assertTrue($changed->probe(MinsalRepository::ALERTS));
+	}
+
 	public function testTheProbeReportsFailureWhenMinsalStopsParsing(): void {
-		$repository = $this->repository(body: '{"0":{"content":{"rendered":"<p>nada</p>"},"modified":"2026-08-02T09:00:00"}}');
+		$repository = $this->repository(body: '<p>nada</p>');
 
 		self::assertFalse($repository->probe(MinsalRepository::ALERTS));
 	}
@@ -487,26 +469,36 @@ class MinsalRepositoryTest extends TestCase {
 	// --- doubles -------------------------------------------------------------
 
 	/**
-	 * @param string|null $body served for every request, instead of the fixtures
-	 * @param int|null    $now  later than NOW to push a cached copy past its freshness window
+	 * @param string|null $body       served for every request, instead of the fixture
+	 * @param int|null    $now        later than NOW to push a cached copy past its freshness window
+	 * @param bool        $reuseCache false gives this repository its own empty cache instead of
+	 *                                sharing $this->store with earlier repository() calls in the
+	 *                                same test — nothing needs that today, but the sharing is the
+	 *                                default precisely because most tests rely on it (a repository
+	 *                                built later in the same test seeing what an earlier one wrote),
+	 *                                so a call site that means to start clean has to say so.
 	 */
 	private function repository(
 		?string $body = null,
 		bool $offline = false,
 		?int $now = null,
+		bool $reuseCache = true,
 	): MinsalRepository {
+		if (!$reuseCache) {
+			$this->store = [];
+		}
+
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
 			function (string $url, array $options) use ($body, $offline): IResponse {
-				$key = $this->requestKey($url, $options);
-				$this->requested[] = $key;
+				$this->requested[] = $url;
 
 				if ($offline) {
 					throw new RuntimeException('cURL error 6: Could not resolve host');
 				}
 
 				$response = $this->createMock(IResponse::class);
-				$response->method('getBody')->willReturn($body ?? $this->fixture($key));
+				$response->method('getBody')->willReturn($body ?? $this->fixture($url));
 
 				return $response;
 			},
@@ -528,9 +520,9 @@ class MinsalRepositoryTest extends TestCase {
 	 * A logger that records instead of discarding.
 	 *
 	 * Here because one failure path is only observable as a log line: a body that is
-	 * not a WordPress page degrades correctly and silently, so "degraded" is true
-	 * whether or not anything was written down. Asserting the payload cannot tell the
-	 * two apart, and the difference is the whole of an admin's diagnosis.
+	 * not a page degrades correctly and silently, so "degraded" is true whether or not
+	 * anything was written down. Asserting the payload cannot tell the two apart, and
+	 * the difference is the whole of an admin's diagnosis.
 	 */
 	private function logger(): LoggerInterface {
 		$logger = $this->createMock(LoggerInterface::class);
@@ -554,57 +546,27 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	/**
-	 * How a request is identified — the string recorded in $requested, matched by
-	 * $missing, and used to pick a fixture.
+	 * The one real captured response this suite is tested against. MINSAL serves
+	 * this fuente from exactly one fixed URL now, so there is no slug or category
+	 * left to dispatch on the way IspRepositoryTest still has to.
 	 *
-	 * MINSAL serves its pages from ONE url and tells them apart by slug, so the
-	 * slug is the request's identity there; every assertion on $requested is
-	 * written in slugs. Any other source is identified by its url.
-	 *
-	 * This used to read $options['query']['slug'] unconditionally. A source that
-	 * sends no slug — an RSS feed, say — would raise on the missing key and then
-	 * fall through to MINSAL's fixture, so its test would pass while asserting
-	 * MINSAL's alerts. Dispatching on the url first is what makes a second source
-	 * a new row rather than a rewrite.
-	 */
-	private function requestKey(string $url, array $options): string {
-		if (str_contains($url, 'epi.minsal.cl')) {
-			return (string)($options['query']['slug'] ?? $url);
-		}
-
-		return $url;
-	}
-
-	/**
-	 * Which capture answers a request key: the first fragment that matches wins,
-	 * so adding a source is adding a row. Captures are real upstream responses —
-	 * synthetic markup would only prove the parser can read markup we wrote for it.
-	 */
-	private const FIXTURES = [
-		'alertas-epidemiologicas-vigentes' => 'alerts',
-	];
-
-	/**
-	 * An unmatched key is recorded and asserted in tearDown, NOT thrown here.
-	 *
+	 * An unmatched url is recorded and asserted in tearDown, NOT thrown here.
 	 * Throwing looks right and is useless: this runs inside the client's get(),
 	 * and MinsalRepository::request() catches Throwable — AssertionFailedError
-	 * included — logs "no se pudo contactar" and returns null. A missing fixture
-	 * would therefore read as an unreachable host, go down the degraded path, and
-	 * let a test pass green. That is the exact failure this double exists to make
+	 * included — logs a warning and returns null. A missing fixture would
+	 * therefore read as an unreachable host, go down the degraded path, and let
+	 * a test pass green. That is the exact failure this double exists to make
 	 * impossible, so the assertion has to happen where production cannot catch it.
 	 *
 	 * Pass `body:` for a request that is meant to have no fixture.
 	 */
-	private function fixture(string $key): string {
-		foreach (self::FIXTURES as $fragment => $name) {
-			if (str_contains($key, (string)$fragment)) {
-				return (string)file_get_contents(__DIR__ . '/fixtures/' . $name . '.json');
-			}
+	private function fixture(string $url): string {
+		if (!str_contains($url, 'degreyd.minsal.cl')) {
+			$this->unmatched[] = $url;
+
+			return '';
 		}
 
-		$this->unmatched[] = $key;
-
-		return '';
+		return (string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
 	}
 }

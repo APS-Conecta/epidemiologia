@@ -46,7 +46,7 @@ class AlertProviderTest extends TestCase {
 	protected function setUp(): void {
 		$this->minsalHits = [[
 			'title' => 'OFICIO CP N°15844 / 2026 Actualización de la situación de sarampión',
-			'url' => 'https://epi.minsal.cl/wp-content/uploads/2026/07/oficio.pdf',
+			'url' => 'https://degreyd.minsal.cl/wp-content/uploads/2026/07/oficio.pdf',
 			'year' => '2026',
 			'month' => '2026-07',
 		]];

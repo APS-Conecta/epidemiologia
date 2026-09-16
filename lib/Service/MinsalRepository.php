@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
+use InvalidArgumentException;
 use Normalizer;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
@@ -18,17 +19,26 @@ use Throwable;
 /**
  * The only place that knows about MINSAL.
  *
- * A read-through proxy over the public WordPress REST API at epi.minsal.cl. No
- * database, no mirroring: PDFs are linked where MINSAL publishes them, so staff
- * always open the version in force.
+ * A read-through proxy over the page MINSAL publishes its in-force alerts on.
+ * No database, no mirroring: PDFs are linked where MINSAL publishes them, so
+ * staff always open the version in force.
  */
 class MinsalRepository {
 	public const ALERTS = 'alerts';
 
-	private const API = 'https://epi.minsal.cl/wp-json/wp/v2/pages';
-
-	/** Resolve pages by slug, never by ID — IDs change when MINSAL republishes. */
-	private const ALERTS_SLUG = 'alertas-epidemiologicas-vigentes';
+	/**
+	 * The page MINSAL publishes its in-force alerts on.
+	 *
+	 * A fixed page address, and deliberately neither of the two alternatives. The
+	 * `/wp-json/` route is closed across MINSAL's estate and the query form that
+	 * still answers here is the same API reached by a spelling they missed — this
+	 * app's only alerts source should not rest on somebody's oversight. The RSS
+	 * feed was measured and rejected for a plainer reason: it carries the ten most
+	 * recent posts, the alerts post already sits behind three news items, and a
+	 * fuente that empties because its publisher had a busy news week is a fuente
+	 * that fails for no reason a reader could act on.
+	 */
+	private const API = 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/';
 
 	/** The largest response we will read; IspRepository::parse() carries the measurement. */
 	private const MAX_BYTES = 512 * 1024;
@@ -66,6 +76,8 @@ class MinsalRepository {
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(string $feed): array {
+		$this->assertKnownFeed($feed);
+
 		$stored = $this->stored($feed);
 
 		if ($stored !== null && $stored['fetched_at'] + self::FRESH_FOR > $this->time->getTime()) {
@@ -94,8 +106,8 @@ class MinsalRepository {
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(string $feed, ?array $stored = null): array {
-		$page = $this->fetch('content,modified');
-		$items = $page === null ? [] : $this->parse((string)($page['content']['rendered'] ?? ''));
+		$html = $this->request();
+		$items = $html === null ? [] : $this->parse($html);
 
 		// A parse returning zero items is a failure, never a result. Caching it
 		// would replace every real alert with an empty list, which a clinician
@@ -104,28 +116,29 @@ class MinsalRepository {
 		if ($items === []) {
 			/*
 			 * Two different faults reach this guard, and naming them apart is the whole
-			 * value of the line: `$items` is [] both when MINSAL answered with a page
-			 * that parses to nothing — the restructure this rule exists to survive —
-			 * and when nothing was read at all, because `$page` is null.
+			 * value of the line: `$items` is [] both when the page answered with content
+			 * that parses to nothing — the restructure this rule exists to survive — and
+			 * when nothing was read at all, because `$html` is null.
 			 *
-			 * It said "returned 0 items" for both, which is a claim about MINSAL that is
-			 * false in the second case: an unreachable host, an oversize body and a WAF
-			 * block page all became "MINSAL is publishing an empty list", sending whoever
-			 * read it to look for a MINSAL that had stopped publishing. Measured on this
-			 * instance 2026-09-15: epi.minsal.cl answers 403 with 5.481 bytes of HTML,
-			 * which request() drops as "not a page" — until now, without a line anywhere.
+			 * Conflating them said "returned 0 items" for both, which is a claim about
+			 * MINSAL that is false in the second case: an unreachable host, an oversize
+			 * body and a WAF block page all become "MINSAL is publishing an empty list",
+			 * sending whoever reads it to look for a MINSAL that stopped publishing — the
+			 * wrong diagnosis for exactly the fault this fuente's previous host served,
+			 * without interruption, for eleven months before it moved here.
 			 *
 			 * Same correction IspRepository already carries, where logging count(TERMS)
 			 * rather than $attempted let "24 intentos" mean one.
 			 *
 			 * No 'app' key: the injected LoggerInterface is already app-scoped —
 			 * DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
+			 * No {feed} placeholder either, now that one fuente is all this class has —
+			 * naming it in every line stopped earning its keep when the informe left.
 			 */
 			$this->logger->warning(
-				$page === null
-					? 'MINSAL could not be read for feed {feed}'
-					: 'MINSAL returned 0 items for feed {feed}',
-				['feed' => $feed],
+				$html === null
+					? 'The MINSAL alerts page could not be read'
+					: 'The MINSAL alerts page carried no alerts',
 			);
 
 			return $this->degrade($feed, $stored);
@@ -133,7 +146,7 @@ class MinsalRepository {
 
 		$fresh = [
 			'items' => $items,
-			'modified' => (string)($page['modified'] ?? ''),
+			'digest' => self::digest($items),
 			'fetched_at' => $this->time->getTime(),
 		];
 		$this->cache->set($this->key($feed), $fresh, self::KEEP_FOR);
@@ -142,26 +155,41 @@ class MinsalRepository {
 	}
 
 	/**
-	 * Daily breakage detection. Asks for the modification date alone — 859 bytes
-	 * against 44 KB for a full fetch — because these responses carry no ETag and
-	 * no Last-Modified, so a conditional GET is not available to us.
+	 * Daily breakage detection.
+	 *
+	 * Compares a digest of the parsed items, NOT a publication date: degreyd's
+	 * `modified` field read 2026-06-24 while its table listed alerts dated 31 July
+	 * 2026, so a date comparison reports "unchanged" straight through real edits.
+	 * The sondeo exists to DETECT; it has to compare something that moves.
+	 *
+	 * Costs one full fetch either way, unlike before: an HTML page has no
+	 * field-limited request the way the old JSON endpoint's `_fields=modified` did,
+	 * so there is no cheaper thing left to ask for. The digest still saves a
+	 * redundant parse-and-cache-write when nothing moved — refresh() below is only
+	 * reached when it did, or when nothing has been cached yet.
 	 *
 	 * @return bool false when MINSAL is unreachable, or changed into something we
 	 *              can no longer parse. Either way a human has to look.
 	 */
 	public function probe(string $feed): bool {
-		$page = $this->fetch('modified');
-		if ($page === null) {
+		$this->assertKnownFeed($feed);
+
+		$html = $this->request();
+		if ($html === null) {
 			return false;
 		}
 
+		$items = $this->parse($html);
 		$stored = $this->stored($feed);
-		if ($stored !== null && $stored['modified'] === (string)($page['modified'] ?? '')) {
+		if ($items !== [] && $stored !== null && ($stored['digest'] ?? null) === self::digest($items)) {
 			return true;
 		}
 
-		// It changed. Pull the real page and see whether it still parses — which
-		// also leaves the cache warm for whoever opens the app first tomorrow.
+		// Either nothing was cached yet, the digest moved, or the page no longer
+		// parses. refresh() decides the rest through the same fetch/parse/cache
+		// path get() uses, including the never-overwrite rule and arming the
+		// cooldown on a genuine failure — this shortcut only ever skips work that
+		// would have reached the same conclusion.
 		return $this->refresh($feed, $stored)['degraded'] === false;
 	}
 
@@ -169,7 +197,7 @@ class MinsalRepository {
 	 * Cache-only search, for Nextcloud's global search box.
 	 *
 	 * It must never fetch. Every registered provider runs on every search, so one
-	 * that called epi.minsal.cl would make all of Nextcloud's search wait on a
+	 * that called out to MINSAL would make all of Nextcloud's search wait on a
 	 * foreign government server — for every user, including someone looking for a
 	 * Word document. A cold cache returns nothing and self-heals on the next visit
 	 * or the next probe.
@@ -366,51 +394,48 @@ class MinsalRepository {
 	}
 
 	/**
-	 * One page, one slug. The fallback loop went with the informes: the year-templated
-	 * slug was theirs — every January it would 404 until MINSAL put the new year up —
-	 * and this page has never carried a year at all.
+	 * The page's HTML, or null on anything that stops us reading it.
+	 *
+	 * One fixed URL, no slug and nothing to narrow the response to: this used to
+	 * resolve a page by slug against a WordPress REST endpoint, and the fallback
+	 * loop that once tried more than one slug went with the informes — the
+	 * year-templated slug was theirs, and this page has never carried a year in
+	 * its own address. A page is not a collection to filter down, either, so
+	 * there is no `_fields` left to ask for: the whole body is what parse() reads.
 	 */
-	private function fetch(string $fields): ?array {
-		return $this->request(self::ALERTS_SLUG, $fields);
-	}
-
-	private function request(string $slug, string $fields): ?array {
+	private function request(): ?string {
 		try {
-			$response = $this->clients->newClient()->get(self::API, [
-				'query' => ['slug' => $slug, '_fields' => $fields],
-				'timeout' => 15,
-			]);
+			$response = $this->clients->newClient()->get(self::API, ['timeout' => 15]);
 			$body = (string)$response->getBody();
 
 			/*
-			 * The same bound IspRepository::parse() carries, and for the same reason: a
-			 * decoder on an unbounded body fatals the worker inside a page render. Measured
-			 * against the largest real payload here, the 43 KB alerts page — twelve times
-			 * over. A body this size is not a WordPress page, whatever it claims to be.
+			 * The same bound IspRepository::parse() carries, and for the same reason:
+			 * an unbounded body risks the worker's memory in preg_match_all() rather
+			 * than in a JSON decoder, now that there is no JSON envelope to decode.
+			 * Measured against the live page, 66 743 B — the cap leaves close to eight
+			 * times that as headroom. A body this size is not this page, whatever it
+			 * claims to be.
 			 */
 			if (strlen($body) > self::MAX_BYTES) {
-				$this->logger->warning('MINSAL response of {bytes} bytes, discarded', [
-					'slug' => $slug, 'bytes' => strlen($body),
+				$this->logger->warning('MINSAL alerts page of {bytes} bytes, discarded', [
+					'bytes' => strlen($body),
 				]);
 
 				return null;
 			}
 
-			$pages = json_decode($body, true);
+			return $body;
 		} catch (Throwable $e) {
 			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
 			// checks isset($entry['exception']) and serialises the class, the trace and
 			// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
-			$this->logger->warning('Could not reach MINSAL ({slug})', [
-				'slug' => $slug,
+			$this->logger->warning('Could not reach the MINSAL alerts page', [
 				'exception' => $e,
 			]);
 
 			return null;
 		}
-
-		return is_array($pages) && isset($pages[0]) && is_array($pages[0]) ? $pages[0] : null;
 	}
 
 	private function stored(string $feed): ?array {
@@ -447,5 +472,35 @@ class MinsalRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
 	private function cooldownKey(string $feed): string {
 		return 'cooldown-' . $feed;
+	}
+
+	/**
+	 * `get()` and `probe()` still take `$feed` because `Sources` addresses every
+	 * repository the same way — but `request()` stopped reading it once the slug
+	 * that used to route to a page went with the informes, leaving only a
+	 * docblock's `@param self::ALERTS` between a typo and `get('whatever')`
+	 * quietly minting a `feed-whatever` cache entry that nothing else in this
+	 * class would ever refresh, degrade or serve correctly. One fuente lives
+	 * here now; asking for another is a caller's mistake, and a mistake should
+	 * throw rather than be cached.
+	 */
+	private function assertKnownFeed(string $feed): void {
+		if ($feed !== self::ALERTS) {
+			throw new InvalidArgumentException(
+				"MinsalRepository has one fuente ('" . self::ALERTS . "'), not '$feed'",
+			);
+		}
+	}
+
+	/**
+	 * What probe() compares instead of a publication date — see its docblock for
+	 * why. Keyed on URL alone, the same identity `parse()`'s own dedupe uses: a
+	 * title or a row reordering would flag a change nobody could act on, and
+	 * MINSAL reassigns numeric ids on republish, so those cannot be the key either.
+	 *
+	 * @param list<array<string, string>> $items
+	 */
+	private static function digest(array $items): string {
+		return hash('sha256', implode("\n", array_column($items, 'url')));
 	}
 }
