@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
+use InvalidArgumentException;
 use Normalizer;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
@@ -18,19 +19,26 @@ use Throwable;
 /**
  * The only place that knows about MINSAL.
  *
- * A read-through proxy over the public WordPress REST API at epi.minsal.cl. No
- * database, no mirroring: PDFs are linked where MINSAL publishes them, so staff
- * always open the version in force.
+ * A read-through proxy over the page MINSAL publishes its in-force alerts on.
+ * No database, no mirroring: PDFs are linked where MINSAL publishes them, so
+ * staff always open the version in force.
  */
 class MinsalRepository {
 	public const ALERTS = 'alerts';
-	public const IRAG = 'irag';
 
-	private const API = 'https://epi.minsal.cl/wp-json/wp/v2/pages';
-
-	/** Resolve pages by slug, never by ID — IDs change when MINSAL republishes. */
-	private const ALERTS_SLUG = 'alertas-epidemiologicas-vigentes';
-	private const IRAG_SLUG = 'influenza-e-infecciones-respiratorias-agudas-graves-irag-informes-ano-%d';
+	/**
+	 * The page MINSAL publishes its in-force alerts on.
+	 *
+	 * A fixed page address, and deliberately neither of the two alternatives. The
+	 * `/wp-json/` route is closed across MINSAL's estate and the query form that
+	 * still answers here is the same API reached by a spelling they missed — this
+	 * app's only alerts source should not rest on somebody's oversight. The RSS
+	 * feed was measured and rejected for a plainer reason: it carries the ten most
+	 * recent posts, the alerts post already sits behind three news items, and a
+	 * fuente that empties because its publisher had a busy news week is a fuente
+	 * that fails for no reason a reader could act on.
+	 */
+	private const API = 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/';
 
 	/** The largest response we will read; IspRepository::parse() carries the measurement. */
 	private const MAX_BYTES = 512 * 1024;
@@ -63,11 +71,13 @@ class MinsalRepository {
 	}
 
 	/**
-	 * @param self::ALERTS|self::IRAG $feed
+	 * @param self::ALERTS $feed
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	public function get(string $feed): array {
+		$this->assertKnownFuente($feed);
+
 		$stored = $this->stored($feed);
 
 		if ($stored !== null && $stored['fetched_at'] + self::FRESH_FOR > $this->time->getTime()) {
@@ -96,46 +106,69 @@ class MinsalRepository {
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
 	private function refresh(string $feed, ?array $stored = null): array {
-		$page = $this->fetch($feed, 'content,modified');
-		$items = $page === null ? [] : $this->parse($feed, (string)($page['content']['rendered'] ?? ''));
+		$html = $this->request();
+		$items = $html === null ? [] : $this->parse($html);
 
-		// A parse returning zero items is a failure, never a result. Caching it
-		// would replace every real alert with an empty list, which a clinician
-		// reads as "no hay alertas vigentes" — the most dangerous thing this app
-		// could do. So: leave the last good copy alone and say we are degraded.
-		if ($items === []) {
-			/*
-			 * Two different faults reach this guard, and naming them apart is the whole
-			 * value of the line: `$items` is [] both when MINSAL answered with a page
-			 * that parses to nothing — the restructure this rule exists to survive —
-			 * and when nothing was read at all, because `$page` is null.
-			 *
-			 * It said "returned 0 items" for both, which is a claim about MINSAL that is
-			 * false in the second case: an unreachable host, an oversize body and a WAF
-			 * block page all became "MINSAL is publishing an empty list", sending whoever
-			 * read it to look for a MINSAL that had stopped publishing. Measured on this
-			 * instance 2026-09-15: epi.minsal.cl answers 403 with 5.481 bytes of HTML,
-			 * which request() drops as "not a page" — until now, without a line anywhere.
-			 *
-			 * Same correction IspRepository already carries, where logging count(TERMS)
-			 * rather than $attempted let "24 intentos" mean one.
-			 *
-			 * No 'app' key: the injected LoggerInterface is already app-scoped —
-			 * DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
-			 */
-			$this->logger->warning(
-				$page === null
-					? 'MINSAL could not be read for feed {feed}'
-					: 'MINSAL returned 0 items for feed {feed}',
-				['feed' => $feed],
-			);
+		return $items === [] ? $this->fail($feed, $html, $stored) : $this->store($feed, $items);
+	}
 
-			return $this->degrade($feed, $stored);
-		}
+	/**
+	 * The zero-items path, shared by refresh() and probe(): same log, same
+	 * degrade, same cooldown. Split out so probe() can reach this conclusion
+	 * from the page it already fetched and parsed, instead of asking refresh()
+	 * to fetch the same page a second time to find out what probe() already
+	 * knows — see probe()'s own docblock for why that second fetch mattered.
+	 *
+	 * A parse returning zero items is a failure, never a result. Caching it
+	 * would replace every real alert with an empty list, which a clinician
+	 * reads as "no hay alertas vigentes" — the most dangerous thing this app
+	 * could do. So: leave the last good copy alone and say we are degraded.
+	 *
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
+	 */
+	private function fail(string $feed, ?string $html, ?array $stored): array {
+		/*
+		 * Two different faults reach this guard, and naming them apart is the whole
+		 * value of the line: this is called both when the page answered with content
+		 * that parses to nothing — the restructure this rule exists to survive — and
+		 * when nothing was read at all, because `$html` is null.
+		 *
+		 * Conflating them said "returned 0 items" for both, which is a claim about
+		 * MINSAL that is false in the second case: an unreachable host, an oversize
+		 * body and a WAF block page all become "MINSAL is publishing an empty list",
+		 * sending whoever reads it to look for a MINSAL that stopped publishing — the
+		 * wrong diagnosis for exactly the fault this fuente's previous host served,
+		 * without interruption, for eleven months before it moved here.
+		 *
+		 * Same correction IspRepository already carries, where logging count(TERMS)
+		 * rather than $attempted let "24 intentos" mean one.
+		 *
+		 * No 'app' key: the injected LoggerInterface is already app-scoped —
+		 * DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
+		 * No {feed} placeholder either, now that one fuente is all this class has —
+		 * naming it in every line stopped earning its keep when the informe left.
+		 */
+		$this->logger->warning(
+			$html === null
+				? 'The MINSAL alerts page could not be read'
+				: 'The MINSAL alerts page carried no alerts',
+		);
 
+		return $this->degrade($feed, $stored);
+	}
+
+	/**
+	 * Turns a freshly parsed list into the cache entry both refresh() and
+	 * probe() write — including the digest probe() compares next time.
+	 *
+	 * @param list<array<string, string>> $items
+	 *
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
+	 */
+	private function store(string $feed, array $items): array {
 		$fresh = [
 			'items' => $items,
-			'modified' => (string)($page['modified'] ?? ''),
+			'digest' => self::digest($items),
 			'fetched_at' => $this->time->getTime(),
 		];
 		$this->cache->set($this->key($feed), $fresh, self::KEEP_FOR);
@@ -144,34 +177,52 @@ class MinsalRepository {
 	}
 
 	/**
-	 * Daily breakage detection. Asks for the modification date alone — 859 bytes
-	 * against 44 KB for a full fetch — because these responses carry no ETag and
-	 * no Last-Modified, so a conditional GET is not available to us.
+	 * Daily breakage detection.
+	 *
+	 * Compares a digest of the parsed items, NOT a publication date: degreyd's
+	 * `modified` field read 2026-06-24 while its table listed alerts dated 31 July
+	 * 2026, so a date comparison reports "unchanged" straight through real edits.
+	 * The sondeo exists to DETECT; it has to compare something that moves.
+	 *
+	 * One fetch, always — there is no field-limited request left to ask for now
+	 * that the page carries no JSON envelope, so an unchanged, a changed and a
+	 * broken probe all cost exactly what get()'s own refresh does. The digest's
+	 * saving is narrower than a fetch: it is the redundant CACHE WRITE that gets
+	 * skipped when nothing moved, decided from the page this call already fetched
+	 * and parsed rather than by asking refresh() to fetch it again — that second
+	 * round trip against a foreign government server is what fail()/store() above
+	 * exist to avoid on every path, not only this one.
 	 *
 	 * @return bool false when MINSAL is unreachable, or changed into something we
 	 *              can no longer parse. Either way a human has to look.
 	 */
 	public function probe(string $feed): bool {
-		$page = $this->fetch($feed, 'modified');
-		if ($page === null) {
+		$this->assertKnownFuente($feed);
+
+		$html = $this->request();
+		$items = $html === null ? [] : $this->parse($html);
+
+		if ($items === []) {
+			$this->fail($feed, $html, $this->stored($feed));
+
 			return false;
 		}
 
 		$stored = $this->stored($feed);
-		if ($stored !== null && $stored['modified'] === (string)($page['modified'] ?? '')) {
+		if ($stored !== null && ($stored['digest'] ?? null) === self::digest($items)) {
 			return true;
 		}
 
-		// It changed. Pull the real page and see whether it still parses — which
-		// also leaves the cache warm for whoever opens the app first tomorrow.
-		return $this->refresh($feed, $stored)['degraded'] === false;
+		$this->store($feed, $items);
+
+		return true;
 	}
 
 	/**
 	 * Cache-only search, for Nextcloud's global search box.
 	 *
 	 * It must never fetch. Every registered provider runs on every search, so one
-	 * that called epi.minsal.cl would make all of Nextcloud's search wait on a
+	 * that called out to MINSAL would make all of Nextcloud's search wait on a
 	 * foreign government server — for every user, including someone looking for a
 	 * Word document. A cold cache returns nothing and self-heals on the next visit
 	 * or the next probe.
@@ -223,9 +274,9 @@ class MinsalRepository {
 	/**
 	 * The name each PDF is given by its own table row, keyed by URL.
 	 *
-	 * Empty when the page is not a table, which is the IRAG page: 29 anchors, no rows at
-	 * all. So this adds a better title where one exists and changes nothing where it does
-	 * not — the anchor scan above still finds every link either way.
+	 * Empty when the page is not a table at all. So this adds a better title where one
+	 * exists and changes nothing where it does not — the anchor scan above still finds
+	 * every link either way.
 	 *
 	 * @return array<string, string>
 	 */
@@ -236,7 +287,10 @@ class MinsalRepository {
 
 		$titles = [];
 		foreach ($rows[0] as $row) {
-			if (preg_match('#<a[^>]+href="([^"]+\.pdf)"#i', $row, $link) !== 1) {
+			// `\s*` around the URL, same as parse()'s own anchor scan and for the
+			// same reason: this side must key its dictionary by the SAME trimmed
+			// URL parse() looks it up by, or a padded href would never match here.
+			if (preg_match('#<a[^>]+href="\s*([^"]+\.pdf)\s*"#i', $row, $link) !== 1) {
 				continue;
 			}
 			if (preg_match_all('#<td\b[^>]*>(.*?)</td>#is', $row, $cells) === 0) {
@@ -247,7 +301,7 @@ class MinsalRepository {
 				// The first cell that says anything. `rowspan` cells and stray `&nbsp;`
 				// ones are real on this page.
 				if ($name !== '') {
-					$titles[html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')] = $name;
+					$titles[trim(html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'))] = $name;
 					break;
 				}
 			}
@@ -259,22 +313,48 @@ class MinsalRepository {
 	/**
 	 * @return list<array<string, string>>
 	 */
-	private function parse(string $feed, string $html): array {
-		if (preg_match_all('#<a[^>]+href="([^"]+\.pdf)"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER) === 0) {
+	private function parse(string $html): array {
+		/*
+		 * `\s*` around the captured URL: two of the live page's own anchors pad
+		 * the href with a trailing space inside the quotes —
+		 * `href="…OFICIO_CP_N_11926_2026_ebola.pdf "` — which `[^"]+\.pdf"`
+		 * required to sit immediately before the closing quote and so silently
+		 * never matched. Both anchors are real, in-force alerts (the Bundibugyo/
+		 * ébola oficios), and this class's own $rejected counter below could not
+		 * see them either: they never entered $matches at all, and a counter
+		 * downstream of the regex cannot count what the regex never matched. A
+		 * browser strips this whitespace before treating the attribute as a URL,
+		 * so tolerating it here is reading what MINSAL means, not being lenient
+		 * about garbage.
+		 */
+		preg_match_all('#<a[^>]+href="\s*([^"]+\.pdf)\s*"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER);
+
+		// warnOfMissedAnchors() runs even when $matches is empty: a page that
+		// carries pdf hrefs but zero readable anchors is the total-loss version
+		// of the exact defect above, and it deserves the same warning, not
+		// silence because the early return below has not happened yet.
+		$this->warnOfMissedAnchors($html, count($matches));
+
+		if ($matches === []) {
 			return [];
 		}
 
 		$rowTitles = $this->rowTitles($html);
 
 		/*
-		 * An anchor text used by more than one row is a LINK LABEL, not a title. MINSAL's
-		 * page is a table — `Nombre de la alerta | Fecha | Descarga` — and for the older
-		 * half the third cell reads "Descargar Documento", 27 times out of 75. Taking the
-		 * anchor text put 27 indistinguishable rows in front of a clinician.
+		 * An anchor text used by more than one row is a LINK LABEL, not a title. On
+		 * the previous host's page — a table `Nombre de la alerta | Fecha | Descarga`
+		 * — the third cell repeated "Descargar Documento" 27 times out of 75, and
+		 * taking the anchor text put 27 indistinguishable rows in front of a
+		 * clinician. Nothing repeats on degreyd's page (a five-column table, `Evento
+		 * | Desde | Alcance territorial | Tipo | Documento para descarga`, measured
+		 * 0 repeated labels across 13 rows) — see testEveryAlertKeepsItsOwnTitle —
+		 * so this branch is dormant here, not deleted: rowTitles() below still has to
+		 * exist for whichever page MINSAL points this fuente at next.
 		 *
 		 * Detected by repetition rather than by a wordlist: a real title is unique, and
-		 * "Descargar Documento" is the only string on the live page that is not. That also
-		 * survives MINSAL rewording it, which a wordlist would not.
+		 * a repeated label is the only kind of string this rule needs to catch. That
+		 * also survives MINSAL rewording it, which a wordlist would not.
 		 */
 		$labels = array_count_values(array_map(
 			fn (array $m): string => $this->text($m[2]),
@@ -284,7 +364,11 @@ class MinsalRepository {
 		$items = [];
 		$rejected = 0;
 		foreach ($matches as [, $href, $label]) {
-			$url = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			// Trimmed for the same reason the regex above tolerates surrounding
+			// whitespace: every guard from here on — https, the upload-path date —
+			// must run on the URL a browser would actually request, not on a couple
+			// of stray bytes the regex already excluded from the capture.
+			$url = trim(html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 
 			// Only https. `p()` escapes quotes and angle brackets, so it cannot make a
 			// URL scheme safe: "javascript:alert(1)/uploads/2026/01/x.pdf" satisfies both
@@ -307,9 +391,16 @@ class MinsalRepository {
 				continue;
 			}
 
-			// The anchor text is the official title WHEN it is one — it carries the oficio
-			// number, which the row's cell does not. When it is a repeated label, the row's
-			// first cell is what the table's own header calls "Nombre de la alerta".
+			// The anchor text is the official title WHEN it is one. On the previous
+			// host's page it carried the oficio number, which the row's cell did not,
+			// and the fallback below took the row's first cell, headed "Nombre de la
+			// alerta" there. Neither holds on degreyd's page — 0 of 13 anchor texts
+			// carry an oficio number, and its own first cell is an EVENT/disease name
+			// ("Sarampión", "Influenza B"), which CONTEXT.md is explicit this context
+			// has no word for. The fallback is unreachable today (no label repeats;
+			// see the comment above $labels), so it cannot yet title an alert by
+			// disease — but if MINSAL ever changes that, this fallback would, and
+			// this comment is what says so before it happens rather than after.
 			$title = $this->text($label);
 			if (($labels[$title] ?? 0) > 1) {
 				$title = $rowTitles[$url] ?? $title;
@@ -321,16 +412,13 @@ class MinsalRepository {
 			$item = [
 				'title' => $title,
 				'url' => $url,
-				// Upload year, not the oficio's year: 47 of 75 titles carry no year
-				// at all, so the path is the only field with full coverage. The UI
+				// Upload year, not the oficio's year: measured 12 of 13 titles on the
+				// live page carry no year at all (was 47 of 75 on the previous host),
+				// so the path is the only field with full coverage either way. The UI
 				// therefore labels it plain "Año" and claims nothing more.
 				'year' => $when[1],
 				'month' => $when[1] . '-' . $when[2],
 			];
-
-			if ($feed === self::IRAG) {
-				$item['se'] = preg_match('/SE\s*(\d{1,2})/i', $title, $se) === 1 ? $se[1] : '';
-			}
 
 			// Keyed by URL, because MINSAL links the same PDF from two rows of its own
 			// table. AlertsPane keys on the url, so a duplicate was a duplicate Vue key
@@ -340,102 +428,110 @@ class MinsalRepository {
 		}
 
 		if ($rejected > 0) {
+			// No longer says which feed: there is one page left here, and naming it in
+			// every line was only ever worth the words while the informes shared the class.
 			$this->logger->warning(
-				'Dropped {rejected} non-https links from feed {feed}',
-				['rejected' => $rejected, 'feed' => $feed],
+				'Dropped {rejected} non-https links from the MINSAL alerts page',
+				['rejected' => $rejected],
 			);
 		}
 
-		return $this->sort($feed, array_values($items));
+		return $this->sort(array_values($items));
 	}
 
 	/**
-	 * MINSAL's own page order is reliable for the first ~35 anchors and then is
-	 * not: past that it carries 9 inversions, because entries get appended and
-	 * edited without re-sorting. Rendering in document order shows a visibly
-	 * jumbled list to anyone who scrolls.
+	 * A cheap, independent count of every `href="…pdf"`, anywhere in the raw
+	 * document — with no dependency on the richer anchor pattern in parse()
+	 * actually matching it. That pattern requires `<a[^>]+href="…"[^>]*>…</a>`,
+	 * and the whitespace defect this method was added for is proof that a real
+	 * anchor can fail that shape: `$rejected` above only counts URLs the regex
+	 * DID capture and then reject, so a link the regex never matched at all was
+	 * uncountable by construction, and the fuente under-reported by two out of
+	 * thirteen with nothing in the log to say so.
 	 *
-	 * usort is stable in PHP 8, which is the point — within a month (26 distinct
-	 * months across 75 alerts) MINSAL's own curation survives, and that is the
-	 * only ordering signal finer than a month we are entitled to use.
+	 * Deliberately just a warning, and deliberately silent on which anchors were
+	 * lost: it exists so the NEXT shape of loss — not only the one just fixed —
+	 * shows up in the log on day one instead of staying invisible for months. It
+	 * must never fail the fetch or degrade a fuente that is otherwise healthy; a
+	 * shortfall this coarse is a prompt to go look, not proof that nothing was
+	 * read.
+	 */
+	private function warnOfMissedAnchors(string $html, int $matched): void {
+		$present = (int)preg_match_all('#href="\s*[^"]*\.pdf\s*"#i', $html);
+		if ($present > $matched) {
+			$this->logger->warning(
+				'MINSAL alerts page has {present} pdf link(s) in href attributes but only {matched} were read as anchors — an alert may be missing',
+				['present' => $present, 'matched' => $matched],
+			);
+		}
+	}
+
+	/**
+	 * MINSAL's own page order is not chronological: entries get appended and
+	 * edited without re-sorting, so rendering in document order shows a visibly
+	 * jumbled list to anyone who scrolls. Measured on the live page: 1 inversion
+	 * across 13 anchors (`1781616195625_OFI.pdf` sits after two older alerts in
+	 * the markup — see testTheFixtureStillContainsTheInversionThisSortExistsToFix);
+	 * the previous host's page carried 9 across 75.
+	 *
+	 * usort is stable in PHP 8, which is the point — within a month (5 distinct
+	 * months across 13 alerts today, was 26 across 75) MINSAL's own curation
+	 * survives, and that is the only ordering signal finer than a month we are
+	 * entitled to use.
 	 *
 	 * @param list<array<string, string>> $items
 	 *
 	 * @return list<array<string, string>>
 	 */
-	private function sort(string $feed, array $items): array {
-		usort($items, $feed === self::IRAG
-			? static fn (array $a, array $b): int => (int)$b['se'] <=> (int)$a['se']
-			: static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
+	private function sort(array $items): array {
+		usort($items, static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
 
 		return $items;
 	}
 
-	private function fetch(string $feed, string $fields): ?array {
-		foreach ($this->slugs($feed) as $slug) {
-			$page = $this->request($slug, $fields);
-			if ($page !== null) {
-				return $page;
-			}
-		}
-
-		return null;
-	}
-
 	/**
-	 * The IRAG page is year-templated, so every January it would 404 until MINSAL
-	 * puts the new year up. Falling back one year survives the rollover with no
-	 * code change and no ticket in the first week of January.
+	 * The page's HTML, or null on anything that stops us reading it.
 	 *
-	 * @return list<string>
+	 * One fixed URL, no slug and nothing to narrow the response to: this used to
+	 * resolve a page by slug against a WordPress REST endpoint, and the fallback
+	 * loop that once tried more than one slug went with the informes — the
+	 * year-templated slug was theirs, and this page has never carried a year in
+	 * its own address. A page is not a collection to filter down, either, so
+	 * there is no `_fields` left to ask for: the whole body is what parse() reads.
 	 */
-	private function slugs(string $feed): array {
-		if ($feed === self::ALERTS) {
-			return [self::ALERTS_SLUG];
-		}
-
-		$year = (int)date('Y', $this->time->getTime());
-
-		return [sprintf(self::IRAG_SLUG, $year), sprintf(self::IRAG_SLUG, $year - 1)];
-	}
-
-	private function request(string $slug, string $fields): ?array {
+	private function request(): ?string {
 		try {
-			$response = $this->clients->newClient()->get(self::API, [
-				'query' => ['slug' => $slug, '_fields' => $fields],
-				'timeout' => 15,
-			]);
+			$response = $this->clients->newClient()->get(self::API, ['timeout' => 15]);
 			$body = (string)$response->getBody();
 
 			/*
-			 * The same bound IspRepository::parse() carries, and for the same reason: a
-			 * decoder on an unbounded body fatals the worker inside a page render. Measured
-			 * against the largest real payload here, the 43 KB alerts page — twelve times
-			 * over. A body this size is not a WordPress page, whatever it claims to be.
+			 * The same bound IspRepository::parse() carries, and for the same reason:
+			 * an unbounded body risks the worker's memory in preg_match_all() rather
+			 * than in a JSON decoder, now that there is no JSON envelope to decode.
+			 * Measured against the live page, 66 743 B — the cap leaves close to eight
+			 * times that as headroom. A body this size is not this page, whatever it
+			 * claims to be.
 			 */
 			if (strlen($body) > self::MAX_BYTES) {
-				$this->logger->warning('MINSAL response of {bytes} bytes, discarded', [
-					'slug' => $slug, 'bytes' => strlen($body),
+				$this->logger->warning('MINSAL alerts page of {bytes} bytes, discarded', [
+					'bytes' => strlen($body),
 				]);
 
 				return null;
 			}
 
-			$pages = json_decode($body, true);
+			return $body;
 		} catch (Throwable $e) {
 			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
 			// checks isset($entry['exception']) and serialises the class, the trace and
 			// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
-			$this->logger->warning('Could not reach MINSAL ({slug})', [
-				'slug' => $slug,
+			$this->logger->warning('Could not reach the MINSAL alerts page', [
 				'exception' => $e,
 			]);
 
 			return null;
 		}
-
-		return is_array($pages) && isset($pages[0]) && is_array($pages[0]) ? $pages[0] : null;
 	}
 
 	private function stored(string $feed): ?array {
@@ -472,5 +568,43 @@ class MinsalRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
 	private function cooldownKey(string $feed): string {
 		return 'cooldown-' . $feed;
+	}
+
+	/**
+	 * `get()` and `probe()` still take `$feed` because that is the signature
+	 * `Sources` already calls — `$this->minsal->get(MinsalRepository::ALERTS)`,
+	 * always with that one argument — from when this class answered for two
+	 * fuentes and the informes had not yet split into their own sibling.
+	 * `Sources` does not address every repository the same way: IspReportRepository
+	 * was written after that split and its `get()`/`probe()` take nothing, because
+	 * a class with one fuente never needed the parameter. This one still has it,
+	 * and dropping it is a public-signature change for a caller this task does
+	 * not own — narrowing what the parameter accepts is the smaller, safe one.
+	 *
+	 * `request()` stopped reading `$feed` once the slug that used to route to a
+	 * page went with the informes, leaving only a docblock's `@param self::ALERTS`
+	 * between a typo and `get('whatever')` quietly minting a `feed-whatever` cache
+	 * entry that nothing else in this class would ever refresh, degrade or serve
+	 * correctly. One fuente lives here now; asking for another is a caller's
+	 * mistake, and a mistake should throw rather than be cached.
+	 */
+	private function assertKnownFuente(string $feed): void {
+		if ($feed !== self::ALERTS) {
+			throw new InvalidArgumentException(
+				"MinsalRepository has one fuente ('" . self::ALERTS . "'), not '$feed'",
+			);
+		}
+	}
+
+	/**
+	 * What probe() compares instead of a publication date — see its docblock for
+	 * why. Keyed on URL alone, the same identity `parse()`'s own dedupe uses: a
+	 * title or a row reordering would flag a change nobody could act on, and
+	 * MINSAL reassigns numeric ids on republish, so those cannot be the key either.
+	 *
+	 * @param list<array<string, string>> $items
+	 */
+	private static function digest(array $items): string {
+		return hash('sha256', implode("\n", array_column($items, 'url')));
 	}
 }

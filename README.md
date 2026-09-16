@@ -10,8 +10,8 @@ AGPL-3.0-or-later; data from the Departamento de Epidemiología (MINSAL) and the
 | View | What it is | Where it comes from |
 | --- | --- | --- |
 | **Inicio** | What was published most recently, freshness first | Everything below, already loaded |
-| **Alertas vigentes** | The oficios in force, filterable by text, year and month | Public REST API on `epi.minsal.cl` |
-| **Informe semanal ETI e IRAG** | The weekly report, by semana epidemiológica | Public REST API on `epi.minsal.cl` |
+| **Alertas vigentes** | The oficios in force, filterable by text, year and month | The page MINSAL publishes the in-force set on, at `degreyd.minsal.cl` |
+| **Circulación de Virus Respiratorios** | The ISP's weekly informe, by semana epidemiológica | One page on `ispch.gob.cl`, accumulated a week at a time |
 | **Alertas del ISP** | Recalls, falsifications, pharmacovigilance, device withdrawals | 24 hourly RSS feeds on `ispch.gob.cl` |
 | **Tablero ETI e IRAG** | The national dashboard, embedded | Power BI *"Publish to web"* |
 | **EPIVIGILA** | What it is, how to get in, and the real access situation | A link, never embedded |
@@ -19,9 +19,16 @@ AGPL-3.0-or-later; data from the Departamento de Epidemiología (MINSAL) and the
 ## Status
 
 **0.9.0, 2026-09-13.** All six views ship and the OCS contract is settled at one route
-([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` is tagged `v0.9.0` and
-`[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md) is empty; `info.xml`, `package.json` and an
-instance's `installed_version` all read 0.9.0.
+([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` is tagged `v0.9.0`; `info.xml`,
+`package.json` and an instance's `installed_version` all read 0.9.0.
+
+**`[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md) is no longer empty.** Two of the three fuentes
+changed publisher on 2026-09-16: the alertas vigentes are read from the page MINSAL publishes the
+in-force set on, and the weekly informe now comes from the ISP, whose own title for it is what the
+pane is called. The app also carries the ISP's intermediate certificate itself, so a fresh install
+needs no certificate import. Why each moved, and what each move costs a clinician:
+[ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md). `<version>` is deliberately
+unchanged — see *Things that bite*.
 
 Not done, and each for a reason: the OCS route carries no `#[CORS]`, which needs a concrete origin
 rather than a wildcard; nothing propagates the establishment to this app, so it reads
@@ -57,12 +64,16 @@ Four steps, on a machine already running the `gestion` stack.
 
 A read-through proxy with a cache, no database. Three rules are not guessable from the code:
 
-- PDFs are **read from the anchors, never constructed**: the upload folder is not derivable from the
-  semana epidemiológica (SE 29 sits under `2026/07`, SE 24 under `2026/06`).
-- **For MINSAL, zero items is a failure, never a result** — the last good copy keeps being served
-  behind a *problemas técnicos* banner. **For the ISP it is the opposite**: one empty feed is normal,
-  only failing to reach all 24 is degradation. That disagreement is why `IspRepository` is a sibling
-  of `MinsalRepository` rather than a second source inside it.
+- PDFs are **read from the anchors, never constructed**: neither publisher's filenames are derivable
+  from what identifies the document. The ISP appends a version suffix when it reissues a week
+  (`…SE35-08-09-2026-V3`), and MINSAL pads two of its own hrefs with a trailing space inside the
+  quotes — both parsers read what the publisher serves rather than what a rule would predict.
+- **For the alertas vigentes and for the informe, zero items is a failure, never a result** — the
+  last good copy keeps being served behind a *problemas técnicos* banner. **For the ISP's alertas
+  sanitarias it is the opposite**: one empty category is normal, only failing to reach all 24 is
+  degradation. That disagreement is why there are three sibling repositories and no base class:
+  `IspReportRepository` and `IspRepository` read the same host and agree on nothing else, because
+  sharing a host is not sharing a rule.
 - The daily job **detects** that a source changed, it does not warm the cache: `TimedJob`, 24 h
   interval, `TIME_INSENSITIVE`, no fixed hour.
 
@@ -127,15 +138,22 @@ against what those sites actually publish, quirks included.
 ## The two traps this app pays for — both measured, both have cost a wrong diagnosis
 
 - **`www.ispch.gob.cl` serves only its leaf certificate.** `ssl_verify_result=20` — Nextcloud's HTTP
-  client, curl and Python all fail; browsers hide it by chasing the AIA. `gestion`'s provisioning
-  phase `07-certs` imports the intermediate; without it this app is a no-op that reads as an outage.
-  **Never `verify=False`.**
+  client, curl and Python all fail; browsers hide it by chasing the AIA. **The app carries the missing
+  link itself**: `certs/gsgccr6alphasslca2025.crt` ships in this repo, and `CertificateBundle` merges
+  it with the instance's own anchors for the two ISP fuentes only. Verification stays fully on — a
+  certificate in a CAfile is an *additional* anchor, not a way around checking one — so **never
+  `verify=False`**, still. Measured on a host with no import, 2026-09-16: `cURL error 60` against the
+  system anchors alone, `200` against the same anchors with that one file appended. No provisioning
+  step stands between a fresh clone and a working fuente any more; on an instance with no writable
+  scratch directory the merge is skipped and the ISP degrades exactly as it used to, which is the
+  intended failure rather than a fatal inside a page render.
 
-  **And the intermediate is not a permanent fact.** On 2026-09-15 the ISP's leaf was reissued under
-  `GlobalSign GCC R6 AlphaSSL CA 2025`, while the imported certificate was still the
-  `GlobalSign RSA OV SSL CA 2018` one — so every feed failed `cURL error 60` and the fuente was dead
-  with nothing saying why. An import pins one issuer; the publisher rotates on its own schedule and
-  nothing here detects it. When the ISP goes quiet, read the chain before assuming an outage:
+  **A shipped certificate still pins one issuer.** On 2026-09-15 the ISP's leaf was reissued under
+  `GlobalSign GCC R6 AlphaSSL CA 2025`, while the certificate in the trust store was still the
+  `GlobalSign RSA OV SSL CA 2018` one — so every request failed `cURL error 60` and the fuente was
+  dead with nothing saying why. That is the same failure the shipped file will reproduce the next time
+  the publisher rotates: **the ISP's leaf expires 2026-11-23**, and nothing here detects a change. When
+  the ISP goes quiet, read the chain before assuming an outage:
 
   ```
   # what the ISP is signed by TODAY, and where its intermediate lives
@@ -145,9 +163,11 @@ against what those sites actually publish, quirks included.
   occ security:certificates:import <the CA Issuers .crt from that output>
   ```
 
-  The app cannot repair this, but since 0.9.x it no longer hides it: the *"No ISP feed could be
-  reached"* warning carries the transport error, so the cURL code is in `nextcloud.log` without
-  turning the loglevel down to `debug`.
+  The `occ` import fixes one instance today; the durable fix is to replace
+  `certs/gsgccr6alphasslca2025.crt` with the CA Issuers certificate from that same output, which
+  [`certs/README.md`](certs/README.md) spells out, DER conversion included. Since 0.9.x nothing hides
+  the fault either way: the *"No ISP feed could be reached"* warning carries the transport error, so
+  the cURL code is in `nextcloud.log` without turning the loglevel down to `debug`.
 - **The ISP's WAF answers a literal `curl/*` User-Agent with an empty reply**, and 200 to anything
   else — which reads exactly like a TLS fault. `IClientService` sends its own UA, so the app is fine;
   do not "simplify" a reproduction down to curl and conclude the host is down.

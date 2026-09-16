@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Notification\Notifier;
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
@@ -44,11 +45,21 @@ class NotifierTest extends TestCase {
 		);
 	}
 
-	public function testAnIragOutageIsDistinguishableFromAnAlertsOutage(): void {
-		self::assertStringContainsString(
-			'los informes semanales ETI/IRAG',
-			$this->render(Sources::REPORTS),
-		);
+	/**
+	 * Named for the fuente and not for ETI/IRAG, which is what the PREVIOUS publisher
+	 * called a document this app no longer reads. A test name is read by whoever has
+	 * to fix the thing it guards, so it is one more place the old name would have
+	 * kept a second vocabulary alive.
+	 */
+	public function testAnInformeOutageIsDistinguishableFromAnAlertsOutage(): void {
+		$subject = $this->render(Sources::REPORTS);
+
+		self::assertStringContainsString('el informe semanal de Circulación de Virus Respiratorios del ISP', $subject);
+		self::assertStringNotContainsString('MINSAL', $subject);
+		// The tablero keeps ETI e IRAG, legitimately — it really is MINSAL's report.
+		// This fuente carrying the acronym too is what made the two read as one series
+		// from one publisher, which is now exactly wrong.
+		self::assertStringNotContainsString('IRAG', $subject);
 	}
 
 	/**
@@ -106,6 +117,7 @@ class NotifierTest extends TestCase {
 		$sources = new Sources(
 			$this->createMock(MinsalRepository::class),
 			$this->createMock(IspRepository::class),
+			$this->createMock(IspReportRepository::class),
 		);
 
 		return new Notifier($factory, $urls, $sources);

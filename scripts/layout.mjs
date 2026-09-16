@@ -40,6 +40,11 @@ const fail = (m, detail = []) => {
 	detail.forEach((d) => console.log(`          ${d}`))
 	failures++
 }
+// The third outcome, in the shape scripts/smoke.sh already prints it: a check that
+// could not be made, named, and counted against nothing. Deliberately NOT a pass —
+// "nobody could check this" and "this held" are different facts, and printing the
+// first as the second is precisely how a gate goes quiet.
+const skip = (m) => console.log(`    \x1b[33m--\x1b[0m    ${m}`)
 
 /**
  * Runs inside the page. Four families, and each sees what the others cannot.
@@ -211,9 +216,11 @@ const INSPECT = (paneIndex) => {
  *
  * @param {import('playwright').Page} page - The page under test.
  * @param {number} paneIndex - Which `.epi > section` to open.
+ * @param {boolean} unanswerable - Whether this pane's fuente is degraded AND carries
+ *   zero items, the one state that makes the missing-options complaint unanswerable.
  * @return {Promise<string[]>} One complaint per option that shows no count.
  */
-const inspectMenus = async (page, paneIndex) => {
+const inspectMenus = async (page, paneIndex, unanswerable) => {
 	const complaints = []
 	const menus = await page.evaluate((i) => {
 		const panes = [...document.querySelectorAll('.epi > section')]
@@ -254,7 +261,17 @@ const inspectMenus = async (page, paneIndex) => {
 				complaints.push(`filter option "${option}" renders an undefined label`)
 			}
 		}
-		if (options.length === 1) {
+		// The pane carries no items, so tally() builds no options and the menu
+		// legitimately holds nothing but its "todo" row. Degraded alone does not imply
+		// this — MinsalRepository::present() keeps serving the last GOOD copy while
+		// degraded, so a fuente that degrades after having items still has items to
+		// count. `degraded` only names WHY a genuinely empty one is empty; the caller
+		// computes `unanswerable` from BOTH degraded and a zero item count. Going red
+		// here blames this app for a host it does not own — the same DATA-reason red
+		// check 8 already refuses to go. Only THIS complaint is withheld: the menus are
+		// still opened, the pane must still have them, and an option that does appear is
+		// still read for its count. The caller prints the skip that names the fuente.
+		if (options.length === 1 && !unanswerable) {
 			complaints.push('a filter menu offers nothing but its "todo" row')
 		}
 
@@ -319,6 +336,48 @@ const inspectMenus = async (page, paneIndex) => {
 
 	return complaints
 }
+
+/**
+ * Is this pane's fuente in the one state that makes the missing-options complaint
+ * unanswerable — degraded AND serving zero items?
+ *
+ * Degraded alone does not mean empty: MinsalRepository::present($stored, true) (the
+ * degrade() path, present() at :452) keeps serving `$stored['items'] ?? []` — the last
+ * GOOD copy — so a fuente that degrades after having items still has items, and its
+ * menus should build year/month options same as ever. The fact that makes tally()
+ * build nothing is "zero items", not "degraded"; `degraded` only names WHY a fuente
+ * that genuinely has none is empty. A reviewer caught this before it could expire:
+ * this instance has no last-good copy for either fuente today, so the two facts
+ * happen to coincide here, but two later tasks in this plan repoint these fuentes at
+ * live sources, where a degrade-with-items is the expected case, not a hypothetical.
+ *
+ * Read from the initial-state node rather than from the rendered DegradedNotice: that
+ * node is the same contract src/state.js reads (PageController provides ONE `sources`
+ * key for all three fuentes) and loadState() leaves it in the DOM, whereas the notice
+ * is @nextcloud/vue markup that can be restyled without the fact changing.
+ *
+ * Both halves fail closed, in the direction that keeps the assertion RUNNING: a
+ * `degraded` that cannot be read answers false (not known to be degraded), and an
+ * `items` that cannot be read or is not an array answers non-zero (not known to be
+ * empty) — either default alone already keeps the AND false. One expression, not two
+ * independent try/catches that could disagree about what "unreadable" means. A
+ * detection that broke must leave the gate red rather than quiet — and unlike a
+ * genuinely unanswerable fuente, which silences one pane, a broken read here would
+ * silence every pane at once.
+ *
+ * @param {import('playwright').Page} page - The page under test.
+ * @param {string} fuente - The payload key, as Service/Sources.php spells it.
+ * @return {Promise<boolean>} True only when the payload says degraded AND empty.
+ */
+const isUnanswerable = (page, fuente) => page.evaluate((key) => {
+	try {
+		const source = JSON.parse(atob(document.querySelector('#initial-state-epidemiologia-sources').value))[key]
+		const itemCount = Array.isArray(source.items) ? source.items.length : Infinity
+		return source.degraded === true && itemCount === 0
+	} catch {
+		return false
+	}
+}, fuente)
 
 const browser = await chromium.launch()
 // The header is sent on EVERY request, not left to httpCredentials. Playwright
@@ -412,7 +471,7 @@ for (const { w, h } of VIEWPORTS) {
 	})
 
 	if (landed.skipped) {
-		pass('Inicio'.padEnd(26) + ` skipped — ${landed.skipped}`)
+		skip('Inicio'.padEnd(26) + ` ${landed.skipped}`)
 	} else if (landed.error) {
 		fail(`Inicio — ${landed.error}`)
 	} else if (landed.heading !== 'Alertas del ISP') {
@@ -423,14 +482,22 @@ for (const { w, h } of VIEWPORTS) {
 		pass('Inicio'.padEnd(26) + ' the link goes where it says')
 	}
 
-	// The two panes that carry a toolbar. Done after INSPECT because it leaves the
-	// panes' display attributes set, and this needs to set them again anyway.
-	for (const [paneIndex, name] of [[1, 'Alertas vigentes'], [2, 'Alertas del ISP']]) {
-		const complaints = await inspectMenus(page, paneIndex)
-		if (complaints.length === 0) {
-			pass(`${name.padEnd(26)} counts in the filter menus`)
-		} else {
+	// The two panes that carry a toolbar, each named beside the fuente that fills its
+	// menus. Done after INSPECT because it leaves the panes' display attributes set,
+	// and this needs to set them again anyway.
+	for (const [paneIndex, name, fuente] of [[1, 'Alertas vigentes', 'alerts'], [2, 'Alertas del ISP', 'sanitary_alerts']]) {
+		const unanswerable = await isUnanswerable(page, fuente)
+		const complaints = await inspectMenus(page, paneIndex, unanswerable)
+		if (unanswerable) {
+			skip(`${name.padEnd(26)} the fuente ${fuente} is degraded: not checking the counts in its filter menus`)
+		}
+		// Not an `else`: the complaints that survive an unanswerable fuente — a pane
+		// with no menus at all, an `undefined` label — are still failures. And no pass
+		// is printed beside the skip, because a check nobody made is not a check that held.
+		if (complaints.length > 0) {
 			complaints.forEach((c) => fail(`${name} — count missing`, [c]))
+		} else if (!unanswerable) {
+			pass(`${name.padEnd(26)} counts in the filter menus`)
 		}
 	}
 }

@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\IspRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
@@ -206,12 +207,11 @@ class IspRepositoryTest extends TestCase {
 	 *
 	 * Per-feed failures go to `debug` on purpose — 24 feeds, one blip is noise — but
 	 * Nextcloud's default loglevel is warn, so the cause is written nowhere an admin
-	 * looks and the visible line named none. This class's own docblock records the fault
-	 * that produces exactly that state: an instance without the ISP's intermediate
-	 * certificate, where the app "is a no-op that reads as an outage". Measured on this
-	 * instance 2026-09-15 — the ISP had rotated to a CA whose intermediate was not
-	 * imported, every feed failed cURL error 60, and the log said only "No ISP feed
-	 * could be reached".
+	 * looks and the visible line named none. Before CertificateBundle existed, this
+	 * was the state an instance missing the ISP's intermediate certificate sat in.
+	 * Measured on this instance 2026-09-15 — the ISP had rotated to a CA whose
+	 * intermediate was not imported, every feed failed cURL error 60, and the log
+	 * said only "No ISP feed could be reached".
 	 *
 	 * Asserted on 'exception' because that is the key Nextcloud's log pipeline
 	 * serialises specially; the double json-encodes the context, so the key appearing is
@@ -1261,8 +1261,14 @@ class IspRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 		$cacheFactory->method('createLocking')->willReturn($this->locking());
 
+		// The mocked $client above answers every request regardless of 'verify', so
+		// the path this double returns is never read from disk — only its presence
+		// as a constructor argument matters here.
+		$bundle = $this->createMock(CertificateBundle::class);
+		$bundle->method('path')->willReturn('/fake/ca-bundle.pem');
+
 		return new IspRepository(
-			$clients, $time, $this->logger(), $cacheFactory,
+			$clients, $bundle, $time, $this->logger(), $cacheFactory,
 		);
 	}
 

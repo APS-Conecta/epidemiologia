@@ -34,9 +34,11 @@ use Throwable;
  * Two facts about the ISP, both measured 2026-08-02 and neither guessable:
  *
  *  - The host serves ONLY its leaf certificate. Nextcloud's HTTP client fails
- *    verification and returns nothing until the intermediate is imported, which
- *    provisioning phase 07-certs does. Without that phase this class is a no-op
- *    that looks like an outage.
+ *    verification unless the intermediate is added to the anchors it trusts —
+ *    a browser recovers by chasing the certificate's AIA extension, PHP does
+ *    not. CertificateBundle carries that intermediate and merges it in at
+ *    request time (see the two `get()` calls below), so this no longer depends
+ *    on a hand import done once on one machine.
  *  - The WAF answers a literal `curl/*` User-Agent with an EMPTY REPLY and 200
  *    to anything else. That reads exactly like a TLS fault and has already cost
  *    one wrong diagnosis. IClientService sends its own UA, so we are fine — but
@@ -137,10 +139,11 @@ class IspRepository {
 	 * Per-feed failures are logged at `debug` on purpose — with 24 feeds a single blip
 	 * is noise, and refresh() judges the SET. But Nextcloud's default loglevel is warn,
 	 * so on a default instance the reason is written nowhere, and the only visible line
-	 * is "No ISP feed could be reached", which names no cause. That is the state a
-	 * deployment missing the ISP's intermediate certificate sits in: this class's own
-	 * docblock records that it then "is a no-op that reads as an outage", and the
-	 * adjacent WAF behaviour "has already cost one wrong diagnosis".
+	 * is "No ISP feed could be reached", which names no cause. That is the state an
+	 * instance whose merged CA bundle cannot be built sits in — CertificateBundle
+	 * degrades to the instance's own anchors and the ISP's TLS handshake then fails
+	 * exactly as it did before this class existed. The adjacent WAF behaviour, this
+	 * class's own docblock notes, "has already cost one wrong diagnosis".
 	 *
 	 * So: keep the last one and attach it where the set is judged. Not a list — 24
 	 * stack traces to say one thing — and not a level change, which would put 24 lines
@@ -150,6 +153,7 @@ class IspRepository {
 
 	public function __construct(
 		private IClientService $clients,
+		private CertificateBundle $bundle,
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
 		ICacheFactory $cacheFactory,
@@ -522,7 +526,7 @@ class IspRepository {
 		try {
 			$response = $this->clients->newClient()->get(
 				sprintf(self::FEED, $term) . '?paged=' . $page,
-				['timeout' => 15],
+				['timeout' => 15, 'verify' => $this->bundle->path()],
 			);
 		} catch (Throwable $e) {
 			// WordPress answers 404 past the last page, and the client throws on it. That
@@ -714,6 +718,7 @@ class IspRepository {
 			$response = $this->clients->newClient()->get(sprintf(self::FEED, $term), [
 				'timeout' => 15,
 				'headers' => $headers,
+				'verify' => $this->bundle->path(),
 			]);
 		} catch (Throwable $e) {
 			// Per-feed failure is not reported: with 24 feeds a single blip would be

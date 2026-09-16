@@ -20,6 +20,33 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Changed
 
+- **The alertas vigentes are read from the page MINSAL publishes the in-force set on.** The host this
+  fuente used has answered a hard 403 to every network tried since October 2025, so it had no reachable
+  content at all; MINSAL moved the alerts itself and the app follows the publisher. **13 alertas
+  vigentes**, titled by MINSAL's own table rather than by the anchor text. **Eight of the thirteen link
+  a PDF back to the old host and those links do not resolve** — for anyone, from anywhere, with no
+  archive copy in existence; they are rendered exactly as MINSAL publishes them, unmarked.
+  [ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md).
+- **The weekly informe now comes from the ISP, and its pane is called *Circulación de Virus
+  Respiratorios*** — the publisher's own title for it. The previous publisher's informes were not moved
+  anywhere and have no reachable home. The admin bell and *Administración → Visión general* name it the
+  same way, so *ETI/IRAG* now appears only on the **tablero**, which really is MINSAL's report. The
+  pane's navigation row moved from the MINSAL group to the ISP's, its degraded notice links the ISP,
+  and the fuente **accumulates one informe per semana
+  epidemiológica**: the ISP publishes only the current one and its year archive renders client-side, so
+  the back catalogue cannot be fetched at all. Any app update on the instance empties the accumulation
+  and it restarts from the current week, and **the log now says so when it happens** — the ISP archive
+  already did, and it is the one of the two that can walk itself back
+  ([ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)).
+- **Installing no longer requires importing the ISP's intermediate certificate by hand.** The app ships
+  the certificate `www.ispch.gob.cl` omits from its chain and merges it with the instance's own trust
+  anchors for its ISP requests only; verification is unchanged and `verify => false` is still forbidden.
+  The ISP's leaf expires **2026-11-23** — if the issuer rotates, `certs/README.md` carries the one
+  command that re-derives the replacement from the live certificate.
+- **The app's summary and description name what it actually shows, and so does the published OCS
+  contract.** All three advertised *informes IRAG*, which was the previous publisher's name for a
+  document this app no longer reads; `openapi.json` is generated from the summary and had not been
+  regenerated.
 - The *"Ver en el sitio oficial"* link in the ISP's degraded notice now opens the ISP's alert index
   rather than the `anamed` category. It is shown exactly when the app cannot reach the ISP, and it
   sent a reader to one of the 24 categories with nothing saying the other 23 exist.
@@ -34,6 +61,13 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Fixed
 
+- **The daily sondeo can see the alerts page change again.** It compared a publication date the
+  publisher does not move — that date read June while the page listed alerts dated July — so it
+  reported no change straight through real edits, which is the one thing a detector must not do. It
+  now compares the alerts it parsed.
+- **A fuente in estado degradado no longer fails `scripts/layout.sh`.** An outage upstream was reported
+  as six layout failures in the alerts pane; the filter-count checks a degraded fuente cannot answer
+  are now skipped by name, and the structural ones still run.
 - The OCS route's published description said `total` and `has_more` were missing from the contract.
   They have been in it since 0.9.0; the sentence was a record of the fixed defect left in the present
   tense, and because the docblock *is* the spec source it was served to every consumer as the

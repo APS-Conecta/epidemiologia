@@ -19,7 +19,7 @@
 	<section>
 		<PaneHeader :title="paneName('informe')" />
 
-		<DegradedNotice v-if="reports.degraded" source="MINSAL" url="https://epi.minsal.cl/" />
+		<DegradedNotice v-if="reports.degraded" source="el ISP" url="https://www.ispch.gob.cl/virusrespiratorios/" />
 
 		<template v-if="reports.items.length">
 			<p class="epi-count">

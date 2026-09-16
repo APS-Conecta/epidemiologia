@@ -3,7 +3,7 @@
     "info": {
         "title": "epidemiologia",
         "version": "0.9.0",
-        "description": "Alertas del MINSAL y del ISP, informes IRAG y tablero nacional",
+        "description": "Alertas del MINSAL y del ISP, informe semanal de virus respiratorios y tablero nacional",
         "license": {
             "name": "AGPL-3.0-or-later"
         }

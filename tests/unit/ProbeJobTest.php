@@ -61,7 +61,7 @@ class ProbeJobTest extends TestCase {
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
 		$this->runDays(2, healthy: false);
 
-		// three sources (MINSAL alertas, MINSAL IRAG, ISP) x one admin
+		// three fuentes (alertas MINSAL, informes ISP, alertas sanitarias ISP) x one admin
 		self::assertSame(['admin', 'admin', 'admin'], $this->notified);
 	}
 

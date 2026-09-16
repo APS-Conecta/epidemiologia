@@ -1,6 +1,6 @@
 {
 	"name": "epidemiologia",
-	"description": "Alertas, informes IRAG y tablero del MINSAL, dentro de Nextcloud",
+	"description": "Alertas del MINSAL y del ISP, informe semanal de virus respiratorios y tablero nacional, dentro de Nextcloud",
 	"version": "0.9.0",
 	"license": "AGPL-3.0-or-later",
 	"private": true,
