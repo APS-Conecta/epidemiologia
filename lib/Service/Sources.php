@@ -217,7 +217,7 @@ class Sources {
 	public function name(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('las alertas epidemiológicas vigentes del MINSAL'),
-			self::REPORTS => $l->t('los informes semanales ETI/IRAG del ISP'),
+			self::REPORTS => $l->t('el informe semanal de Circulación de Virus Respiratorios del ISP'),
 			self::SANITARY_ALERTS => $l->t('las alertas sanitarias del ISP'),
 		};
 	}
@@ -231,7 +231,7 @@ class Sources {
 	public function kind(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('Alerta epidemiológica MINSAL'),
-			self::REPORTS => $l->t('Informe ETI/IRAG del ISP'),
+			self::REPORTS => $l->t('Informe del ISP'),
 			self::SANITARY_ALERTS => $l->t('Alerta sanitaria ISP'),
 		};
 	}

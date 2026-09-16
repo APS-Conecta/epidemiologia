@@ -45,11 +45,21 @@ class NotifierTest extends TestCase {
 		);
 	}
 
-	public function testAnIragOutageIsDistinguishableFromAnAlertsOutage(): void {
+	/**
+	 * Named for the fuente and not for ETI/IRAG, which is what the PREVIOUS publisher
+	 * called a document this app no longer reads. A test name is read by whoever has
+	 * to fix the thing it guards, so it is one more place the old name would have
+	 * kept a second vocabulary alive.
+	 */
+	public function testAnInformeOutageIsDistinguishableFromAnAlertsOutage(): void {
 		$subject = $this->render(Sources::REPORTS);
 
-		self::assertStringContainsString('los informes semanales ETI/IRAG del ISP', $subject);
+		self::assertStringContainsString('el informe semanal de Circulación de Virus Respiratorios del ISP', $subject);
 		self::assertStringNotContainsString('MINSAL', $subject);
+		// The tablero keeps ETI e IRAG, legitimately — it really is MINSAL's report.
+		// This fuente carrying the acronym too is what made the two read as one series
+		// from one publisher, which is now exactly wrong.
+		self::assertStringNotContainsString('IRAG', $subject);
 	}
 
 	/**

@@ -29,8 +29,10 @@ made belongs in the commit, the issue, or a comment beside the code.
   [ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md).
 - **The weekly informe now comes from the ISP, and its pane is called *Circulación de Virus
   Respiratorios*** — the publisher's own title for it. The previous publisher's informes were not moved
-  anywhere and have no reachable home. The pane's navigation row moved from the MINSAL group to the
-  ISP's, its degraded notice links the ISP, and the fuente **accumulates one informe per semana
+  anywhere and have no reachable home. The admin bell and *Administración → Visión general* name it the
+  same way, so *ETI/IRAG* now appears only on the **tablero**, which really is MINSAL's report. The
+  pane's navigation row moved from the MINSAL group to the ISP's, its degraded notice links the ISP,
+  and the fuente **accumulates one informe per semana
   epidemiológica**: the ISP publishes only the current one and its year archive renders client-side, so
   the back catalogue cannot be fetched at all. Any app update on the instance empties the accumulation
   and it restarts from the current week
