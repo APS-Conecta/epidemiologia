@@ -373,9 +373,9 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame($good['items'], $during['items']);
 	}
 
-	// --- an unknown feed is a caller's mistake, not a cache entry ------------
+	// --- an unknown fuente is a caller's mistake, not a cache entry ----------
 
-	public function testAskingForAnUnknownFeedThrowsRatherThanMintingACacheEntry(): void {
+	public function testAskingForAnUnknownFuenteThrowsRatherThanMintingACacheEntry(): void {
 		$repository = $this->repository();
 
 		try {
@@ -385,10 +385,12 @@ class MinsalRepositoryTest extends TestCase {
 			// expected
 		}
 
-		self::assertArrayNotHasKey('feed-bogus', $this->store, 'a rejected feed must not mint a cache entry');
+		// 'feed-bogus' is key()'s own prefix, unchanged — this asserts nothing
+		// was minted under it, not that the prefix itself should read differently.
+		self::assertArrayNotHasKey('feed-bogus', $this->store, 'a rejected fuente must not mint a cache entry');
 	}
 
-	public function testProbingAnUnknownFeedAlsoThrows(): void {
+	public function testProbingAnUnknownFuenteAlsoThrows(): void {
 		$this->expectException(InvalidArgumentException::class);
 
 		$this->repository()->probe('bogus');
@@ -442,8 +444,21 @@ class MinsalRepositoryTest extends TestCase {
 	 * degreyd's `modified` field read 2026-06-24 while its table listed alerts
 	 * dated 31 July 2026 — the field never tracked the content, which is why
 	 * probe() compares a digest of the parsed items instead. This is the test
-	 * that would have stayed green through that exact silent failure if probe()
-	 * still trusted a publication date.
+	 * that would have failed to catch that exact silent failure if probe() still
+	 * trusted a publication date.
+	 *
+	 * Asserted on the CONSEQUENCE of detection, never on probe()'s return value
+	 * alone: `true` means "healthy", and it comes back both when the digest
+	 * catches the change and refreshes, AND when a broken comparison misses the
+	 * change entirely — `probe()` would still find a non-empty, parseable page
+	 * either way. A bare `assertTrue()` cannot tell a real digest apart from
+	 * `$items !== [] && $stored !== null`, a comparison that reports "unchanged"
+	 * through every content change and still returns true — the exact shape of
+	 * the fault this task exists to remove, and the same shape as the deleted
+	 * fixture-era test whose own note said "nothing asserted that two alerts are
+	 * told apart, so nothing saw it." What only a real comparison moves is the
+	 * CACHE: after probe(), get() must serve the /2026/08/ urls, not the stale
+	 * /2026/06/ ones — and the request count must show the refresh happened.
 	 */
 	public function testProbeReportsChangeWhenTheContentChangesButTheDateDoesNot(): void {
 		$first = (string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
@@ -451,9 +466,15 @@ class MinsalRepositoryTest extends TestCase {
 
 		$repo = $this->repository($first);
 		$repo->get(MinsalRepository::ALERTS);
+		$before = count($this->requested);
 
 		$changed = $this->repository($second, reuseCache: true);
 		self::assertTrue($changed->probe(MinsalRepository::ALERTS));
+
+		$urls = implode(' ', array_column($changed->get(MinsalRepository::ALERTS)['items'], 'url'));
+		self::assertStringContainsString('/2026/08/', $urls, 'the digest must have caught the change and refreshed the cache');
+		self::assertStringNotContainsString('/2026/06/', $urls, 'the stale copy must not still be served');
+		self::assertCount($before + 1, $this->requested, 'one probe fetch, and no second one from get() since the refresh already left the cache fresh');
 	}
 
 	public function testTheProbeReportsFailureWhenMinsalStopsParsing(): void {

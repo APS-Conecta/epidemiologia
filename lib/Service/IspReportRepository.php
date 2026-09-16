@@ -108,8 +108,11 @@ class IspReportRepository {
 	 * It asks THROUGH the freshness window rather than around it, which is why it calls
 	 * refresh() and not get(): a detector that reuses the reader's rule reports an outage
 	 * as silence, the defect #75 records on the ISP side. One page a day is what a
-	 * detector costs here — there is no cheap validator to ask for instead, the way
-	 * MinsalRepository asks WordPress for `modified` alone.
+	 * detector costs here — there is no cheap validator to ask for instead. Neither is
+	 * there one on the MINSAL side any more: since its alerts fuente moved off the
+	 * WordPress API that answered `modified` alone, MinsalRepository::probe() pays the
+	 * same one full fetch and only saves a redundant cache write, via a digest, when
+	 * nothing moved.
 	 */
 	public function probe(): bool {
 		return $this->refresh($this->stored())['degraded'] === false;

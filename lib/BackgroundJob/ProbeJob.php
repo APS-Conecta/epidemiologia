@@ -80,11 +80,13 @@ class ProbeJob extends TimedJob {
 		// failure count and its own "failing since" stamp, and each is notified on
 		// its own 2nd, 7th and 30th consecutive day.
 		//
-		// They probe differently underneath: MinsalRepository asks one page for its
-		// modification date, while IspRepository has 24 feeds and no cheap liveness
-		// signal, so its probe is a full refresh. That is the price of a source with
-		// no equivalent of `modified`, and it is the repositories' business, not this
-		// job's — which is why this loop no longer names either of them.
+		// They probe differently underneath: MinsalRepository fetches its one page
+		// every time — an HTML page carries no field-limited request the way its old
+		// JSON endpoint's `modified` did — and only skips rewriting the cache when a
+		// digest of the parsed items is unchanged. IspRepository has 24 feeds and no
+		// cheap liveness signal at all, so its probe is a full 24-feed refresh
+		// regardless. That cost is each repository's own business, not this job's —
+		// which is why this loop no longer names either of them.
 		foreach (Sources::ALL as $source) {
 			$this->judge($source, $this->sources->probe($source));
 		}
