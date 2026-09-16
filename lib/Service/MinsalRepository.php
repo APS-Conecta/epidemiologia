@@ -287,7 +287,10 @@ class MinsalRepository {
 
 		$titles = [];
 		foreach ($rows[0] as $row) {
-			if (preg_match('#<a[^>]+href="([^"]+\.pdf)"#i', $row, $link) !== 1) {
+			// `\s*` around the URL, same as parse()'s own anchor scan and for the
+			// same reason: this side must key its dictionary by the SAME trimmed
+			// URL parse() looks it up by, or a padded href would never match here.
+			if (preg_match('#<a[^>]+href="\s*([^"]+\.pdf)\s*"#i', $row, $link) !== 1) {
 				continue;
 			}
 			if (preg_match_all('#<td\b[^>]*>(.*?)</td>#is', $row, $cells) === 0) {
@@ -298,7 +301,7 @@ class MinsalRepository {
 				// The first cell that says anything. `rowspan` cells and stray `&nbsp;`
 				// ones are real on this page.
 				if ($name !== '') {
-					$titles[html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')] = $name;
+					$titles[trim(html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'))] = $name;
 					break;
 				}
 			}
@@ -311,7 +314,28 @@ class MinsalRepository {
 	 * @return list<array<string, string>>
 	 */
 	private function parse(string $html): array {
-		if (preg_match_all('#<a[^>]+href="([^"]+\.pdf)"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER) === 0) {
+		/*
+		 * `\s*` around the captured URL: two of the live page's own anchors pad
+		 * the href with a trailing space inside the quotes —
+		 * `href="…OFICIO_CP_N_11926_2026_ebola.pdf "` — which `[^"]+\.pdf"`
+		 * required to sit immediately before the closing quote and so silently
+		 * never matched. Both anchors are real, in-force alerts (the Bundibugyo/
+		 * ébola oficios), and this class's own $rejected counter below could not
+		 * see them either: they never entered $matches at all, and a counter
+		 * downstream of the regex cannot count what the regex never matched. A
+		 * browser strips this whitespace before treating the attribute as a URL,
+		 * so tolerating it here is reading what MINSAL means, not being lenient
+		 * about garbage.
+		 */
+		preg_match_all('#<a[^>]+href="\s*([^"]+\.pdf)\s*"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER);
+
+		// warnOfMissedAnchors() runs even when $matches is empty: a page that
+		// carries pdf hrefs but zero readable anchors is the total-loss version
+		// of the exact defect above, and it deserves the same warning, not
+		// silence because the early return below has not happened yet.
+		$this->warnOfMissedAnchors($html, count($matches));
+
+		if ($matches === []) {
 			return [];
 		}
 
@@ -324,7 +348,7 @@ class MinsalRepository {
 		 * taking the anchor text put 27 indistinguishable rows in front of a
 		 * clinician. Nothing repeats on degreyd's page (a five-column table, `Evento
 		 * | Desde | Alcance territorial | Tipo | Documento para descarga`, measured
-		 * 0 repeated labels across 11 rows) — see testEveryAlertKeepsItsOwnTitle —
+		 * 0 repeated labels across 13 rows) — see testEveryAlertKeepsItsOwnTitle —
 		 * so this branch is dormant here, not deleted: rowTitles() below still has to
 		 * exist for whichever page MINSAL points this fuente at next.
 		 *
@@ -340,7 +364,11 @@ class MinsalRepository {
 		$items = [];
 		$rejected = 0;
 		foreach ($matches as [, $href, $label]) {
-			$url = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			// Trimmed for the same reason the regex above tolerates surrounding
+			// whitespace: every guard from here on — https, the upload-path date —
+			// must run on the URL a browser would actually request, not on a couple
+			// of stray bytes the regex already excluded from the capture.
+			$url = trim(html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 
 			// Only https. `p()` escapes quotes and angle brackets, so it cannot make a
 			// URL scheme safe: "javascript:alert(1)/uploads/2026/01/x.pdf" satisfies both
@@ -366,7 +394,7 @@ class MinsalRepository {
 			// The anchor text is the official title WHEN it is one. On the previous
 			// host's page it carried the oficio number, which the row's cell did not,
 			// and the fallback below took the row's first cell, headed "Nombre de la
-			// alerta" there. Neither holds on degreyd's page — 0 of 11 anchor texts
+			// alerta" there. Neither holds on degreyd's page — 0 of 13 anchor texts
 			// carry an oficio number, and its own first cell is an EVENT/disease name
 			// ("Sarampión", "Influenza B"), which CONTEXT.md is explicit this context
 			// has no word for. The fallback is unreachable today (no label repeats;
@@ -384,7 +412,7 @@ class MinsalRepository {
 			$item = [
 				'title' => $title,
 				'url' => $url,
-				// Upload year, not the oficio's year: measured 10 of 11 titles on the
+				// Upload year, not the oficio's year: measured 12 of 13 titles on the
 				// live page carry no year at all (was 47 of 75 on the previous host),
 				// so the path is the only field with full coverage either way. The UI
 				// therefore labels it plain "Año" and claims nothing more.
@@ -412,15 +440,42 @@ class MinsalRepository {
 	}
 
 	/**
+	 * A cheap, independent count of every `href="…pdf"`, anywhere in the raw
+	 * document — with no dependency on the richer anchor pattern in parse()
+	 * actually matching it. That pattern requires `<a[^>]+href="…"[^>]*>…</a>`,
+	 * and the whitespace defect this method was added for is proof that a real
+	 * anchor can fail that shape: `$rejected` above only counts URLs the regex
+	 * DID capture and then reject, so a link the regex never matched at all was
+	 * uncountable by construction, and the fuente under-reported by two out of
+	 * thirteen with nothing in the log to say so.
+	 *
+	 * Deliberately just a warning, and deliberately silent on which anchors were
+	 * lost: it exists so the NEXT shape of loss — not only the one just fixed —
+	 * shows up in the log on day one instead of staying invisible for months. It
+	 * must never fail the fetch or degrade a fuente that is otherwise healthy; a
+	 * shortfall this coarse is a prompt to go look, not proof that nothing was
+	 * read.
+	 */
+	private function warnOfMissedAnchors(string $html, int $matched): void {
+		$present = (int)preg_match_all('#href="\s*[^"]*\.pdf\s*"#i', $html);
+		if ($present > $matched) {
+			$this->logger->warning(
+				'MINSAL alerts page has {present} pdf link(s) in href attributes but only {matched} were read as anchors — an alert may be missing',
+				['present' => $present, 'matched' => $matched],
+			);
+		}
+	}
+
+	/**
 	 * MINSAL's own page order is not chronological: entries get appended and
 	 * edited without re-sorting, so rendering in document order shows a visibly
 	 * jumbled list to anyone who scrolls. Measured on the live page: 1 inversion
-	 * across 11 anchors (`1781616195625_OFI.pdf` sits after two older alerts in
+	 * across 13 anchors (`1781616195625_OFI.pdf` sits after two older alerts in
 	 * the markup — see testTheFixtureStillContainsTheInversionThisSortExistsToFix);
 	 * the previous host's page carried 9 across 75.
 	 *
 	 * usort is stable in PHP 8, which is the point — within a month (5 distinct
-	 * months across 11 alerts today, was 26 across 75) MINSAL's own curation
+	 * months across 13 alerts today, was 26 across 75) MINSAL's own curation
 	 * survives, and that is the only ordering signal finer than a month we are
 	 * entitled to use.
 	 *

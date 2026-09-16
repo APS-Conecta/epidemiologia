@@ -23,9 +23,13 @@ use RuntimeException;
  *
  * The fixture is a real captured MINSAL response, not synthetic markup. A
  * synthetic one would only prove the parser can read markup we wrote for it; a
- * captured one proves it reads what MINSAL actually publishes — 11 PDF anchors,
- * all 11 satisfying the parser's own rules, captured 2026-09-15 from the page
- * this fuente moved to after its previous host stopped answering.
+ * captured one proves it reads what MINSAL actually publishes — 13 PDF anchors,
+ * all 13 satisfying the parser's own rules, captured 2026-09-15 from the page
+ * this fuente moved to after its previous host stopped answering. Two of the
+ * 13 pad their href with a trailing space inside the quotes and were silently
+ * dropped until round 2 of review caught it (see
+ * testTheEbolaAlertsAreNotSilentlyDropped) — a real fixture earns its keep
+ * exactly here, by carrying a defect nobody would have thought to write.
  */
 class MinsalRepositoryTest extends TestCase {
 	use Doubles;
@@ -92,7 +96,37 @@ class MinsalRepositoryTest extends TestCase {
 		$alerts = $this->repository()->get(MinsalRepository::ALERTS);
 
 		self::assertFalse($alerts['degraded']);
-		self::assertCount(11, $alerts['items']);
+		self::assertCount(13, $alerts['items']);
+	}
+
+	/**
+	 * Two of the page's 13 anchors pad their href with a trailing space inside
+	 * the quotes — `href="…OFICIO_CP_N_11926_2026_ebola.pdf "` — which the old
+	 * `[^"]+\.pdf"` pattern required to sit immediately before the closing
+	 * quote, so these two never entered $matches at all. Both are real,
+	 * in-force alerts about the same Bundibugyo/ébola outbreak, and the
+	 * class's own $rejected counter could not see them either: it counts URLs
+	 * the regex captured and then rejected, and these were never captured.
+	 * "Dropped N non-https links" would have stayed silent while the fuente
+	 * quietly showed 11 of 13 — the exact failure class's own comment on
+	 * $rejected says this app exists to avoid.
+	 */
+	public function testTheEbolaAlertsAreNotSilentlyDropped(): void {
+		// By filename, not the full url: both PDFs are still hosted on the
+		// previous host (MINSAL moved the index page, not every file it links
+		// to), and this file otherwise carries zero references to it.
+		$urls = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'url');
+
+		self::assertNotSame(
+			[],
+			array_filter($urls, static fn (string $u): bool => str_ends_with($u, 'ebola.pdf')),
+			'the ébola alert (OFICIO_CP_N_11926_2026) must not be dropped',
+		);
+		self::assertNotSame(
+			[],
+			array_filter($urls, static fn (string $u): bool => str_ends_with($u, 'Virus_Bundibugyo.pdf')),
+			'the Bundibugyo alert (OFICIO_CP_N_12712_2026) must not be dropped',
+		);
 	}
 
 	public function testEveryAlertCarriesATitleAUrlAndAYear(): void {
@@ -144,8 +178,12 @@ class MinsalRepositoryTest extends TestCase {
 	 */
 	public function testTheFixtureStillContainsTheInversionThisSortExistsToFix(): void {
 		$html = (string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
+		// `\s*` before the closing quote, same as parse()'s own pattern and for
+		// the same reason: two of the 13 anchors pad their href with a trailing
+		// space, and a stricter pattern here would undercount independently of
+		// whatever parse() does, silently making this pin worth less than it claims.
 		preg_match_all(
-			'#<a[^>]+href="[^"]*/uploads/(\d{4})/(\d{2})/[^"]+\.pdf"#i',
+			'#<a[^>]+href="[^"]*/uploads/(\d{4})/(\d{2})/[^"]+\.pdf\s*"#i',
 			$html,
 			$found,
 		);
@@ -154,7 +192,7 @@ class MinsalRepositoryTest extends TestCase {
 			$found[1],
 			$found[2],
 		);
-		self::assertCount(11, $document, 'the fixture should hold the 11 alerts that were measured');
+		self::assertCount(13, $document, 'the fixture should hold the 13 alerts that were measured');
 
 		$inversions = 0;
 		for ($i = 1, $n = count($document); $i < $n; $i++) {
@@ -177,10 +215,11 @@ class MinsalRepositoryTest extends TestCase {
 
 		$june = array_values(array_filter($items, static fn (array $a): bool => $a['month'] === '2026-06'));
 
-		self::assertCount(3, $june);
+		self::assertCount(4, $june);
 		self::assertStringContainsString('DECRETO-58', $june[0]['url']);
 		self::assertStringContainsString('17264_2026', $june[1]['url']);
 		self::assertStringContainsString('1781616195625', $june[2]['url']);
+		self::assertStringContainsString('Virus_Bundibugyo', $june[3]['url']);
 	}
 
 	// --- trust boundary: MINSAL's HTML is not ours ---------------------------
@@ -251,7 +290,7 @@ class MinsalRepositoryTest extends TestCase {
 		$after = $offline->get(MinsalRepository::ALERTS);
 
 		self::assertTrue($after['degraded']);
-		self::assertCount(11, $after['items']);
+		self::assertCount(13, $after['items']);
 		// CONTEXT.md: "a freno never makes a stale fuente look fresh". This is the first assertion
 		// anywhere that a degraded read leaves `fetched_at` where it was — the property that would
 		// silently make an outage look like a successful fetch if it ever stopped holding.
@@ -311,6 +350,31 @@ class MinsalRepositoryTest extends TestCase {
 
 		self::assertSame([], $alerts['items'], 'a body that size is not a page, whatever it parses to');
 		self::assertTrue($alerts['degraded'], 'unread is not the same as empty');
+	}
+
+	/**
+	 * The ébola anchors above are ONE shape of anchor the regex in parse() can
+	 * miss; this seeds a DIFFERENT one — a `.pdf` href sitting in a `<link>`
+	 * tag rather than inside a well-formed `<a …>…</a>` — to prove the cheap
+	 * upstream count actually fires on a shape it has never seen, not only on
+	 * the one bug it was written to explain. A warning nobody has watched fire
+	 * is not a warning; this is what watches it.
+	 */
+	public function testWarnsWhenAnAnchorIsLostToTheRegex(): void {
+		$good = '<a href="https://degreyd.minsal.cl/uploads/2026/01/good.pdf">Alerta buena</a>';
+		// Not inside <a>…</a>, so the richer anchor pattern cannot match it — but
+		// it is still an href ending in .pdf, which the cheap count does see.
+		$ghost = '<link rel="alternate" href="https://degreyd.minsal.cl/uploads/2026/01/ghost.pdf">';
+
+		$alerts = $this->repository(body: $good . $ghost)->get(MinsalRepository::ALERTS);
+
+		self::assertFalse($alerts['degraded'], 'one real anchor is a healthy read, not a failed one');
+		self::assertCount(1, $alerts['items']);
+
+		$warnings = array_values(array_filter($this->logged, static fn (array $l): bool => $l['level'] === 'warning'));
+		self::assertCount(1, $warnings, 'a page with more pdf hrefs than parsed anchors must warn, exactly once');
+		self::assertSame(2, $warnings[0]['context']['present'] ?? null, 'must count the lost href too, not only the parsed one');
+		self::assertSame(1, $warnings[0]['context']['matched'] ?? null, 'must count only the anchor the regex actually matched');
 	}
 
 	/**
