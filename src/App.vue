@@ -53,10 +53,17 @@
 			<!-- The ISP, in its own list because an <li> loose in this <div> is as
 			     invalid as a nested <ul> — ADR-0005 measured that.
 			     It gained a caption when it gained rows: one row named its own
-			     publisher, six families cannot each repeat it (#52).
+			     publisher, six families cannot each repeat it (#52). It holds the
+			     informe too, since 2026-09: that fuente's publisher is the ISP now,
+			     not MINSAL (Sources::name(REPORTS)), and this list groups by
+			     publisher, not by whether a row is a family filter of the archive —
+			     so the informe gets a plain row here rather than a caption of its own.
 			     Measured on the built app 2026-08-05, not taken from the mockup: all
 			     the lists together are 538px, in a column of 682px at 360×740 and more
 			     above that. It fits, so ADR-0008 stands and the groups do not collapse.
+			     Moving the informe here changes neither the total row count nor the
+			     caption count — one row left the MINSAL list for this one — so that
+			     measurement still holds without re-taking it.
 			     scripts/layout.mjs check 7 asserts it at every viewport, because a
 			     seventh row is exactly the kind of thing a comment cannot notice. -->
 			<NcAppNavigationList :aria-labelledby="'epi-nav-isp'">
@@ -73,6 +80,17 @@
 						     that row's label left against the four above it. An empty box of the
 						     icon's size asserts nothing and keeps the list aligned. -->
 						<span v-else class="epi-nav-noicon" aria-hidden="true" />
+					</template>
+				</NcAppNavigationItem>
+				<!-- Not a seventh family: a plain pane row, same shape as the MINSAL
+				     group's items below, because the informe is not a narrowing of
+				     the ISP's alert archive — it is a different fuente that happens
+				     to share a publisher with it now. -->
+				<NcAppNavigationItem :name="ispReport.name"
+					:active="current === ispReport.id"
+					@click="current = ispReport.id">
+					<template #icon>
+						<component :is="ispReport.icon" :size="20" />
 					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
@@ -177,15 +195,21 @@ watch(current, (pane) => {
 })
 
 /**
- * Inicio first, then the MINSAL group, then the ISP on its own row.
+ * Inicio first, then the MINSAL group, then the ISP list.
  *
- * ONE caption, and it groups by publisher. There used to be three, and the third
- * grouped by function: "Notificación" over EPIVIGILA. EPIVIGILA is
- * epivigila.minsal.cl, so under the publisher rule it belongs to MINSAL, and moving
- * it there leaves one rule instead of two. The ISP's row used to label itself, on
- * the grounds that a caption spending 38px on a single row is chrome rather than
- * structure. That held while there was one row. Since #52 there are six, and six
- * rows that each repeat "ISP" would spend far more than 38px saying it.
+ * ONE caption per group, and it groups by publisher — not by pane type, and not by
+ * whether a row narrows an archive or opens a whole pane. There used to be three
+ * captions, and the third grouped by function: "Notificación" over EPIVIGILA.
+ * EPIVIGILA is epivigila.minsal.cl, so under the publisher rule it belongs to
+ * MINSAL, and moving it there leaves one rule instead of two. The ISP's row used to
+ * label itself, on the grounds that a caption spending 38px on a single row is
+ * chrome rather than structure. That held while there was one row. Since #52 there
+ * are six, and six rows that each repeat "ISP" would spend far more than 38px
+ * saying it.
+ *
+ * The informe moved from this MINSAL group to the ISP list when its fuente did
+ * (Sources::name(REPORTS)): the rule is by publisher, so a pane stays only as long
+ * as its publisher does, same as Sources itself and panes.js's title for it.
  *
  * Names come from panes.js. This file used to hold one wording and each pane
  * another; see ADR-0008 for why the groups do not collapse.
@@ -208,12 +232,18 @@ const groups = [
 		name: t('epidemiologia', 'MINSAL'),
 		panes: [
 			pane('alertas', Alert),
-			pane('informe', ChartBellCurve),
 			pane('tablero', ChartBox),
 			pane('epivigila', ShieldAccount),
 		],
 	},
 ]
+
+/**
+ * The ISP's own weekly report, rendered as a plain row in the ISP's
+ * NcAppNavigationList — alongside `ispEntries`, not inside it: those are
+ * narrowings of ONE archive pane, and this opens a different pane entirely.
+ */
+const ispReport = pane('informe', ChartBellCurve)
 
 /**
  * One glyph per family, for the four the ISP names itself.

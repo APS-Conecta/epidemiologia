@@ -23,8 +23,10 @@ import { t } from '@nextcloud/l10n'
  *   for it is Circulación de Virus Respiratorios, and ETI e IRAG was the dead MINSAL
  *   page's name, not this one's (see Sources::name(REPORTS)).
  *
- * `Alertas del ISP` is the one name that carries its publisher, because its row is
- * the only one outside the MINSAL group — see ADR-0008 and App.vue's navigation.
+ * `Alertas del ISP` is the one name that spells its publisher out in words. The
+ * informe carries its publisher a different way, by using the ISP's own title for
+ * it instead of MINSAL's — but both now sit under the ISP's caption in App.vue's
+ * navigation, not just the alerts row; see ADR-0008.
  */
 const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
