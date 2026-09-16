@@ -34,7 +34,10 @@ describe('attribution', () => {
 	})
 
 	it('credits each fuente to the institution that publishes it', () => {
-		expect(src('components/ReportPane.vue')).toContain('source="ISP"')
+		// "el ISP", with the article: state.js documents that the article differs
+		// between "MINSAL" and "el ISP", and every other ISP call site in the app
+		// (IspPane's DegradedNotice, InicioPane's degradedText) already carries it.
+		expect(src('components/ReportPane.vue')).toContain('source="el ISP"')
 		expect(src('components/AlertsPane.vue')).toContain('degreyd.minsal.cl')
 	})
 })
