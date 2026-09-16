@@ -71,17 +71,33 @@ class CertificateBundle {
 			return $instance;
 		}
 
+		// Which user is asking. `posix_geteuid()` or nothing: the old fallback,
+		// getmyuid(), reports the owner of THIS FILE rather than of the process, and
+		// this file is root-owned in a normal checkout — so on an instance without
+		// ext-posix the ownership check below compared root against root and trusted
+		// exactly the squatted file it exists to reject. A value no real owner can
+		// ever hold makes that check fail closed instead: the file is simply rebuilt.
+		$euid = function_exists('posix_geteuid') ? posix_geteuid() : -1;
+
 		// Identity, not a constant filename: the instance bundle's own PATH (not
 		// only its mtime — getAbsoluteBundlePath() switches between two different
 		// files depending on whether any CA is imported, and an admin removing
 		// their last imported CA flips it to the packaged default, whose mtime is
 		// its release date and can be OLDER than an existing merge; an mtime-only
 		// check would never rebuild, and the removed CA would stay trusted
-		// forever), its mtime and size, and the shipped PEM's mtime. Different
-		// inputs can never collide on a filename, so two instances sharing a host,
-		// or an instance whose trust anchors changed, can never be confused with
-		// each other's cache.
-		$identity = hash('sha256', $instance . '|' . $instanceStat['mtime'] . '|' . $instanceStat['size'] . '|' . $shippedMtime);
+		// forever), its mtime and size, the shipped PEM's mtime, and the euid of the
+		// process that would write it. Different inputs can never collide on a
+		// filename, so two instances sharing a host, or an instance whose trust
+		// anchors changed, can never be confused with each other's cache.
+		//
+		// The euid is in there because ownership is checked but not repairable: a
+		// root-run `occ` command arriving first writes the merge root-owned, after
+		// which www-data can neither trust it (wrong owner) nor overwrite it (no
+		// write permission, and a sticky temp directory forbids unlinking someone
+		// else's file). Without the euid that is permanent — both ISP fuentes degrade
+		// forever behind a filename nobody can guess. With it, each user gets its own
+		// cache file and each one self-heals.
+		$identity = hash('sha256', $instance . '|' . $instanceStat['mtime'] . '|' . $instanceStat['size'] . '|' . $shippedMtime . '|' . $euid);
 		$merged = $base . '/epidemiologia-isp-ca-bundle-' . $identity . '.pem';
 
 		// The right identity is still not proof this process wrote the file: it may
@@ -90,7 +106,6 @@ class CertificateBundle {
 		// user could neither read past nor repair, so ISP requests silently
 		// verified against a stray fixture instead of the instance's real anchors.
 		// A file this process does not own is treated as though it does not exist.
-		$euid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
 		if (is_file($merged) && @fileowner($merged) === $euid) {
 			return $merged;
 		}
@@ -103,8 +118,14 @@ class CertificateBundle {
 
 		// LOCK_EX because the web SAPI and the cron SAPI can arrive together, and a
 		// half-written bundle verifies nothing.
-		return @file_put_contents($merged, $anchors . "\n" . $shipped, LOCK_EX) === false
-			? $instance
-			: $merged;
+		//
+		// Success is the WHOLE payload landing, not merely "not false": a truncated
+		// write publishes a partial CA file under a correct identity name and a
+		// correct owner, so nothing would ever reject it or rebuild it again. The
+		// byte count is what file_put_contents() documents itself to return.
+		$payload = $anchors . "\n" . $shipped;
+		$written = @file_put_contents($merged, $payload, LOCK_EX);
+
+		return $written !== strlen($payload) ? $instance : $merged;
 	}
 }
