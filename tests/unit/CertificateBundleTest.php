@@ -33,7 +33,12 @@ class CertificateBundleTest extends TestCase {
 
 	protected function tearDown(): void {
 		foreach (glob($this->scratch . '/*') ?: [] as $file) {
-			@unlink($file);
+			// rmdir as well as unlink: one test below puts a DIRECTORY at the identity
+			// path to make the publish fail, and a failed assertion before its own
+			// cleanup would otherwise leave that directory in the machine's real temp
+			// base dir forever — which is the litter this scratch directory exists to
+			// prevent.
+			is_dir($file) ? @rmdir($file) : @unlink($file);
 		}
 		@rmdir($this->scratch);
 	}
@@ -250,6 +255,98 @@ class CertificateBundleTest extends TestCase {
 		self::assertSame(1, preg_match('/\$written\s*!==\s*strlen\(\$payload\)/', self::source()),
 			'the merged bundle is published on something other than the whole payload landing; '
 			. 'a truncated CA file would then be cached under a correct name and never rebuilt');
+	}
+
+	/**
+	 * The scratch file is an implementation detail of publishing atomically, and it
+	 * has to stay one: a leftover accumulates one file per rebuild per process in
+	 * the instance's temp base dir, forever, under a name nothing ever reads.
+	 *
+	 * Named exactly, not globbed loosely — `$merged . '.' . getmypid()` is the name
+	 * the code builds, and this suite runs in that same process.
+	 *
+	 * Guards the NEW failure mode, not the old one: measured against the pre-fix
+	 * code, which wrote straight to the identity path, this passes — there was no
+	 * scratch file to leave behind. What it catches is a lost `unlink()`, which is
+	 * the cost publishing atomically introduces. C1d below is the one that fails
+	 * when the rename goes away.
+	 */
+	public function testASuccessfulBuildLeavesNoScratchFileBehind(): void {
+		[$bundle] = $this->bundle("-- ANCHORS --\n");
+
+		$merged = $bundle->path();
+
+		self::assertFileExists($merged, 'the merged bundle was not published at all');
+		self::assertSame([], glob($merged . '.' . getmypid()) ?: [],
+			'the scratch file the merge is written to survived a successful publish');
+	}
+
+	/**
+	 * The property rename() buys, stated as behaviour: when the publish cannot
+	 * complete, the identity path holds NOTHING. It is the half of C1c that runtime
+	 * can observe.
+	 *
+	 * Why it matters is the failure the old code had. Writing straight to the
+	 * identity path meant a publish that got part-way left a truncated CA file
+	 * there — correct name, correct owner — and the early return at the top of
+	 * path() hands that file to every later call without ever rebuilding it. Both
+	 * ISP fuentes then fail `cURL error 60` until the identity changes on its own.
+	 * Degrading is fine and is asserted here; leaving a corpse at the identity path
+	 * is what is not.
+	 *
+	 * A directory at the identity path is the one way to fail the publish
+	 * deterministically as root, which bypasses permission bits — the same reason
+	 * testAnUnwritableScratchDirectoryFallsBackToTheInstanceBundle uses a path that
+	 * does not exist. `is_file()` is false for a directory, so path() does not take
+	 * the early return and goes on to the write, and it is rename() that then fails.
+	 *
+	 * Measured against the pre-fix code, this passes too: a blocked write degraded
+	 * there as well. It is pinning the contract rather than catching the bug that
+	 * prompted it — a later change that published eagerly, or moved the degrade
+	 * after the write, would fail here. The bug itself needs a PARTIAL write, which
+	 * cannot be forced in-process on this runtime; C1d covers that from the source.
+	 */
+	public function testAPublishThatCannotCompleteLeavesNothingAtTheIdentityPath(): void {
+		// One bundle, asked twice: the service holds no state between calls, and the
+		// identity is a hash of its inputs, which have not moved. A second instance
+		// would NOT do — bundle() writes a fresh anchors file per call, and a
+		// different instance-bundle path is a different identity and a different
+		// destination, so the obstacle would simply be somewhere else.
+		[$bundle, $instanceBundle] = $this->bundle("-- ANCHORS --\n");
+		$identity = $bundle->path();
+		unlink($identity);
+		mkdir($identity);
+
+		self::assertSame($instanceBundle, $bundle->path(), 'a publish that failed did not degrade');
+		self::assertFileDoesNotExist($identity . '.' . getmypid(),
+			'the scratch file survived a failed publish');
+		self::assertSame([], glob($identity . '/*') ?: [],
+			'something was published under the identity path despite the failure');
+
+		rmdir($identity);
+	}
+
+	/**
+	 * C1d: the merge is written beside the identity path and renamed onto it, never
+	 * written over it.
+	 *
+	 * Asserted against the source for the same measured reason as C1c above: the
+	 * runtime cost of getting this wrong is a PARTIAL file at the identity path,
+	 * and a partial write cannot be forced in-process on PHP 8.5 (a short write is
+	 * normalised to `false` before it reaches the caller). The behaviour that IS
+	 * observable is asserted in the two tests above; what only the source can say
+	 * is that the destination is never the thing being written to.
+	 *
+	 * Fails if the payload goes straight to $merged again.
+	 */
+	public function testTheMergeIsRenamedIntoPlaceRatherThanWrittenOverIt(): void {
+		$source = self::source();
+
+		self::assertSame(0, preg_match('/file_put_contents\(\s*\$merged\b/', $source),
+			'the payload is written directly to the identity path; a publish that got '
+			. 'part-way would leave a truncated CA file there and nothing would rebuild it');
+		self::assertSame(1, preg_match('/rename\(\s*\$scratch\s*,\s*\$merged\s*\)/', $source),
+			'the merge is not renamed onto the identity path, so publishing is not atomic');
 	}
 
 	/** The class under test, read as text — see the two tests above for why. */

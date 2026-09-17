@@ -61,6 +61,11 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Fixed
 
+- **A CA bundle that only half-wrote can no longer poison both ISP fuentes permanently.** The merge
+  is written beside its destination and renamed onto it, so the identity path only ever holds a whole
+  bundle. Written straight to that path, a truncated file stayed there under a correct name and a
+  correct owner — every later request trusted it and none rebuilt it, so both fuentes failed
+  `cURL error 60` until the instance's anchors happened to change.
 - **The daily sondeo can see the alerts page change again.** It compared a publication date the
   publisher does not move — that date read June while the page listed alerts dated July — so it
   reported no change straight through real edits, which is the one thing a detector must not do. It
