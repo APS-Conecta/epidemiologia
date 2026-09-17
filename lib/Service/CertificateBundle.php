@@ -116,16 +116,37 @@ class CertificateBundle {
 			return $instance;
 		}
 
-		// LOCK_EX because the web SAPI and the cron SAPI can arrive together, and a
-		// half-written bundle verifies nothing.
+		// Written beside the destination and renamed onto it, never straight to it.
+		// rename() within one directory is atomic, so the identity path only ever
+		// holds a whole bundle: a reader arriving mid-rebuild sees the previous file
+		// or the new one, and the check above can go on treating "the file is there
+		// and mine" as "the file is good".
 		//
-		// Success is the WHOLE payload landing, not merely "not false": a truncated
-		// write publishes a partial CA file under a correct identity name and a
-		// correct owner, so nothing would ever reject it or rebuild it again. The
-		// byte count is what file_put_contents() documents itself to return.
+		// Straight to $merged was the one failure mode here that did not heal. A
+		// truncated write left a partial CA file at a correct identity name with a
+		// correct owner, and the byte count below only steers THIS call to the
+		// instance bundle — the file stayed, so every later call took the early
+		// return above and trusted it, and nothing ever rebuilt it. Both ISP fuentes
+		// then fail `cURL error 60` until the identity changes on its own.
+		//
+		// The pid suffix is what LOCK_EX was reaching for and could not deliver:
+		// file_put_contents() truncates at open, BEFORE the lock is taken, and no
+		// reader takes one — so two SAPIs arriving together could expose an empty
+		// file to curl. Separate scratch names cannot collide, and the loser of a
+		// rename race simply overwrites with identical bytes.
+		//
+		// Success is still the WHOLE payload landing, not merely "not false": the
+		// byte count is what file_put_contents() documents itself to return. A short
+		// write now costs a scratch file that is unlinked, and nothing is published.
 		$payload = $anchors . "\n" . $shipped;
-		$written = @file_put_contents($merged, $payload, LOCK_EX);
+		$scratch = $merged . '.' . getmypid();
+		$written = @file_put_contents($scratch, $payload);
+		if ($written !== strlen($payload) || !@rename($scratch, $merged)) {
+			@unlink($scratch);
 
-		return $written !== strlen($payload) ? $instance : $merged;
+			return $instance;
+		}
+
+		return $merged;
 	}
 }
