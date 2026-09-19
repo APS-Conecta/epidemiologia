@@ -12,6 +12,9 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ### Added
 
+- The app's mount shows its loading state instead of a blank frame while the bundle boots —
+  spinner and `<noscript>` from the suite theme, the same component in every custom app
+  (territorio review L0-04). Vue's mount replaces the stub's children on boot, so it removes itself.
 - A render error in any pane now shows *"No pudimos mostrar esta sección"* instead of a blank page.
   The panes are shown with `v-show`, so all six are mounted at once and one throwing pane took the
   whole app down on load — and an empty page looks exactly like the instance being broken. The error
