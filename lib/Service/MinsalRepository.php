@@ -9,6 +9,8 @@ namespace OCA\Epidemiologia\Service;
 
 use InvalidArgumentException;
 use Normalizer;
+use OCA\Epidemiologia\Db\Alert;
+use OCA\Epidemiologia\Db\AlertMapper;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
@@ -20,8 +22,10 @@ use Throwable;
  * The only place that knows about MINSAL.
  *
  * A read-through proxy over the page MINSAL publishes its in-force alerts on.
- * No database, no mirroring: PDFs are linked where MINSAL publishes them, so
- * staff always open the version in force.
+ * The parsed set persists to the app's own table as metadata — the durable
+ * last-good copy an app update's cache flush no longer takes with it
+ * (ADR-0015 §2) — but nothing is mirrored: the PDFs are linked where MINSAL
+ * publishes them, so staff always open the version in force.
  */
 class MinsalRepository {
 	public const ALERTS = 'alerts';
@@ -59,12 +63,21 @@ class MinsalRepository {
 	 */
 	private const KEEP_FOR = 30 * 24 * 3600;
 
+	/**
+	 * Who is asking, on every request. A bot the publishers have no reason to
+	 * block is a visitor they can name: anonymous is not a right, and a WAF that
+	 * blocks what it cannot identify looks, from this side, exactly like an
+	 * outage (ADR-0015 §4).
+	 */
+	private const UA = 'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)';
+
 	private ICache $cache;
 
 	public function __construct(
 		private IClientService $clients,
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
+		private AlertMapper $alerts,
 		ICacheFactory $cacheFactory,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
@@ -95,6 +108,17 @@ class MinsalRepository {
 			return $this->present($stored, true);
 		}
 
+		/*
+		 * A refusal armed the freno — request() classifies. While the brake
+		 * holds, this read must not ask again: a 403 is an answer, not a
+		 * challenge (ADR-0015 §4). Served like any degraded copy, from the
+		 * cache or, after an app update, from the table. The probe is the one
+		 * ask that goes through, once a day — see probe().
+		 */
+		if ($this->braked()) {
+			return $this->present($stored, true);
+		}
+
 		return $this->refresh($feed, $stored);
 	}
 
@@ -122,7 +146,8 @@ class MinsalRepository {
 	 * A parse returning zero items is a failure, never a result. Caching it
 	 * would replace every real alert with an empty list, which a clinician
 	 * reads as "no hay alertas vigentes" — the most dangerous thing this app
-	 * could do. So: leave the last good copy alone and say we are degraded.
+	 * could do. So: leave the last good copy alone — cache and table both —
+	 * and say we are degraded.
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
@@ -159,7 +184,8 @@ class MinsalRepository {
 
 	/**
 	 * Turns a freshly parsed list into the cache entry both refresh() and
-	 * probe() write — including the digest probe() compares next time.
+	 * probe() write — including the digest probe() compares next time — and
+	 * the table's whole set, replaced (ADR-0015 §2).
 	 *
 	 * @param list<array<string, string>> $items
 	 *
@@ -172,6 +198,30 @@ class MinsalRepository {
 			'fetched_at' => $this->time->getTime(),
 		];
 		$this->cache->set($this->key($feed), $fresh, self::KEEP_FOR);
+
+		/*
+		 * The whole set, replaced: a withdrawn alert vanishes with the set that
+		 * no longer names it. Cache first, table second — a storage failure is
+		 * its own fault class (logged, retried on the next store()), never a
+		 * degrade: the fetch succeeded and the fresh copy serves regardless.
+		 */
+		$alerts = [];
+		foreach ($items as $item) {
+			$alert = new Alert();
+			$alert->setUrl($item['url']);
+			$alert->setTitle($item['title']);
+			$alert->setYear($item['year']);
+			$alert->setMonth($item['month']);
+			$alerts[] = $alert;
+		}
+
+		try {
+			$this->alerts->replaceSet($alerts);
+		} catch (Throwable $e) {
+			$this->logger->warning('Could not persist the MINSAL alerts set', [
+				'exception' => $e,
+			]);
+		}
 
 		return $this->present($fresh, false);
 	}
@@ -192,6 +242,13 @@ class MinsalRepository {
 	 * and parsed rather than by asking refresh() to fetch it again — that second
 	 * round trip against a foreign government server is what fail()/store() above
 	 * exist to avoid on every path, not only this one.
+	 *
+	 * Asks THROUGH the freno, exactly as IspRepository's does: a braked host is
+	 * not assumed unreachable, it is ASKED, once a day — #218beba's lesson, that
+	 * "we asked nothing" must never be answered as "nothing is wrong". A refusal
+	 * still escalates the brake's count and an answer still clears it (request()
+	 * does both), so the sondeo is also the brake's road back: the first day
+	 * MINSAL answers 200 again is the day the hourly reads resume.
 	 *
 	 * @return bool false when MINSAL is unreachable, or changed into something we
 	 *              can no longer parse. Either way a human has to look.
@@ -219,13 +276,15 @@ class MinsalRepository {
 	}
 
 	/**
-	 * Cache-only search, for Nextcloud's global search box.
+	 * Cache-then-table search, for Nextcloud's global search box.
 	 *
 	 * It must never fetch. Every registered provider runs on every search, so one
 	 * that called out to MINSAL would make all of Nextcloud's search wait on a
 	 * foreign government server — for every user, including someone looking for a
-	 * Word document. A cold cache returns nothing and self-heals on the next visit
-	 * or the next probe.
+	 * Word document. The cache is the hot path; when only the cache is cold — an
+	 * app update's flush (ADR-0012) — the durable table behind the fuente answers
+	 * (stored(), ADR-0015 §2), so the box self-heals without a single fetch: a
+	 * table read is not a fetch.
 	 *
 	 * @return list<array<string, string>>
 	 */
@@ -498,10 +557,34 @@ class MinsalRepository {
 	 * year-templated slug was theirs, and this page has never carried a year in
 	 * its own address. A page is not a collection to filter down, either, so
 	 * there is no `_fields` left to ask for: the whole body is what parse() reads.
+	 *
+	 * Every request names this app (UA) and classifies every failure the way it
+	 * classifies every answer (ADR-0015 §4): a 4xx/5xx status is the host SAYING
+	 * no, and arms the freno so the next reads stop asking; a timeout, a TLS
+	 * error, a DNS miss carry no response to read and stay cooldown-class —
+	 * recovery stays automatic, because those are faults that lift on their own.
+	 * A 200 that parses to nothing keeps the cooldown too (fail() handles it):
+	 * a WAF block page is indistinguishable from a restructure, and braking on
+	 * it would refuse a healthy host forever.
 	 */
 	private function request(): ?string {
+		$client = $this->clients->newClient();
+
 		try {
-			$response = $this->clients->newClient()->get(self::API, ['timeout' => 15]);
+			$response = $client->get(self::API, [
+				'timeout' => 15,
+				'headers' => ['User-Agent' => self::UA],
+			]);
+
+			/*
+			 * An answer — any answer — is the host not refusing. The brake lifts
+			 * here and not on a successful parse so recovery is one step (the
+			 * IspRepository precedent: a success removes the key outright), and a
+			 * WAF 200 lands in the cooldown, not back under the brake it just
+			 * lifted. One cache DELETE per successful fetch, priced and kept.
+			 */
+			$this->cache->remove($this->frenoKey());
+
 			$body = (string)$response->getBody();
 
 			/*
@@ -522,9 +605,34 @@ class MinsalRepository {
 
 			return $body;
 		} catch (Throwable $e) {
+			/*
+			 * getResponseFromThrowable() is the status affordance: it hands back
+			 * the response a BadResponseException carries — and RETHROWS when the
+			 * throwable has none, which is exactly the timeout/TLS class. So the
+			 * classification is a nested catch: the outer throwable reached this
+			 * line from the transport, the inner one asks whether an answer came
+			 * with it.
+			 */
+			try {
+				$status = $client->getResponseFromThrowable($e)->getStatusCode();
+			} catch (Throwable) {
+				$status = null;
+			}
+
+			if ($status !== null && $status >= 400) {
+				// The host said no. The brake's own warning names the refusal,
+				// once per escalation; fail()'s null-branch line still fires from
+				// the reader's side, which is true — a refusal IS an unreadable
+				// page — but the "could not be read" sentence below stays for
+				// the faults with no answer attached.
+				$this->brake($status);
+
+				return null;
+			}
+
 			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
 			// checks isset($entry['exception']) and serialises the class, the trace and
-			// the previous chain. Passing getMessage() instead threw all of that away
+				// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
 			$this->logger->warning('Could not reach the MINSAL alerts page', [
 				'exception' => $e,
@@ -534,10 +642,57 @@ class MinsalRepository {
 		}
 	}
 
+	/**
+	 * The cache entry, or the table's durable copy shaped as one — the fallback
+	 * every reader of this seam inherits (ADR-0015 §2): after an app update
+	 * moves the cache namespace (ADR-0012), get(), probe() and search() all
+	 * still have a set to serve, and search self-heals without a single fetch.
+	 * A table read is not a fetch — the never-fetch contract holds.
+	 *
+	 * The fabricated entry carries no digest, deliberately: the digest is
+	 * cache-entry-internal, and a cold-cache probe re-stores — ~13 idempotent
+	 * upserts once per app update — rather than trust a comparison against a
+	 * digest re-derived from the very copy it would be validating. No
+	 * fetched_at either: that was the cache's fact and it left with the cache;
+	 * the wire says null and claims no freshness it cannot back.
+	 */
 	private function stored(string $feed): ?array {
 		$stored = $this->cache->get($this->key($feed));
 
-		return is_array($stored) && isset($stored['items'], $stored['fetched_at']) ? $stored : null;
+		if (is_array($stored) && isset($stored['items'], $stored['fetched_at'])) {
+			return $stored;
+		}
+
+		try {
+			$items = array_map(
+				static fn (Alert $alert): array => [
+					'title' => $alert->getTitle(),
+					'url' => $alert->getUrl(),
+					'year' => $alert->getYear(),
+					'month' => $alert->getMonth(),
+				],
+				$this->alerts->readSet(),
+			);
+		} catch (Throwable $e) {
+			// The same fault class as the write side: logged, and the read falls
+			// back to a plain cold cache. Never routed through degrade().
+			$this->logger->warning('Could not read the persisted MINSAL alerts set', [
+				'exception' => $e,
+			]);
+
+			return null;
+		}
+
+		/*
+		 * An empty table is no fallback: this table is never seeded (ADR-0015,
+		 * Consequences), so empty means "nothing was ever stored here", and the
+		 * honest answer is a cold cache, not a durable copy that claims to exist.
+		 */
+		if ($items === []) {
+			return null;
+		}
+
+		return ['items' => $items, 'fetched_at' => null];
 	}
 
 	/**
@@ -568,6 +723,45 @@ class MinsalRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
 	private function cooldownKey(string $feed): string {
 		return 'cooldown-' . $feed;
+	}
+
+	/**
+	 * Is this page still braked? The stored value IS the moment the brake
+	 * expires, so asking is a comparison and there is no sweep to run — the
+	 * IspRepository shape, one key, no $feed threaded because request() is the
+	 * one fixed-URL reader that arms it.
+	 */
+	private function braked(): bool {
+		$until = $this->cache->get($this->frenoKey());
+
+		return $until !== null && $this->time->getTime() < (int)$until['until'];
+	}
+
+	/**
+	 * Doubling from two hours, capped at a day — the curve lifted from
+	 * IspRepository unchanged (ADR-0015 §4, ADR-0010): two hours because
+	 * refreshes are hourly (FRESH_FOR), anything shorter is not a freno, it is
+	 * a rounding error. The count outlives the wait it caused, which is what
+	 * makes the next refusal cost more; an answer removes the key outright, so
+	 * recovery is one step and not a slow unwind.
+	 */
+	private function brake(int $status): void {
+		$n = (int)($this->cache->get($this->frenoKey())['n'] ?? 0) + 1;
+		$wait = min(2 * self::FRESH_FOR * (2 ** ($n - 1)), 86400);
+
+		$this->logger->warning('MINSAL answered {status}; under freno {n} time(s), waiting {wait}s', [
+			'status' => $status, 'n' => $n, 'wait' => $wait,
+		]);
+
+		$this->cache->set($this->frenoKey(), [
+			'n' => $n,
+			'until' => $this->time->getTime() + $wait,
+		], 86400 + $wait);
+	}
+
+	/** Distinct from key() and cooldownKey(), or the brake would be read as data. */
+	private function frenoKey(): string {
+		return 'freno-' . self::ALERTS;
 	}
 
 	/**

@@ -17,8 +17,8 @@ use PHPUnit\Framework\TestCase;
  * These assertions are on the record's own answers, never on the config keys
  * underneath — which is the point of the class existing. Before it, ProbeJobTest
  * asserted `$store['probe_failures_alerts']` and SourcesReachableTest wrote the
- * same key by hand, so the two surfaces agreed only because both files spelled the
- * same string. ADR-0007 names that exact shape as the reason a counter can be
+ * same key by hand, so the two surfaces agreed only because both files spelled
+ * the same string. ADR-0007 names that exact shape as the reason a counter can be
  * green while the notification it drives says the wrong institution.
  */
 class ProbeRecordTest extends TestCase {
@@ -72,21 +72,21 @@ class ProbeRecordTest extends TestCase {
 		$record = $this->record();
 		$record->record('alerts', false);
 		$record->record('alerts', false);
-		$record->record('sanitary_alerts', false);
+		$record->record('reports', false);
 
 		self::assertSame(2, $record->consecutive('alerts'));
-		self::assertSame(1, $record->consecutive('sanitary_alerts'));
+		self::assertSame(1, $record->consecutive('reports'));
 	}
 
 	public function testRecoveringOneFuenteLeavesTheOtherFailing(): void {
 		$record = $this->record();
 		$record->record('alerts', false);
-		$record->record('sanitary_alerts', false);
+		$record->record('reports', false);
 
 		$record->record('alerts', true);
 
 		self::assertSame(0, $record->consecutive('alerts'));
-		self::assertSame(1, $record->consecutive('sanitary_alerts'));
+		self::assertSame(1, $record->consecutive('reports'));
 	}
 
 	/**
@@ -97,7 +97,7 @@ class ProbeRecordTest extends TestCase {
 	public function testAFailingFuenteAlwaysKnowsWhenItStarted(): void {
 		$record = $this->record();
 
-		foreach (['alerts', 'reports', 'sanitary_alerts'] as $source) {
+		foreach (['alerts', 'reports'] as $source) {
 			for ($day = 1; $day <= 3; $day++) {
 				$record->record($source, false);
 				self::assertNotNull($record->failingSince($source), "$source on day $day");

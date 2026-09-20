@@ -1,5 +1,5 @@
 /**
- * The filter pair both alert panes carry, and the first tests it has ever had.
+ * The filter pair the alertas pane carries, and the first tests it has ever had.
  *
  * Under `node`, like everything else here: Vue touches `document` once at import, and
  * tests/setup.js answers it. See vitest.config.js for why there is no jsdom.

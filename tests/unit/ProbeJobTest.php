@@ -61,15 +61,15 @@ class ProbeJobTest extends TestCase {
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
 		$this->runDays(2, healthy: false);
 
-		// three fuentes (alertas MINSAL, informes ISP, alertas sanitarias ISP) x one admin
-		self::assertSame(['admin', 'admin', 'admin'], $this->notified);
+		// two fuentes (alertas MINSAL, informes ISP) x one admin
+		self::assertSame(['admin', 'admin'], $this->notified);
 	}
 
 	public function testAThirtyDayOutageProducesThreeAlarmsAndNotThirty(): void {
 		$this->runDays(30, healthy: false);
 
-		// days 2, 7 and 30, for each of the three sources — not 90 notifications
-		self::assertCount(9, $this->notified);
+		// days 2, 7 and 30, for each of the two sources — not 60 notifications
+		self::assertCount(6, $this->notified);
 		self::assertSame(30, $this->probeRecord()->consecutive('alerts'));
 	}
 
@@ -85,7 +85,7 @@ class ProbeJobTest extends TestCase {
 
 		// Two alarms per source (days 2 and 7), each preceded by a markProcessed, so
 		// the bell holds one row per source rather than one per alarm.
-		self::assertSame(6, $this->cleared);
+		self::assertSame(4, $this->cleared);
 	}
 
 	public function testRecoveryResetsTheStateAndTakesTheNotificationOffTheBell(): void {
@@ -95,7 +95,7 @@ class ProbeJobTest extends TestCase {
 
 		self::assertSame(0, $this->probeRecord()->consecutive('alerts'));
 		self::assertNull($this->probeRecord()->failingSince('alerts'));
-		self::assertSame(3, $this->cleared, 'one per source');
+		self::assertSame(2, $this->cleared, 'one per source');
 	}
 
 	public function testAlreadyHealthyRunsDoNotTouchTheBellAtAll(): void {
@@ -129,14 +129,13 @@ class ProbeJobTest extends TestCase {
 
 		self::assertSame(3, $this->probeRecord()->consecutive('alerts'));
 		self::assertSame(3, $this->probeRecord()->consecutive('reports'));
-		self::assertSame(3, $this->probeRecord()->consecutive('sanitary_alerts'));
 	}
 
 	public function testTheNotifiedGroupIsConfigurable(): void {
 		$this->config['notify_groups'] = ['informatica'];
 		$this->runDays(2, healthy: false);
 
-		self::assertSame(['tecnico', 'tecnico', 'tecnico'], $this->notified);
+		self::assertSame(['tecnico', 'tecnico'], $this->notified);
 	}
 
 	// -----------------------------------------------------------------------

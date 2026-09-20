@@ -23,10 +23,11 @@ import { t } from '@nextcloud/l10n'
  *   for it is Circulación de Virus Respiratorios, and ETI e IRAG was the dead MINSAL
  *   page's name, not this one's (see Sources::name(REPORTS)).
  *
- * `Alertas del ISP` is the one name that spells its publisher out in words. The
- * informe carries its publisher a different way, by using the ISP's own title for
- * it instead of MINSAL's — but both now sit under the ISP's caption in App.vue's
- * navigation, not just the alerts row; see ADR-0008.
+ * No pane name spells a publisher out in words any more: the one that did
+ * retired with its pane (ADR-0016). The informe carries its publisher the way
+ * it always has — by wearing the ISP's own title for it instead of MINSAL's —
+ * and the institution is still said, once, by the caption above the row in
+ * App.vue's navigation; see ADR-0008.
  */
 const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
@@ -34,7 +35,6 @@ const PANE_NAMES = {
 	informe: () => t('epidemiologia', 'Circulación de Virus Respiratorios'),
 	tablero: () => t('epidemiologia', 'Tablero ETI e IRAG'),
 	epivigila: () => t('epidemiologia', 'EPIVIGILA'),
-	isp: () => t('epidemiologia', 'Alertas del ISP'),
 }
 
 /**

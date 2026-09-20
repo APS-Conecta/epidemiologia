@@ -353,7 +353,7 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
  *
  * Read from the initial-state node rather than from the rendered DegradedNotice: that
  * node is the same contract src/state.js reads (PageController provides ONE `sources`
- * key for all three fuentes) and loadState() leaves it in the DOM, whereas the notice
+ * key for every fuente) and loadState() leaves it in the DOM, whereas the notice
  * is @nextcloud/vue markup that can be restyled without the fact changing.
  *
  * Both halves fail closed, in the direction that keeps the assertion RUNNING: a
@@ -399,7 +399,7 @@ for (const { w, h } of VIEWPORTS) {
 	// The panes are rendered by Vue after load, so wait for the thing itself
 	// rather than for a duration — a sleep long enough to be safe here would be
 	// long enough to make the whole run tedious.
-	await page.waitForFunction(() => document.querySelectorAll('.epi > section').length === 6, null, { timeout: 20000 })
+	await page.waitForFunction(() => document.querySelectorAll('.epi > section').length === 5, null, { timeout: 20000 })
 
 	console.log(`  \x1b[1m${w}×${h}\x1b[0m`)
 	const count = await page.evaluate(() => document.querySelectorAll('.epi > section').length)
@@ -424,68 +424,21 @@ for (const { w, h } of VIEWPORTS) {
 		}
 	}
 
-	// Check 8. The only check that NAVIGATES — check 6 clicks too, but within one pane —
-	// and the only one that could have caught
-	// this: opening a family and then following Inicio's "Ver las N alertas del ISP"
-	// landed on a pane headed with the family's name, not the one the link said. Check
-	// 5 reads the heading once, in the app's initial state, and never navigates — so a
-	// destination that lies only after you have been somewhere else is invisible to it.
-	//
-	// Done on a fresh load, because everything above leaves display attributes set.
-	await page.goto(`${baseUrl}/apps/epidemiologia/`, { waitUntil: 'load' })
-	await page.waitForFunction(() => document.querySelectorAll('.epi > section').length === 6, null, { timeout: 20000 })
+	// (Check 8 — the family walk: open a family, go to Inicio, follow "Ver las
+	// N alertas del ISP", assert the heading — is deleted with both ends of the
+	// walk. The families retired with the alertas sanitarias (ADR-0016): no
+	// family rows to open, no ISP card on Inicio to follow, no second
+	// destination the heading could lie about. The fresh reload it took is
+	// deleted with it: the menu loop below sets every pane's display attributes
+	// itself, so nothing needs a clean load. The checks keep their numbers; 8
+	// is the retirement's own footprint.)
 
-	const landed = await page.evaluate(async () => {
-		const nav = [...document.querySelectorAll('.app-navigation-entry__name')]
-		const click = (el) => el.closest('a, button')?.click()
-		const settle = () => new Promise((r) => setTimeout(r, 150))
-
-		// A family, then Inicio, then the card's own link back to the ISP.
-		// Whichever family the archive happens to carry, not a named one. Since the nav
-		// lists only families with alerts, hard-coding 'Cosméticos' made this check go red
-		// for a DATA reason — a quiet week, or a degraded ISP — which is not what a layout
-		// gate is for. With no family at all there is nothing to walk, so skip rather than
-		// fail: the defect needs two destinations to exist before it can be shown.
-		const inicio = nav.find((e) => e.textContent.trim() === 'Inicio')
-		const family = nav.find((e, i) => i > nav.indexOf(
-			nav.find((n) => n.textContent.trim() === 'Alertas del ISP')) && e.textContent.trim() !== '')
-		if (!inicio) {
-			return { error: 'navigation has no Inicio row' }
-		}
-		if (!family) {
-			return { skipped: 'no ISP family carries alerts right now' }
-		}
-		click(family); await settle()
-		click(inicio); await settle()
-
-		const more = [...document.querySelectorAll('.epi-card__more')]
-			.find((b) => /ISP/.test(b.textContent))
-		if (!more) {
-			return { error: 'Inicio has no link back to the ISP' }
-		}
-		more.click(); await settle()
-
-		const pane = [...document.querySelectorAll('.epi > section')]
-			.find((p) => getComputedStyle(p).display !== 'none')
-		return { heading: pane?.querySelector('h2, h1')?.textContent.trim() ?? '' }
-	})
-
-	if (landed.skipped) {
-		skip('Inicio'.padEnd(26) + ` ${landed.skipped}`)
-	} else if (landed.error) {
-		fail(`Inicio — ${landed.error}`)
-	} else if (landed.heading !== 'Alertas del ISP') {
-		fail('Inicio — the link goes somewhere it did not name', [
-			`"Ver las … alertas del ISP" landed on a pane headed "${landed.heading}"`,
-		])
-	} else {
-		pass('Inicio'.padEnd(26) + ' the link goes where it says')
-	}
-
-	// The two panes that carry a toolbar, each named beside the fuente that fills its
-	// menus. Done after INSPECT because it leaves the panes' display attributes set,
-	// and this needs to set them again anyway.
-	for (const [paneIndex, name, fuente] of [[1, 'Alertas vigentes', 'alerts'], [2, 'Alertas del ISP', 'sanitary_alerts']]) {
+	// The one pane that carries a toolbar, named beside the fuente that fills its
+	// menus. The second tuple — the ISP pane's — retired with its fuente
+	// (ADR-0016); ReportPane never carried a FilterBar, so the alertas pane is
+	// the whole list. AlertsPane keeps DOM index 1 — the section that stood
+	// after it is gone, and nothing before it moved.
+	for (const [paneIndex, name, fuente] of [[1, 'Alertas vigentes', 'alerts']]) {
 		const unanswerable = await isUnanswerable(page, fuente)
 		const complaints = await inspectMenus(page, paneIndex, unanswerable)
 		if (unanswerable) {

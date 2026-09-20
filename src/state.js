@@ -8,8 +8,8 @@ const EMPTY = { items: [], fetched_at: null, degraded: false }
 
 /**
  * One key, not one per source. Each loadState key is a contract with
- * PageController that has to be spelled identically in two languages, so three of
- * them were three chances to typo a source into silence. PHP enumerates the
+ * PageController that has to be spelled identically in two languages, so two of
+ * them were two chances to typo a source into silence. PHP enumerates the
  * sources in Service/Sources.php; this file only names the ones it renders.
  *
  * Always pass a fallback: loadState() throws when the key is absent, and an
@@ -20,7 +20,6 @@ const sources = loadState(APP, 'sources', {})
 
 export const alerts = sources.alerts ?? EMPTY
 export const reports = sources.reports ?? EMPTY
-export const sanitaryAlerts = sources.sanitary_alerts ?? EMPTY
 
 /** Not a source: a constant URL with nothing to fetch, parse, cache or degrade. */
 export const tablero = loadState(APP, 'tablero', '')
@@ -109,8 +108,8 @@ export function emptyText(fuente) {
  *
  * Filter options are built from the data rather than declared, so a filter can
  * never offer a value the list does not contain — and a value the source stops
- * publishing disappears on its own. Shared because both alert panes build their
- * año and mes menus this way, and writing it twice is how the two panes' filters
+ * publishing disappears on its own. Shared because the alertas pane builds its
+ * año and mes menus this way, and writing it twice is how two panes' filters
  * drifted apart in the first place.
  */
 export function tally(items, key) {
@@ -134,10 +133,10 @@ const newestFirst = (a, b) => b.id.localeCompare(a.id)
  * `label` is not decoration: FilterMenu renders `${label} (${count})`, so an option
  * without one reaches a clinician as **"undefined (12)"**. That shipped, because the
  * ISP pane mapped a label on and Alertas vigentes did not — two panes building the
- * same menu two ways. They build it here now, so there is one way to build it.
+ * same menu two ways. It is built here now, so there is one way to build it.
  *
  * @param {Array} items - The pane's items.
- * @param {Function} yearOf - Reads an item's year; the two panes store it differently.
+ * @param {Function} yearOf - Reads an item's year; a fuente that stores it differently injects its own.
  * @return {Array} `[{ id, count, label }]`, newest first.
  */
 export function yearOptions(items, yearOf) {

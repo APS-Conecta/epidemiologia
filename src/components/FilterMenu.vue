@@ -82,7 +82,7 @@ const ANY = '\u0000any'
 /**
  * The label with its count, as a single string.
  *
- * The count is what makes a long menu usable: the ISP's Tipo has 14 categories
+ * The count is what makes a long menu usable: the ISP's Tipo had 14 categories
  * running from 10 alerts down to 1, and the number is what says which are worth
  * opening. Absent or zero, it is left off rather than printed as "(0)" — an
  * option nothing matches is not offered in the first place.

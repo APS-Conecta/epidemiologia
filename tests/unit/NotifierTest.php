@@ -9,7 +9,6 @@ namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Notification\Notifier;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IURLGenerator;
@@ -26,17 +25,10 @@ use PHPUnit\Framework\TestCase;
  * as "no se pudo leer las alertas epidemiológicas vigentes desde MINSAL", sending
  * whoever read it to inspect a MINSAL page that was working. ProbeJobTest asserted
  * the counter and nothing asserted the sentence, so the bug was invisible to a
- * green suite. The first test below is that missing assertion.
+ * green suite. The institution assertions below are that missing pin.
  */
 class NotifierTest extends TestCase {
 	use Doubles;
-
-	public function testAnIspOutageNamesTheIspAndNotMinsal(): void {
-		$subject = $this->render(Sources::SANITARY_ALERTS);
-
-		self::assertStringContainsString('las alertas sanitarias del ISP', $subject);
-		self::assertStringNotContainsString('MINSAL', $subject);
-	}
 
 	public function testAMinsalAlertsOutageStillNamesTheAlertasVigentes(): void {
 		self::assertStringContainsString(
@@ -60,6 +52,19 @@ class NotifierTest extends TestCase {
 		// This fuente carrying the acronym too is what made the two read as one series
 		// from one publisher, which is now exactly wrong.
 		self::assertStringNotContainsString('IRAG', $subject);
+	}
+
+	/**
+	 * Rows written before the retirement carry `sanitary_alerts`, which is no
+	 * longer in Sources::ALL. The same guard that refuses the old `feed` rows drops
+	 * these too — a stale row must not take the bell out for everyone. (The repair
+	 * step shipping in 0.10.0 wipes them for good, but the notifier cannot assume
+	 * it has run.)
+	 */
+	public function testARowFromTheRetiredFuenteIsRefusedRatherThanFatal(): void {
+		$this->expectException(UnknownNotificationException::class);
+
+		$this->render(null, ['source' => 'sanitary_alerts', 'days' => 2]);
 	}
 
 	/**
@@ -116,7 +121,6 @@ class NotifierTest extends TestCase {
 
 		$sources = new Sources(
 			$this->createMock(MinsalRepository::class),
-			$this->createMock(IspRepository::class),
 			$this->createMock(IspReportRepository::class),
 		);
 

@@ -83,10 +83,11 @@ class ProbeJob extends TimedJob {
 		// They probe differently underneath: MinsalRepository fetches its one page
 		// every time — an HTML page carries no field-limited request the way its old
 		// JSON endpoint's `modified` did — and only skips rewriting the cache when a
-		// digest of the parsed items is unchanged. IspRepository has 24 feeds and no
-		// cheap liveness signal at all, so its probe is a full 24-feed refresh
-		// regardless. That cost is each repository's own business, not this job's —
-		// which is why this loop no longer names either of them.
+		// digest of the parsed items is unchanged. IspReportRepository's probe is one
+		// feed fetch through the brake, re-upserting page 1 as it goes (no digest to
+		// skip on, D8) — the one-shot backfill walk only while a walk is still due.
+		// That cost is each repository's own business, not this job's — which is why
+		// this loop names neither of them.
 		foreach (Sources::ALL as $source) {
 			$this->judge($source, $this->sources->probe($source));
 		}

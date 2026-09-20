@@ -9,7 +9,6 @@ namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Search\AlertProvider;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IUser;
@@ -20,28 +19,21 @@ use RuntimeException;
 /**
  * What somebody typing in Nextcloud's global search box gets back.
  *
- * Until #37 this provider named ONE repository in its constructor, so sixty
- * alertas sanitarias were invisible here while being rendered in the pane beside
- * it. The assertions below are on the rendered entries — their title, the subline
- * a reader uses to tell two kinds of alert apart, and the link — never on which
+ * The provider asks the catalogue what is searchable rather than naming one
+ * repository — the shape #37 fixed, when sixty alertas sanitarias were invisible
+ * here while being rendered in the pane next door, because this class named
+ * MinsalRepository in its constructor instead of asking what the app publishes.
+ * The alertas sanitarias have since retired (ADR-0016), so today the answer is
+ * MINSAL's alertas alone — and the next searchable fuente joins this box with
+ * no edit here. The assertions below are on the rendered entries — their title,
+ * the subline a reader uses to tell results apart, and the link — never on which
  * collaborator was called.
  */
 class AlertProviderTest extends TestCase {
 	use Doubles;
 
-	/**
-	 * A term both fuentes really do carry: MINSAL numbers its oficios "N°15844",
-	 * the ISP numbers its recalls "N° 22/26". Needed because the doubles honour the
-	 * term, so a test wanting one result of each kind has to ask for something that
-	 * genuinely matches both rather than assuming every search returns everything.
-	 */
-	private const IN_BOTH = 'N°';
-
 	/** @var list<array<string, string>> returned by the MINSAL double */
 	private array $minsalHits = [];
-
-	/** @var list<array<string, string>> returned by the ISP double */
-	private array $ispHits = [];
 
 	protected function setUp(): void {
 		$this->minsalHits = [[
@@ -50,15 +42,7 @@ class AlertProviderTest extends TestCase {
 			'year' => '2026',
 			'month' => '2026-07',
 		]];
-		$this->ispHits = [[
-			'title' => 'ALERTA DE RETIRO DEL MERCADO N° 22/26',
-			'url' => 'https://www.ispch.gob.cl/alerta/22-26/',
-			'date' => '2026-07-28',
-			'at' => '1785196800',
-		]];
 	}
-
-	// --- both kinds of alert are findable ------------------------------------
 
 	public function testASearchFindsAlertasVigentes(): void {
 		$titles = array_column($this->search('sarampión'), 'title');
@@ -67,58 +51,29 @@ class AlertProviderTest extends TestCase {
 	}
 
 	/**
-	 * The defect this file exists for: sixty alertas sanitarias reachable in the
-	 * pane and unreachable from the box every user actually types into.
-	 */
-	public function testASearchAlsoFindsAlertasSanitariasIsp(): void {
-		$titles = array_column($this->search('retiro'), 'title');
-
-		self::assertContains($this->ispHits[0]['title'], $titles);
-	}
-
-	// --- and stay telling apart, which CONTEXT.md requires -------------------
-
-	/**
-	 * An alerta sanitaria and an alerta vigente are different objects that are
-	 * never merged. Once they share one result list, the subline is the only thing
-	 * keeping them apart — a product recall read as an epidemiological oficio is a
-	 * clinical misunderstanding, not a cosmetic one.
+	 * The kind carries the institution, because a result has to stand alone in a
+	 * list mixed with files and contacts — a reader who cannot say who published
+	 * what they found has found nothing they can act on. The bug this shape
+	 * replaced was the notifier naming the wrong institution; a mislabelled
+	 * search result sends the reader to the same wrong page.
 	 */
 	public function testEachResultSaysWhatKindItIsAndWhoPublishedIt(): void {
-		// Looked up by title, not by position: no story specifies an order between
-		// fuentes, so a test that pins one would fail on a change nobody asked about.
-		$entries = $this->search(self::IN_BOTH);
-		$minsal = $this->entryStartingWith($entries, 'OFICIO');
-		$isp = $this->entryStartingWith($entries, 'ALERTA DE RETIRO');
+		$subline = $this->search('sarampión')[0]['subline'];
 
-		self::assertStringContainsString('MINSAL', $minsal['subline']);
-		self::assertStringNotContainsString('ISP', $minsal['subline']);
-		self::assertStringContainsString('ISP', $isp['subline']);
-		self::assertStringNotContainsString('MINSAL', $isp['subline']);
+		self::assertStringContainsString('MINSAL', $subline);
+		self::assertStringNotContainsString('ISP', $subline);
 	}
 
 	/**
-	 * The two fuentes publish different date fields — the ISP a real day, MINSAL
-	 * only the upload year — so the subline takes whichever exists rather than
-	 * assuming one of them.
+	 * MINSAL publishes only the upload year — no real day — so the subline takes
+	 * what there is rather than assuming a date field every fuente would carry.
 	 */
 	public function testEachResultCarriesTheDateItsFuentePublishes(): void {
-		$entries = $this->search(self::IN_BOTH);
-
-		self::assertStringContainsString(
-			'2026',
-			$this->entryStartingWith($entries, 'OFICIO')['subline'],
-			'MINSAL publishes only the upload year',
-		);
-		self::assertStringContainsString(
-			'2026-07-28',
-			$this->entryStartingWith($entries, 'ALERTA DE RETIRO')['subline'],
-			'the ISP publishes a real day',
-		);
+		self::assertStringContainsString('2026', $this->search('sarampión')[0]['subline']);
 	}
 
 	public function testEveryResultLinksToTheSourceDocument(): void {
-		foreach ($this->search(self::IN_BOTH) as $entry) {
+		foreach ($this->search('sarampión') as $entry) {
 			self::assertStringStartsWith('https://', $entry['resourceUrl']);
 		}
 	}
@@ -126,24 +81,21 @@ class AlertProviderTest extends TestCase {
 	// --- what must NOT be in there -------------------------------------------
 
 	/**
-	 * That the informes are not searched is asserted in MinsalRepositoryTest, where
-	 * the exclusion is implemented — it loads both fuentes and shows a term unique
-	 * to an informe finding nothing. Asserting it here instead would have meant
-	 * counting calls on a mock, which ADR-0007 rules out and which would have been
-	 * near-tautological anyway: Sources::search() has no arm for the informes, so a
-	 * regression would throw rather than call twice.
+	 * That the informes are not searched is asserted in SourcesTest
+	 * (testSearchLeavesTheInformesOut), where the exclusion is structural:
+	 * Sources::search() has no arm for them. Counting calls on a mock here instead
+	 * would be near-tautological and is ruled out by ADR-0007.
 	 */
 
 	public function testAColdCacheReturnsNothingRatherThanFailing(): void {
 		// Nothing cached at all — the state before anyone has opened the app today.
 		$this->minsalHits = [];
-		$this->ispHits = [];
 
 		self::assertSame([], $this->search('sarampión'));
 	}
 
 	/**
-	 * A different thing from a cold cache, and the ordinary one: both fuentes hold
+	 * A different thing from a cold cache, and the ordinary one: the fuente holds
 	 * alerts, and none of them is about this. It must read as "no results", never as
 	 * an error in the box every user shares.
 	 */
@@ -152,34 +104,32 @@ class AlertProviderTest extends TestCase {
 	}
 
 	public function testTheQueryLimitIsRespected(): void {
-		self::assertCount(1, $this->search(self::IN_BOTH, limit: 1));
+		self::assertCount(1, $this->search('sarampión', limit: 1));
 	}
 
 	/**
 	 * Every registered provider runs on every global search by every user, so one
-	 * that fetched would put an outbound request in front of somebody looking for a
-	 * Word document. The repositories here throw on any read that is not the
+	 * that fetched would put an outbound request in front of somebody looking for
+	 * a Word document. The repositories here throw on any read that is not the
 	 * cache-only search.
 	 */
 	public function testTheProviderNeverFetches(): void {
 		$minsal = $this->createMock(MinsalRepository::class);
 		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
-		$isp = $this->createMock(IspRepository::class);
-		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 		// Every way in that can reach the network. `refresh()` is no longer among them:
 		// it is private, so `get()` and `probe()` are the whole surface a provider could
 		// trip over — which is the point of it being private. The informes repository is
 		// armed the same way and carries no search() at all, so the provider cannot reach
-		// the ISP's informe page even by asking for it.
+		// the ISP's informe feed even by asking for it.
 		$informes = $this->createMock(IspReportRepository::class);
-		foreach ([$minsal, $isp, $informes] as $repository) {
+		foreach ([$minsal, $informes] as $repository) {
 			$repository->method('get')->willThrowException(new RuntimeException('a search provider must not fetch'));
 			$repository->method('probe')->willThrowException(new RuntimeException('a search provider must not fetch'));
 		}
 
-		$result = $this->provider(new Sources($minsal, $isp, $informes))->search($this->user(), $this->query(self::IN_BOTH));
+		$result = $this->provider(new Sources($minsal, $informes))->search($this->user(), $this->query('sarampión'));
 
-		self::assertCount(2, $result->jsonSerialize()['entries']);
+		self::assertCount(1, $result->jsonSerialize()['entries']);
 	}
 
 	// -----------------------------------------------------------------------
@@ -188,10 +138,8 @@ class AlertProviderTest extends TestCase {
 	private function search(string $term, int $limit = 20): array {
 		$minsal = $this->createMock(MinsalRepository::class);
 		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
-		$isp = $this->createMock(IspRepository::class);
-		$isp->method('search')->willReturnCallback($this->matching($this->ispHits));
 
-		$result = $this->provider(new Sources($minsal, $isp, $this->createMock(IspReportRepository::class)))
+		$result = $this->provider(new Sources($minsal, $this->createMock(IspReportRepository::class)))
 			->search($this->user(), $this->query($term, $limit));
 
 		// SearchResult hands back SearchResultEntry objects; each serialises itself.
@@ -218,16 +166,6 @@ class AlertProviderTest extends TestCase {
 				mb_strtolower($term, 'UTF-8'),
 			),
 		));
-	}
-
-	/** The entry whose title starts with $prefix, so no test depends on result order. */
-	private function entryStartingWith(array $entries, string $prefix): array {
-		foreach ($entries as $entry) {
-			if (str_starts_with($entry['title'], $prefix)) {
-				return $entry;
-			}
-		}
-		self::fail('no result whose title starts with ' . $prefix);
 	}
 
 	private function provider(Sources $sources): AlertProvider {

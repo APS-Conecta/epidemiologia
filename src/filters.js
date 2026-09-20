@@ -1,5 +1,5 @@
 /**
- * The filter pair both alert panes carry, as a composable.
+ * The filter pair the alertas pane carries, as a composable.
  *
  * Its own file, not state.js, because state.js is deliberately testable under vitest's
  * `node` environment — its docblock in vitest.config.js says so and gives the reason. A
@@ -17,19 +17,21 @@ import { t } from '@nextcloud/l10n'
 import { fold, monthOptions, yearOptions } from './state.js'
 
 /**
- * The filter pair both alert panes carry: a search box, a year and a month.
+ * The filter pair the alertas pane carries: a search box, a year and a month.
  *
- * Extracted for the reason the menus were in #44 — the panes had built the same control
- * two ways and shipped `undefined (12)` to clinicians. What did not move then was
- * everything the menus DRIVE: three refs, the folded array, the predicate chain, and the
- * year→month stranding rule, which was byte-identical in both files, comment included.
+ * Extracted for the reason the menus were in #44 — two panes had built the same
+ * control two ways and shipped `undefined (12)` to clinicians. What did not move
+ * then was everything the menus DRIVE: three refs, the folded array, the predicate
+ * chain, and the year→month stranding rule, which was byte-identical in both
+ * files, comment included.
  *
- * And none of it had a test in any language. `layout.mjs` check 6 asserts that an option
- * renders a count and that choosing one marks its radio; nothing asserted the list
- * narrowed. This is the app's most-used interaction.
+ * None of it had a test in any language when it was extracted; `filters.test.js`
+ * owns the narrowing since, and `layout.mjs` check 6 still asserts the rendered
+ * half — an option's count, a marked radio.
  *
- * The extra predicates stay in the panes. `IspPane` composes family and category on top of
- * `matches`; folding those in here would give this an interface as complex as its body.
+ * The extra predicates stay in the pane that owns them: folding one in here would
+ * give this an interface as complex as its body — the rule the ISP pane's family
+ * and category filters followed until the fuente retired (ADR-0016).
  *
  * @param {Array} items - the fuente's items, loaded once and never mutated
  * @param {object} accessors - `yearOf`, `monthOf` and `textOf`, each taking one item
@@ -65,11 +67,11 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 	/**
 	 * The three filters as dismissible tokens, worded for a reader.
 	 *
-	 * Here rather than in each pane because both panes carry exactly these three, and
-	 * the last time a pane worded a shared control for itself it shipped
-	 * `undefined (12)` to clinicians (#44). A pane with a filter of its own — the
-	 * ISP's category — appends to this, the same way it composes its own predicates
-	 * on top of `matches`.
+	 * Here rather than in the pane because these three are the composable's own,
+	 * and the last time a pane worded a shared control for itself it shipped
+	 * `undefined (12)` to clinicians (#44). A pane with a filter of its own
+	 * appends to this, the same way it composes its own predicates on top of
+	 * `matches`.
 	 *
 	 * The month's wording is read off `months` rather than re-derived, so a token can
 	 * never name a month differently from the menu that set it.

@@ -80,8 +80,8 @@ import DegradedNotice from './DegradedNotice.vue'
 import { alerts, emptyText, mes } from '../state.js'
 import { useFilters } from '../filters.js'
 
-// The filter pair, its menus and its stranding rule live in src/filters.js — both alert
-// panes carry the same three, and the copies had already drifted once (#44).
+// The filter pair, its menus and its stranding rule live in src/filters.js — the
+// copies had already drifted once (#44), which is why they live there and not here.
 const yearOf = (a) => a.year
 const monthOf = (a) => a.month
 

@@ -8,10 +8,12 @@
 	   MINSAL items carry a month and no day anyway, so "new since you last looked"
 	   was never constructible from them.
 
-	2. Freshness and degradation are PER CARD. MINSAL and the ISP fail
-	   independently and fetched_at is already per feed; one banner across the pane
-	   would force a choice between alarming about everything and staying quiet
-	   about everything. Only the failing source turns gold.
+	2. Freshness and degradation are PER CARD. The card's own feed carries its
+	   own fetched_at and degraded flag, so one banner across the pane would
+	   force a choice between alarming about everything and staying quiet about
+	   everything; only the failing source turns gold. The informe card below
+	   carries neither on purpose: its weeks are the series the table holds, and
+	   the pane it opens is where that fuente's degraded state renders.
 -->
 <template>
 	<section class="epi-inicio">
@@ -49,9 +51,10 @@
 					{{ source.degradedText }}
 				</p>
 
-				<!-- Zero items with no degraded flag is a real answer, not a fault. Several
-				     of the ISP's term feeds legitimately return nothing. It must not look
-				     like the warning above, or the warning stops meaning anything. -->
+				<!-- Zero items with no degraded flag is a real answer, not a fault.
+				     A set with no alertas vigentes in it is MINSAL's to publish,
+				     and an empty answer must not look like the warning above, or the
+				     warning stops meaning anything. -->
 				<NcEmptyContent v-if="!source.feed.items.length && !source.feed.degraded"
 					class="epi-card__empty"
 					:name="t('epidemiologia', 'Sin alertas')"
@@ -130,7 +133,7 @@ import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
-import { alerts, degradedText, emptyText, fecha, mes, reports, sanitaryAlerts } from '../state.js'
+import { alerts, degradedText, emptyText, fecha, mes, reports } from '../state.js'
 
 defineEmits(['open'])
 
@@ -149,8 +152,11 @@ const PER_CARD = 1
 const PER_CARD_WEEKS = 3
 
 /**
- * One entry per publisher. The ISP joins here in #33 — the shape is already
- * right for it, which is the whole point of the auto-fit row above.
+ * One entry per alertas fuente, so the next fuente joins by adding an entry —
+ * which is the whole point of the auto-fit row above. The ISP's alertas card
+ * was the second entry until its fuente retired (ADR-0016); the informe stays
+ * out of this list on purpose, as it always was: it is not an alertas fuente,
+ * and its card below shows the series' weeks, not a latest row.
  */
 const sources = computed(() => [
 	{
@@ -161,17 +167,6 @@ const sources = computed(() => [
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
 		emptyText: emptyText('MINSAL'),
 		degradedText: degradedText('MINSAL'),
-	},
-	{
-		id: 'isp-alertas',
-		name: paneName('isp'),
-		feed: sanitaryAlerts,
-		pane: 'isp',
-		moreText: n('epidemiologia', 'Ver %n alerta del ISP', 'Ver las %n alertas del ISP', sanitaryAlerts.items.length),
-		// Not "el ISP no publicó": several of its 24 categories are legitimately
-		// empty in any given week, and saying nothing was published would be false.
-		emptyText: emptyText(t('epidemiologia', 'El ISP')),
-		degradedText: degradedText('el ISP'),
 	},
 ])
 </script>

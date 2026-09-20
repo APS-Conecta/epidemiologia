@@ -8,31 +8,14 @@ this app.
 
 ## What is published nationally
 
-**Fuente** — one thing this app fetches, parses and caches, carrying its own freshness and its own
-estado degradado: *alertas vigentes* from MINSAL, *informes de Circulación de Virus Respiratorios*
-and *alertas sanitarias* from the ISP. Not an institution — the ISP publishes two — and not a class:
-those same two have a repository each, because a class boundary follows the rules and sharing a host
-is not sharing a rule (`Sources`). It is the unit everything outside a repository counts in — payload
-key, sondeo failure count, the name a notificación carries. Conflating fuente with institución made
-an ISP outage report itself as MINSAL. The **tablero** and **EPIVIGILA** are *not* fuentes: nothing
-about them is fetched, parsed, cached or capable of going stale — they are links.
+**Fuente** — one thing this app fetches, parses and persists: the cache is its hot path, the table behind it the durable copy, and each carries its own freshness and its own estado degradado — *alertas vigentes* from MINSAL, *informes de Circulación de Virus Respiratorios* from the ISP. Not an institution and not a class: the two have a repository each, because a class boundary follows the rules and the two publish under different rules (`Sources`). It is the unit everything outside a repository counts in — payload key, sondeo failure count, the name a notificación carries. Conflating fuente with institución made an ISP outage report itself as MINSAL. The **tablero** and **EPIVIGILA** are *not* fuentes: nothing about them is fetched, parsed, cached or capable of going stale — they are links.
 _Avoid_: feed, canal, origen — and **institución as a synonym for fuente**. Naming the institution is
 correct; a result that does not say which one it came from is the defect this distinction prevents.
 
-**Sondeo** — the daily check that each fuente can still be read and still parses. It exists to
-**detect**, not to refresh; a warm cache is a side effect. Sole writer of the consecutive-failure
-counts that both the notificación and Administración → Visión general read, so those two can be
-incomplete but never contradict each other.
+**Sondeo** — the daily check that each fuente can still be read and still parses. It exists to **detect**, not to refresh; a warm cache is a side effect. Sole writer of the consecutive-failure counts that both the notificación and Administración → Visión general read, so those two can be incomplete but never contradict each other. The daily **refresh job** is not the sondeo: it warms, and never writes those counts — detection, its schedule and its counts stay here.
 _Avoid_: sync, actualización, refresco
 
-**Freno** — how long a repository declines to re-request one thing it fetches, after that thing
-failed. Its grain is **what is requested** — one categoría of the ISP feed, one MINSAL page — finer
-than a fuente: the ISP is one fuente behind 24 requests. Read by nothing outside its own repository,
-and **not** the sondeo's failure count, which is per fuente and **written by the sondeo alone**. A **frenada request is not an unreachable one**:
-if every request is braked the app has learned nothing, which is not an outage — but the *detector*
-asks through the freno anyway, because reusing the reader's rule made the sondeo report a week-long
-outage as silence (#75). A freno never makes a stale fuente look fresh, staleness being measured
-from the last fetch.
+**Freno** — how long a repository declines to re-request one thing it fetches, after that thing failed or its host answered no: a 4xx/5xx is an answer, not a challenge, and arms the brake; a timeout or a TLS fault carries no answer and keeps the cooldown, because those lift on their own. Its grain is **what is requested** — one MINSAL page, one ISP feed — finer than a fuente. Read by nothing outside its own repository, and **not** the sondeo's failure count, which is per fuente and **written by the sondeo alone**. A **braked request is not an unreachable one**: if every request is braked the app has learned nothing, which is not an outage — but the *detector* asks through the freno anyway, because reusing the reader's rule made the sondeo report a week-long outage as silence (#75), and the daily refresh job rides the reader's rule for the same reason: it never re-asks a host that said no. A freno never makes a stale fuente look fresh, staleness being measured from the last fetch.
 _Avoid_: cooldown, backoff, reintento — and **fuente as its grain**
 
 **Alerta vigente** — an oficio MINSAL currently in force, published as a PDF on a curated page.
@@ -41,20 +24,14 @@ from two rows of its own table, so the URL is also what keeps one alerta from be
 _Avoid_: alerta, aviso, circular — note that *aviso* is avoided for **this document**; the
 thing Nextcloud puts in the bell is a **notificación**, and the two are easy to blur
 
-**Alerta sanitaria ISP** — a product-level notice from the Instituto de Salud Pública: recall,
-falsification, pharmacovigilance, device withdrawal. A different kind of object from an alerta
-vigente, never merged with one.
-_Avoid_: alerta ISP, alerta ANAMED
-
-**Día de publicación** — the day a fuente says it published something, rendered in **the
-publisher's** timezone; the ISP's is `America/Santiago`. Not the server's, which is UTC here and
-moved anything published after 20:00 in Chile to the next day (one alert of 173, measured
-2026-08-05). Not the reader's either: Chile spans three timezones, and a recall does not change date
-because the clinic is in Punta Arenas.
+**Día de publicación** — the day a fuente says it published something, rendered in **the publisher's** timezone; the ISP's is `America/Santiago`. Not the server's, which is UTC here and moved anything published after 20:00 in Chile to the next day (one alert of 173, measured 2026-08-05). Not the reader's either: Chile spans three timezones, and an alerta vigente does not change date because the clinic is in Punta Arenas. The year of an informe's semana epidemiológica derives from this day — the publisher's zone decides which year a December-31 publication belongs to, and a URL decides nothing.
 _Avoid_: fecha del sistema, fecha local
 
 **Informe de Circulación de Virus Respiratorios** — the **ISP's** weekly surveillance report on the
 circulation of respiratory viruses, published as a PDF and identified by its semana epidemiológica.
+The app keeps one copy of each document — downloaded once, hashed, served from the instance — and a
+revision replaces the copy rather than re-presenting it as new; the publisher's address stays on the
+row as provenance.
 One name, the publisher's own: it is what the pane is called (`src/panes.js`) and what the app calls
 the fuente mid-sentence and in a search result (`Sources::name`, `Sources::kind`). *ETI/IRAG* is the
 **previous publisher's** framing for a document this app no longer reads — MINSAL's own informes were
@@ -66,11 +43,7 @@ made two series from two publishers read as one.
 _Avoid_: informe ETI/IRAG, reporte, boletín, **informe semanal** unqualified — the fuente's name
 says *semanal* before the publisher's title, never instead of it
 
-**Semana epidemiológica (SE)** — the numbered week an informe reports on. It does not map to the
-calendar month the PDF is filed under, which records when the file was uploaded: measured on the
-previous publisher's own uploads, SE 29 sat in the July folder and SE 24 in June. The ISP files the
-same way, so the month a pane shows is decoration and never identity — an informe filed outside the
-upload path is kept without a month rather than dropped.
+**Semana epidemiológica (SE)** — the numbered week an informe reports on. It does not map to the calendar month the pane groups by, which derives from the publication day: measured on the previous publisher's own uploads, SE 29 sat in a July that SE 24 spent in June. The month is decoration and never identity — the pair **(year, semana)** is the identity, and a reissue replaces its own week, never a third row.
 
 **Tablero MINSAL** — the domain term for the Power BI report MINSAL publishes to the web and this app
 embeds; the pane is named **Tablero ETI e IRAG** by `src/panes.js`, authoritative for what a reader
@@ -80,16 +53,7 @@ _Avoid_: **Tablero** unqualified, dashboard, panel — all collide with Nextclou
 **EPIVIGILA** — MINSAL's credentialed system for notifying Enfermedades de Notificación Obligatoria.
 Reachable only from Red MINSAL, and linked from here rather than embedded.
 
-**Archivo del ISP** — every alerta sanitaria this app has ever seen, accreted across the 24 feed
-windows plus a backwards walk of two pages an hour. It is a **cache**, not a store: Nextcloud keys
-the distributed cache by every enabled app's version, so any app update on the instance empties it
-and the walk rebuilds it over about three days ([ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)).
-_Avoid_: base de datos, histórico — nothing here is stored, and an *alerta sanitaria* never expires,
-which is why the archive accretes rather than being replaced.
-
-**Estado degradado** — a fetch returned zero items and the app is serving its last good copy
-instead. A displayed state, not an error path: an empty list read as reassurance is the failure this
-context most needs to avoid.
+**Estado degradado** — a fetch returned zero items and the app is serving its last good copy instead, from the cache or, after a flush, from the table behind the fuente. A displayed state, not an error path: an empty list read as reassurance is the failure this context most needs to avoid.
 _Avoid_: error, caído, sin datos
 
 ## What this context deliberately has no word for
@@ -101,9 +65,7 @@ MINSAL nor DEIS published — the same reason this context carries no severity l
 tags on alerts.
 
 **Nothing here is organised by disease, and a pane that were would have to invent its own subject.**
-None of the three fuentes publishes at that grain: an alerta vigente is an oficio, an alerta
-sanitaria is a product notice, an informe de Circulación de Virus Respiratorios is one weekly PDF per
-semana epidemiológica.
+**Neither fuente publishes at that grain**: an alerta vigente is an oficio, an informe de Circulación de Virus Respiratorios is one weekly PDF per semana epidemiológica.
 Grouping any of them under a disease means classifying documents by a term this context has no word
 for — which is the paragraph above, arriving as layout instead of vocabulary. REM is not the way
 round it either: it is not this app's to read, and it yields counts per corte, not a

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use InvalidArgumentException;
+use OCA\Epidemiologia\Db\Alert;
+use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Http\Client\IClient;
@@ -15,6 +17,7 @@ use OCP\ICacheFactory;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
+use Throwable;
 
 /**
  * The repository is the app's single test seam: everything with branching logic
@@ -39,6 +42,12 @@ class MinsalRepositoryTest extends TestCase {
 
 	private array $store = [];
 
+	/** The persisted set: the AlertMapper double's table — Alert entities, like the real one holds. */
+	private array $rows = [];
+
+	/** @var list<array> every request's options, in order — the UA pin reads the first */
+	private array $options = [];
+
 	/** @var list<string> requests made against the client, in order */
 	private array $requested = [];
 
@@ -50,6 +59,8 @@ class MinsalRepositoryTest extends TestCase {
 
 	protected function setUp(): void {
 		$this->store = [];
+		$this->rows = [];
+		$this->options = [];
 		$this->requested = [];
 		$this->unmatched = [];
 		$this->logged = [];
@@ -479,11 +490,33 @@ class MinsalRepositoryTest extends TestCase {
 		);
 	}
 
-	public function testSearchNeverFetchesAndReturnsNothingOnAColdCache(): void {
+	/**
+	 * Retargeted from "returns nothing on a cold cache" — replaces
+	 * testSearchNeverFetchesAndReturnsNothingOnAColdCache wholesale: an app
+	 * update empties the CACHE, not the table (ADR-0015 §2), so a cold cache
+	 * with a warm table is the post-update state every install hits, and search
+	 * must answer from the persisted set — still without a single fetch. The
+	 * empty branch keeps its place in the same test: cold cache AND cold table
+	 * is the fresh install, and the never-seeded table must not conjure an
+	 * answer.
+	 */
+	public function testSearchNeverFetchesAndAnswersFromThePersistedSetWhenOnlyTheCacheIsCold(): void {
 		$repository = $this->repository();
 
+		// The fresh install: nothing cached, nothing persisted.
 		self::assertSame([], $repository->search('sarampion'));
 		self::assertSame([], $this->requested, 'the global search box must never wait on MINSAL');
+
+		$repository->get(MinsalRepository::ALERTS);
+
+		// The app update: ADR-0012's cache namespace move, the table left holding.
+		$this->store = [];
+		$this->requested = [];
+
+		$hits = $repository->search('sarampion');
+
+		self::assertNotSame([], $hits, 'the persisted set must answer when only the cache is cold');
+		self::assertSame([], $this->requested, 'a table read is not a fetch — the never-fetch contract holds');
 	}
 
 	public function testSearchIgnoresAnEmptyTerm(): void {
@@ -551,23 +584,176 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertFalse($this->repository(offline: true)->probe(MinsalRepository::ALERTS));
 	}
 
+	// --- the durable set: ADR-0015 §2 ----------------------------------------
+
+	public function testAnAppUpdateThatEmptiesTheCacheStillServesThePersistedSet(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+
+		// The app update emptied the cache (ADR-0012); MINSAL is down on top of it.
+		$offline = $this->repository(offline: true, reuseCache: false, now: self::NOW + 7200);
+
+		$after = $offline->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($after['degraded'], 'an outage on top of an app update is still an outage');
+		self::assertCount(13, $after['items'], 'the persisted set is the durable last-good copy');
+		self::assertNull($after['fetched_at'], 'no freshness is claimed for a copy whose fetch time left with the cache');
+		self::assertSame(
+			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
+			array_column($after['items'], 'url'),
+			'the served copy IS the persisted set',
+		);
+	}
+
+	public function testAProbeOnAColdCacheRestoresRatherThanTrustsAReDerivedDigest(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		self::assertCount(13, $this->rows);
+
+		// The app update: cache namespace moved (ADR-0012), table still holding.
+		$repository = $this->repository(reuseCache: false);
+		$this->requested = [];
+
+		self::assertTrue($repository->probe(MinsalRepository::ALERTS));
+
+		// D8: the fabricated entry carries no digest, so the probe cannot
+		// "match" its way out of re-storing — the cache entry is back, from the
+		// one fetch the probe always costs, and the replace-set re-ran.
+		self::assertArrayHasKey('feed-' . MinsalRepository::ALERTS, $this->store, 'the probe must re-store on a cold cache');
+		self::assertCount(13, $this->rows, 'the replace-set re-ran idempotently');
+		self::assertCount(1, $this->requested, 'one probe fetch');
+	}
+
+	public function testAWithdrawnAlertVanishesFromThePersistedSet(): void {
+		$two = '<a href="https://degreyd.minsal.cl/uploads/2026/07/a.pdf">Alerta vigente</a>'
+			. '<a href="https://degreyd.minsal.cl/uploads/2026/07/b.pdf">Alerta retirada</a>';
+		$one = '<a href="https://degreyd.minsal.cl/uploads/2026/07/a.pdf">Alerta vigente</a>';
+
+		$this->repository(body: $two)->get(MinsalRepository::ALERTS);
+		self::assertSame(
+			['https://degreyd.minsal.cl/uploads/2026/07/a.pdf', 'https://degreyd.minsal.cl/uploads/2026/07/b.pdf'],
+			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
+			'precondition: both alerts persisted',
+		);
+
+		$this->repository(body: $one, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+
+		self::assertSame(
+			['https://degreyd.minsal.cl/uploads/2026/07/a.pdf'],
+			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
+			'a withdrawn alert vanishes with the set that no longer names it',
+		);
+	}
+
+	public function testAFailedParseWritesNothingToThePersistedSet(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$before = array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows);
+
+		// Both entry classes of fail(): nothing read at all, and read-but-parsed-
+		// to-nothing. The second read sits past +7501 on purpose: the offline read
+		// arms the cooldown until then, and a read inside it would short-circuit
+		// at the cooldown branch and never reach fail() — pinning nothing.
+		$offline = $this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$maintenance = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($offline['degraded']);
+		self::assertTrue($maintenance['degraded']);
+		self::assertSame(
+			$before,
+			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
+			'fail() writes nothing — the persisted set is the last good one',
+		);
+	}
+
+	// --- the brake: an answer is not a challenge ------------------------------
+
+	public function testARefusalArmsTheBrakeAndReadsStopAsking(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+
+		$refused = $this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		self::assertTrue($refused['degraded'], 'a refusal is served like any outage');
+		self::assertCount(2, $this->requested, 'precondition: the refusal was asked once, after expiry');
+
+		// Past COOLDOWN (armed at +7200, gone at +7500), still inside the brake
+		// (armed at +7200 until +14400). The cooldown-only code this replaces
+		// would have asked here — that ask is what this pin exists to hold.
+		$held = $this->repository(refused: 403, now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+
+		self::assertTrue($held['degraded']);
+		self::assertCount(13, $held['items'], 'the last good copy serves while the brake holds');
+		self::assertCount(2, $this->requested, 'a braked read must not ask — a 403 is an answer, not a challenge');
+		self::assertSame(1, $this->store['freno-alerts']['v']['n'] ?? null, 'one refusal, one count');
+	}
+
+	public function testATimeoutStaysCooldownClassAndNeverArmsTheBrake(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+
+		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		self::assertArrayNotHasKey('freno-alerts', $this->store, 'no answer came back — there is no refusal to remember');
+
+		$this->repository(offline: true, now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+
+		self::assertCount(3, $this->requested, 'past COOLDOWN the feed must be asked again — recovery stays automatic');
+	}
+
+	public function testTheProbeAsksThroughTheBrakeAndReportsARefusal(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->requested = [];
+
+		// #218beba: a fully-braked reader must still report unreachable to
+		// ProbeJob — asked, not assumed, and the bookkeeping runs through the
+		// ask exactly as on the hourly path.
+		$probe = $this->repository(refused: 403, now: self::NOW + 7260);
+
+		self::assertFalse($probe->probe(MinsalRepository::ALERTS));
+		self::assertCount(1, $this->requested, 'the probe asked through the brake');
+		self::assertSame(2, $this->store['freno-alerts']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
+	}
+
+	public function testAHostThatAnswersAgainClearsTheBrakeSoReadsResume(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		self::assertArrayHasKey('freno-alerts', $this->store);
+
+		// The daily ask catches the recovery, and the answer clears the key.
+		self::assertTrue($this->repository(now: self::NOW + 7260)->probe(MinsalRepository::ALERTS));
+		self::assertArrayNotHasKey('freno-alerts', $this->store, 'an answer removes the key outright — recovery is one step');
+
+		// Past the cooldown the refusal left (+7500), the read resumes asking.
+		$this->repository(now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+		self::assertCount(4, $this->requested, 'the read resumed once the brake cleared');
+	}
+
+	public function testEveryRequestIntroducesItselfAndStaysBounded(): void {
+		$this->repository()->get(MinsalRepository::ALERTS);
+
+		self::assertSame(
+			'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)',
+			$this->options[0]['headers']['User-Agent'] ?? null,
+			'every outbound request names this app (ADR-0015 §4)',
+		);
+		self::assertSame(15, $this->options[0]['timeout'] ?? null, 'the read stays bounded — a gate that blocks silently is not a gate (#130)');
+	}
+
 	// --- doubles -------------------------------------------------------------
 
 	/**
 	 * @param string|null $body       served for every request, instead of the fixture
+	 * @param int|null    $refused    an HTTP status the host answers with instead of a page —
+	 *                                the refusal class, carried by the throwable the way a
+	 *                                BadResponseException carries its response
 	 * @param int|null    $now        later than NOW to push a cached copy past its freshness window
 	 * @param bool        $reuseCache false gives this repository its own empty cache instead of
 	 *                                sharing $this->store with earlier repository() calls in the
-	 *                                same test — nothing needs that today, but the sharing is the
-	 *                                default precisely because most tests rely on it (a repository
-	 *                                built later in the same test seeing what an earlier one wrote),
-	 *                                so a call site that means to start clean has to say so.
+	 *                                same test — the app-update tests use it to model ADR-0012's
+	 *                                namespace move, and the mapper double keeps sharing $this->rows
+	 *                                either way, because the table is what survives the update.
 	 */
 	private function repository(
 		?string $body = null,
 		bool $offline = false,
 		?int $now = null,
 		bool $reuseCache = true,
+		?int $refused = null,
 	): MinsalRepository {
 		if (!$reuseCache) {
 			$this->store = [];
@@ -575,15 +761,39 @@ class MinsalRepositoryTest extends TestCase {
 
 		$client = $this->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(
-			function (string $url, array $options) use ($body, $offline): IResponse {
+			function (string $url, array $options) use ($body, $offline, $refused): IResponse {
 				$this->requested[] = $url;
+				$this->options[] = $options;
 
+				if ($refused !== null) {
+					throw new RuntimeException("HTTP $refused returned without a body");
+				}
 				if ($offline) {
 					throw new RuntimeException('cURL error 6: Could not resolve host');
 				}
 
 				$response = $this->createMock(IResponse::class);
 				$response->method('getBody')->willReturn($body ?? $this->fixture($url));
+
+				return $response;
+			},
+		);
+
+		/*
+		 * The real contract, mirrored (Client.php:445-451): the response when the
+		 * throwable carries one, the throwable itself again when it does not. A
+		 * stub that answered a response for the offline class would make every
+		 * timeout read as a refusal — the exact conflation this slice exists to
+		 * remove, smuggled in through the double.
+		 */
+		$client->method('getResponseFromThrowable')->willReturnCallback(
+			function (Throwable $e) use ($refused): IResponse {
+				if ($refused === null) {
+					throw $e;
+				}
+
+				$response = $this->createMock(IResponse::class);
+				$response->method('getStatusCode')->willReturn($refused);
 
 				return $response;
 			},
@@ -598,7 +808,18 @@ class MinsalRepositoryTest extends TestCase {
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
-		return new MinsalRepository($clients, $time, $this->logger(), $cacheFactory);
+		/*
+		 * The mapper double is the table, state-backed (ADR-0007): readSet answers
+		 * what replaceSet wrote, the whole set replaced — so a withdrawn alert is
+		 * assertable as an absent row, never as a call count.
+		 */
+		$mapper = $this->createMock(AlertMapper::class);
+		$mapper->method('readSet')->willReturnCallback(fn (): array => $this->rows);
+		$mapper->method('replaceSet')->willReturnCallback(function (array $alerts): void {
+			$this->rows = $alerts;
+		});
+
+		return new MinsalRepository($clients, $time, $this->logger(), $mapper, $cacheFactory);
 	}
 
 	/**
