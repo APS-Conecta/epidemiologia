@@ -6,6 +6,8 @@ Rules for any AI agent working in this repo. `CLAUDE.md` imports this file.
 `gestion` gitignores and bind-mounts to `/var/www/html/custom_apps`, so `gestion/AGENTS.md` loads as
 parent context whenever you work here. Its rules still apply; nothing below replaces them.
 
+Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo citations stay bare. The org-wide contracts index lives in `gestion/docs/CONTRACTS.md`.
+
 **Language.** One line decides it: **Spanish is what a clinician reads. Everything else is English.**
 
 | Surface | Language |

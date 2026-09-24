@@ -77,11 +77,11 @@ class ApiController extends OCSController {
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category A category slug of that source; omit for all of them
 	 * @param ?int $olderThan Only items published strictly before this epoch
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array<string, string>>, total?: int, has_more?: bool}>, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array{title: string, url: string, year?: string, month?: string, se?: string, at?: int, categories?: list<string>, date?: string}>, total?: int, has_more?: bool}>, array{}>
 	 *
-	 * 200: Each source asked for, with its items, its freshness and its own degraded flag
-	 * 400: That source cannot be narrowed the way you asked
-	 * 404: No such source
+	 * 200: Each source asked for, with its items, its freshness and its own degraded flag — item keys are the union across fuentes (ISP: year/month/se; sanitary_alerts: at/categories/date), per SourcesTest's name-every-key doctrine
+	 * 400: That source cannot be narrowed the way you asked (empty payload)
+	 * 404: No such source (empty payload)
 	 */
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: self::LIMIT, period: self::PERIOD)]

@@ -108,7 +108,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Each source asked for, with its items, its freshness and its own degraded flag",
+                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the union across fuentes (ISP: year/month/se; sanitary_alerts: at/categories/date), per SourcesTest's name-every-key doctrine",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -149,8 +149,39 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "at": {
+                                                                            "type": "integer",
+                                                                            "format": "int64"
+                                                                        },
+                                                                        "categories": {
+                                                                            "type": "array",
+                                                                            "items": {
+                                                                                "type": "string"
+                                                                            }
+                                                                        },
+                                                                        "date": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },
@@ -172,7 +203,7 @@
                         }
                     },
                     "400": {
-                        "description": "That source cannot be narrowed the way you asked",
+                        "description": "That source cannot be narrowed the way you asked (empty payload)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -213,8 +244,39 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "at": {
+                                                                            "type": "integer",
+                                                                            "format": "int64"
+                                                                        },
+                                                                        "categories": {
+                                                                            "type": "array",
+                                                                            "items": {
+                                                                                "type": "string"
+                                                                            }
+                                                                        },
+                                                                        "date": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },
@@ -236,7 +298,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such source",
+                        "description": "No such source (empty payload)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -277,8 +339,39 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "at": {
+                                                                            "type": "integer",
+                                                                            "format": "int64"
+                                                                        },
+                                                                        "categories": {
+                                                                            "type": "array",
+                                                                            "items": {
+                                                                                "type": "string"
+                                                                            }
+                                                                        },
+                                                                        "date": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },
