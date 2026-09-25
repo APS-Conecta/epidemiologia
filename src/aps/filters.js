@@ -1,11 +1,4 @@
 /**
- * Vendored from aps-common (js/filters.js) — the org's shared text rules
- * (L0-03). This app consumes `fold` only; the rest of the module ships
- * nothing into the bundle (tree-shaken) but rides along so the copy stays
- * diffable against its origin. aps-common/js/fold-corpus.json rides with it
- * and both language suites fold the same corpus.
- */
-/**
  * The shared JS text rules (L0-03/L0-04): one fold, one match, one
  * retired-list doctrine — accessor-parameterized the way epidemiologia's
  * useFilters parameterizes, so domain predicates compose on top.
