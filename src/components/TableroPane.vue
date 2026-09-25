@@ -16,18 +16,31 @@
 			referrerpolicy: without it the full intranet URL goes to Microsoft on every
 			load. The CSP frame domain lives in PageController.
 		-->
-		<iframe v-if="mounted"
+		<iframe v-if="mounted && tablero"
 			class="epi-frame"
 			:src="tablero"
 			:title="t('epidemiologia', 'Situación Epidemiológica Vigilancia ETI e IRAG')"
 			loading="lazy"
 			referrerpolicy="no-referrer"
 			allowfullscreen />
+
+		<!-- The URL never reached the page (L3-15): a blank iframe "looks to
+		     everyone like MINSAL being down" — the exact sentence smoke.sh's
+		     CSP check was written against. Named, not blank. -->
+		<NcEmptyContent v-else-if="mounted"
+			:name="t('epidemiologia', 'Tablero no disponible')"
+			:description="t('epidemiologia', 'La dirección del tablero no llegó a la página. Recargar suele resolverlo.')">
+			<template #icon>
+				<ChartBox :size="20" />
+			</template>
+		</NcEmptyContent>
 	</section>
 </template>
 
 <script setup>
 import { t } from '@nextcloud/l10n'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
+import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import { tablero } from '../state.js'

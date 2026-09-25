@@ -34,7 +34,7 @@ would exist only to contradict it. What cannot be inherited, and so stays here, 
 
 ## A note on the ADR numbers
 
-Thirteen ADRs, `0002`–`0014`, no gaps. **The numbering starts at 0002**: `0001` handed REM to a
+Fifteen ADRs, `0002`–`0016`, no gaps. **The numbering starts at 0002**: `0001` handed REM to a
 sibling app that was later retired, and it was deleted rather than superseded (#121) — the number is
 spent and nothing will be written at it. Numbers are never reused and never renumbered, so a gap
 *between* two of these would be a permanent one rather than a deletion. Every ADR carries a dated

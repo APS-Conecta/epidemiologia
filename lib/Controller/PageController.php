@@ -46,8 +46,13 @@ class PageController extends Controller {
 		// else. The OCS route exists for the consumers that are not this page.
 		//
 		// One key, not one per source. Each key is a contract between this file and
-		// state.js that has to be spelled identically in two languages, so three of
-		// them were three chances to typo a source into silence.
+		// state.js that has to be spelled identically in two languages, so two of
+		// them were two chances to typo a source into silence.
+		//
+		// Bounded on a cold install (L3-08): the reports fuente's first read costs
+		// ONE page-1 fetch — the back-catalogue walk and the document archiver run
+		// on RefreshJob's nightly pass, never inside this render. A slow ISP delays
+		// first paint by its own 15-second bound, not by its history.
 		$this->initialState->provideInitialState('sources', $this->sources->all());
 
 		// Not a source: a constant URL with nothing to fetch, parse, cache or

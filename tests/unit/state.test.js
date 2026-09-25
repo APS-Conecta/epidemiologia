@@ -1,17 +1,20 @@
 /**
- * The filter options both alert panes offer.
+ * The filter options the alertas pane offers.
  *
- * These are here because the two panes built them separately and drifted: the ISP
- * pane mapped a label onto every year, Alertas vigentes did not, and FilterMenu
- * interpolated `undefined (12)` into the live menu for weeks (#44). Nothing in
- * PHP can see that, and the layout gate needs a provisioned instance — so the
- * shape of an option is pinned here, where it costs milliseconds.
+ * These are here because the two alert panes once built them separately and
+ * drifted: the ISP pane mapped a label onto every year, Alertas vigentes did
+ * not, and FilterMenu interpolated `undefined (12)` into the live menu for
+ * weeks (#44). Nothing in PHP can see that, and the layout gate needs a
+ * provisioned instance — so the shape of an option is pinned here, where it
+ * costs milliseconds.
  */
 import { describe, expect, it } from 'vitest'
-import { degradedText, emptyText, fecha, monthOptions, tally, yearOptions } from '../../src/state.js'
+import * as stateExports from '../../src/state.js'
+import { alerts, degradedText, emptyText, fecha, mes, monthOptions, reports, tally, yearOptions } from '../../src/state.js'
 
 /**
- * Shaped like what the panes actually hold: MINSAL carries year/month, the ISP a date.
+ * Shaped like what the alert panes actually held: MINSAL carries year/month, the
+ * ISP a date — the date shape is what exercises the accessors.
  *
  * Deliberately NOT in newest-first order. With a sorted fixture, tally() preserves
  * insertion order and every ordering assertion below passes against a function that
@@ -70,7 +73,8 @@ describe('yearOptions', () => {
 		expect(yearOptions(ISP, ispYear).map((o) => o.id)).toEqual(['2026', '2025'])
 	})
 
-	// The whole point of sharing it: both panes get the same shape from one place.
+	// The whole point of sharing it: every pane that uses it gets the same shape
+	// from one place.
 	it('builds the same shape from a date-carrying item as from a year-carrying one', () => {
 		const fromMinsal = yearOptions(MINSAL, yearOf)
 		const fromIsp = yearOptions(ISP, ispYear)
@@ -129,5 +133,31 @@ describe('degradedText / emptyText', () => {
 	it('puts the source into the sentence', () => {
 		expect(degradedText('MINSAL')).toBe('No hemos podido contactar con MINSAL, así que esta lista puede estar incompleta.')
 		expect(emptyText('El ISP')).toBe('El ISP no trae alertas en este momento.')
+	})
+})
+
+describe('the state half (L3-17)', () => {
+	// The setup shim answers no initial-state node, so `sources` is the
+	// fallback {} — which makes THIS suite the missing-key path (L3-14):
+	// an undefined key reads as degraded, never as a publisher saying zero.
+	it('reads a missing fuente as degraded, not as empty', () => {
+		expect(alerts).toEqual({ items: [], fetched_at: null, degraded: true })
+		expect(reports).toEqual({ items: [], fetched_at: null, degraded: true })
+	})
+
+	// The split's contract: the import sites that predate it keep resolving.
+	it('re-exports the pure half', () => {
+		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'FUENTES']) {
+			expect(stateExports).toHaveProperty(name)
+		}
+	})
+})
+
+describe('mes (L3-19)', () => {
+	// The assertion tests/setup.js's own comment has promised since it was
+	// written — "mes() must render 'julio de 2026', never 'July 2026" — and
+	// no test ever made.
+	it('renders the month in the page\'s locale', () => {
+		expect(mes('2026-07')).toBe('julio de 2026')
 	})
 })

@@ -1,18 +1,12 @@
 <!--
 	The last thing between a render error and a blank page.
 
-	App.vue shows its panes with `v-show`, never `v-if` — the tablero's iframe must
-	mount once — so all six are mounted on first paint and stay mounted. That makes
-	the blast radius of a throwing pane the whole app rather than one tab: an error
-	while drawing the ISP rail takes Alertas vigentes and the informe down with it,
-	on load, before a reader has chosen anything. Vue's default for an unhandled
-	render error is a page with nothing on it, which looks exactly like the instance
-	being broken.
-
-	ONE boundary, around the content area, and not one per pane. Six would buy
-	nothing the one does not: with every pane mounted together there is no surviving
-	sibling to keep showing, so the finer granularity would only be more code making
-	the same promise.
+	One boundary PER PANE (L3-21): the panes are v-show-mounted together on
+	first paint, so one boundary around the content area made every pane's
+	fault the whole app's — an error while drawing the informe took Alertas
+	vigentes down with it, before a reader had chosen anything. Per-pane
+	boundaries keep four panes alive through the fifth's fault, and each one
+	names nothing it does not own.
 
 	It does NOT stop propagation. `onErrorCaptured` returning `false` would keep the
 	error from ever reaching Vue's own handler, so the fallback below would render
@@ -40,7 +34,7 @@
 
 <script setup>
 import { onErrorCaptured, ref } from 'vue'
-import { NcEmptyContent } from '@nextcloud/vue'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { t } from '@nextcloud/l10n'
 import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 

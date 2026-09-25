@@ -20,13 +20,16 @@ use OCP\Search\SearchResultEntry;
  * Puts the alerts in Nextcloud's global search box, so staff find them without
  * knowing this app exists.
  *
- * Reads the cache and nothing else — see MinsalRepository::search() for why a
- * provider must never fetch.
+ * Reads the persisted set and nothing on the network — see MinsalRepository::search()
+ * for why a provider must never fetch.
  *
- * It covers every searchable source rather than only MINSAL's. Sixty ISP alerts
- * were invisible here while being rendered in the app next door, because this
- * class named one repository in its constructor instead of asking what the app
- * publishes.
+ * It asks the catalogue what is searchable rather than naming one repository:
+ * that is the shape #37 fixed, when sixty ISP alerts were invisible here while
+ * being rendered in the app next door, because this class named MinsalRepository
+ * in its constructor instead of asking what the app publishes. The alertas
+ * sanitarias have since retired (ADR-0016), so today the answer is MINSAL's
+ * alertas alone — and the next searchable fuente joins this box with no edit
+ * here.
  */
 class AlertProvider implements IProvider {
 	public function __construct(
@@ -58,13 +61,12 @@ class AlertProvider implements IProvider {
 			fn (array $hit): SearchResultEntry => new SearchResultEntry(
 				'',
 				$hit['item']['title'],
-				// The kind carries the institution, because this list mixes the two
-				// kinds of alert with each other and with files and contacts, and
-				// CONTEXT.md is explicit that an alerta sanitaria and an alerta
-				// vigente are never merged. The date is whichever the source has:
-				// the ISP publishes a day, MINSAL only the upload year.
+				// The kind carries the institution, because a result has to stand
+				// alone in a list mixed with files and contacts. With the alertas
+				// sanitarias retired every hit is MINSAL's, and MINSAL publishes
+				// only the upload year — the date is whichever the source has.
 				$this->sources->kind($hit['source'], $this->l)
-					. ' · ' . ($hit['item']['date'] ?? $hit['item']['year'] ?? ''),
+					. ' · ' . ($hit['item']['year'] ?? ''),
 				$hit['item']['url'],
 				'icon-external',
 			),

@@ -3,19 +3,20 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>epidemiologia</id>
     <name>Epidemiología</name>
-    <summary>Alertas del MINSAL y del ISP, informe semanal de virus respiratorios y tablero nacional</summary>
+    <summary>Alertas del MINSAL, informe semanal de virus respiratorios del ISP y tablero nacional</summary>
     <description><![CDATA[
 Muestra dentro de la intranet la información epidemiológica que publican el MINSAL y el
 ISP. Del MINSAL: las alertas epidemiológicas vigentes, el tablero nacional de vigilancia
 ETI e IRAG y el acceso a EPIVIGILA. Del ISP: el informe semanal de circulación de virus
-respiratorios, por semana epidemiológica, y sus alertas sanitarias —retiros de mercado,
-falsificaciones, farmacovigilancia y dispositivos médicos—, que el ISP publica solo en
-sus propios canales RSS.
+respiratorios, por semana epidemiológica.
 
-Solo lee y enlaza información pública: no copia ni rehospeda documentos del Estado,
-no guarda datos en base de datos y no contiene información de pacientes.
+Lee y enlaza información pública. De ella guarda solo lo necesario para servirla, nunca
+datos de pacientes: en la base de datos de la instancia, los metadatos que el MINSAL y el
+ISP publican; en el almacenamiento propio de la app, el documento de cada informe semanal,
+descargado una sola vez. Las alertas del MINSAL siguen siendo enlaces a los PDF en su
+sitio oficial.
     ]]></description>
-    <version>0.9.0</version>
+    <version>0.10.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>
@@ -31,6 +32,7 @@ no guarda datos en base de datos y no contiene información de pacientes.
     </dependencies>
     <background-jobs>
         <job>OCA\Epidemiologia\BackgroundJob\ProbeJob</job>
+        <job>OCA\Epidemiologia\BackgroundJob\RefreshJob</job>
     </background-jobs>
     <navigations>
         <navigation>
@@ -47,4 +49,20 @@ no guarda datos en base de datos y no contiene información de pacientes.
             <order>5</order>
         </navigation>
     </navigations>
+    <!--
+      The residue wipe lives here, not in the migration's postSchemaChange,
+      because that hook is skipped when an app's schema is applied on a first
+      install — and the keys and rows it wipes exist only on installs that
+      predate this release, which arrive via post-migration anyway. Registered
+      for both events; the step is idempotent, so a second run finds nothing
+      and does nothing (territorio's EnsureSeedData pattern).
+    -->
+    <repair-steps>
+        <install>
+            <step>OCA\Epidemiologia\Migration\RetireSanitaryAlerts</step>
+        </install>
+        <post-migration>
+            <step>OCA\Epidemiologia\Migration\RetireSanitaryAlerts</step>
+        </post-migration>
+    </repair-steps>
 </info>

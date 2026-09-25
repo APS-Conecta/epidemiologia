@@ -8,7 +8,6 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\IspRepository;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -27,8 +26,8 @@ use RuntimeException;
  * assertion here is on the rendered row — its severity and which fuente it names —
  * and none is on how a counter is stored.
  *
- * Every test walks Sources::ALL rather than naming the three fuentes, which is the
- * property that matters: a fourth fuente added to the catálogo and forgotten here
+ * Every test walks Sources::ALL rather than naming the fuentes, which is the
+ * property that matters: a third fuente added to the catálogo and forgotten here
  * fails in this file instead of in front of an administrator.
  */
 class SourcesReachableTest extends TestCase {
@@ -70,10 +69,12 @@ class SourcesReachableTest extends TestCase {
 
 	/**
 	 * The defect this file exists for. Before #37 this row said nothing at all
-	 * while ProbeJob counted the failures next door.
+	 * while ProbeJob counted the failures next door. The ISP's fuente is the
+	 * informes feed now — the alertas sanitarias retired with ADR-0016 — but the
+	 * institution the row must name is still the ISP's.
 	 */
 	public function testAnIspOutageIsReportedAndNamesTheIsp(): void {
-		$this->failing(Sources::SANITARY_ALERTS, days: 3);
+		$this->failing(Sources::REPORTS, days: 3);
 
 		$result = $this->check()->run();
 
@@ -87,7 +88,7 @@ class SourcesReachableTest extends TestCase {
 	 * nothing, because MINSAL is fine.
 	 */
 	public function testAnIspOutageDoesNotMentionMinsal(): void {
-		$this->failing(Sources::SANITARY_ALERTS, days: 3);
+		$this->failing(Sources::REPORTS, days: 3);
 
 		self::assertStringNotContainsString('MINSAL', (string)$this->check()->run()->getDescription());
 	}
@@ -142,7 +143,7 @@ class SourcesReachableTest extends TestCase {
 	 * one that declines to say.
 	 */
 
-	// --- the property that stops a fourth fuente going unnoticed --------------
+	// --- the property that stops a third fuente going unnoticed ----------------
 
 	public function testEveryFuenteInTheCatalogoIsReported(): void {
 		foreach (Sources::ALL as $source) {
@@ -151,8 +152,8 @@ class SourcesReachableTest extends TestCase {
 
 		$description = (string)$this->check()->run()->getDescription();
 
-		// One sentence per fuente. Asserting the COUNT rather than three names is
-		// what makes this survive a fourth fuente being added: it fails then too.
+		// One sentence per fuente. Asserting the COUNT rather than two names is
+		// what makes this survive a third fuente being added: it fails then too.
 		self::assertSame(
 			count(Sources::ALL),
 			substr_count($description, 'No se pudo leer'),
@@ -161,7 +162,7 @@ class SourcesReachableTest extends TestCase {
 	}
 
 	public function testOneBrokenFuenteDoesNotDragTheOthersIntoTheRow(): void {
-		$this->failing(Sources::SANITARY_ALERTS, days: 2);
+		$this->failing(Sources::REPORTS, days: 2);
 
 		$description = (string)$this->check()->run()->getDescription();
 
@@ -214,13 +215,11 @@ class SourcesReachableTest extends TestCase {
 
 	private function check(bool $explosive = false): SourcesReachable {
 		$minsal = $this->createMock(MinsalRepository::class);
-		$isp = $this->createMock(IspRepository::class);
 		$informes = $this->createMock(IspReportRepository::class);
 
 		if ($explosive) {
 			foreach (['get', 'probe', 'search'] as $read) {
 				$minsal->method($read)->willThrowException(new RuntimeException('a setup check must not fetch'));
-				$isp->method($read)->willThrowException(new RuntimeException('a setup check must not fetch'));
 			}
 			// Every way in that can reach the network. There is no search() to arm: the
 			// informes are not searchable, so the class does not carry one.
@@ -229,7 +228,7 @@ class SourcesReachableTest extends TestCase {
 			}
 		}
 
-		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $isp, $informes), $this->l10n());
+		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $informes), $this->l10n());
 	}
 
 	/** Real, over the shared config double — see ProbeJobTest for why it is not a mock. */

@@ -1,8 +1,8 @@
 /**
- * Every title here is real, copied from tests/unit/fixtures/isp-*.xml, and the tags
- * are the labels those items actually carry — the ISP assigns categories by which
- * feed an item appeared in (IspRepository::parse, "the categories come from the KEYS
- * rather than from anything in the feed").
+ * Every title here is real, copied from the ISP's alert feed back when this app
+ * read it, and the tags are the labels those items actually carried. The
+ * fixtures and the reader both retired with the fuente (ADR-0016); the titles
+ * stay because they are the corpus the rule below was measured against.
  *
  * The property under test is not the hit rate. It is that a preamble is quietened
  * ONLY when a tag on the same row already says it, so nothing can be de-emphasised

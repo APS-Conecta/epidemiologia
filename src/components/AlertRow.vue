@@ -1,5 +1,6 @@
 <!--
-	One row in a list of alerts, shared by the two panes that show them.
+	One row in a list of alerts, shared by the two panes that showed them until
+	the ISP's retired (ADR-0016).
 
 	It exists because those two panes DIVERGED. The ISP pane rendered its own row
 	so titles wrap; the MINSAL pane used NcListItem, which truncates its name to one
@@ -11,9 +12,8 @@
 	oficio number, the ISP after the product — which is the reasoning #35 already
 	recorded for one of them and this applies to both.
 
-	The meta line differs per pane (a year here, a date and its categories there),
-	so it is a slot rather than a prop: what the panes share is the row, not what
-	they say about it.
+	The meta line differs per pane, so it is a slot rather than a prop: what the
+	panes share is the row, not what they say about it.
 -->
 <template>
 	<li class="epi-alert">

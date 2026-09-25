@@ -8,9 +8,9 @@
  * once made an ISP outage report itself as MINSAL — this guards the same class of
  * defect on the frontend.
  *
- * Read as TEXT rather than imported, for the reason family-icons.test.js and
- * isp-terms.test.js give: these components run under vitest's `node` environment
- * on purpose (vitest.config.js), so a single-file component cannot be imported.
+ * Read as TEXT rather than imported: these components run under vitest's `node`
+ * environment on purpose (vitest.config.js), so a single-file component cannot be
+ * imported.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -21,7 +21,6 @@ const SURFACES = [
 	'App.vue',
 	'components/AlertsPane.vue',
 	'components/ReportPane.vue',
-	'components/IspPane.vue',
 	'components/InicioPane.vue',
 	'components/EpivigilaPane.vue',
 ]
@@ -34,10 +33,11 @@ describe('attribution', () => {
 	})
 
 	it('credits each fuente to the institution that publishes it', () => {
-		// "el ISP", with the article: state.js documents that the article differs
-		// between "MINSAL" and "el ISP", and every other ISP call site in the app
-		// (IspPane's DegradedNotice, InicioPane's degradedText) already carries it.
-		expect(src('components/ReportPane.vue')).toContain('source="el ISP"')
+		// "el ISP", with the article: the constants document that the article
+		// differs between "MINSAL" and "el ISP" (L3-20 — FUENTES, in
+		// src/pure.js), and the app's remaining ISP call site (ReportPane's
+		// DegradedNotice) carries the constant, not the literal.
+		expect(src('components/ReportPane.vue')).toContain(':source="FUENTES.isp"')
 		expect(src('components/AlertsPane.vue')).toContain('degreyd.minsal.cl')
 	})
 })

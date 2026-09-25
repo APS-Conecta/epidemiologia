@@ -18,14 +18,12 @@ use OCP\IL10N;
  * three were not separate bugs; they were the same omission, and the next source
  * would have produced it again. So: one list here, and everything else asks.
  *
- * It is a catalogue, NOT a base class. Its three owners are not merged and must not
- * be: MinsalRepository is one page whose emptiness is always a failure, IspRepository
- * is 24 feeds of which several are legitimately empty, and IspReportRepository is one
- * page that ACCUMULATES what it reads, because the ISP publishes only the current
- * informe and its year archive renders client-side. Those disagreements are the whole
- * reason there are three classes — see each one's docblock. Sharing a host is not
- * sharing a rule: the last two read the same server and agree on nothing else.
- * This maps ids to owners; the owners keep their rules.
+ * It is a catalogue, NOT a base class. Its two owners are not merged and must not
+ * be: MinsalRepository is one page whose emptiness is always a failure, and
+ * IspReportRepository is one feed that ACCUMULATES what it reads, because the ISP
+ * publishes only the current informe and the series' history lives in the feed's
+ * pages. Those disagreements are the whole reason there are two classes — see
+ * each one's docblock. This maps ids to owners; the owners keep their rules.
  *
  * Outside a repository, a source is identified by the id below. The repositories
  * keep their own internal feed names and cache keys, and this is the only place
@@ -35,46 +33,18 @@ class Sources {
 	public const ALERTS = 'alerts';
 	public const REPORTS = 'reports';
 
-	/**
-	 * `sanitary_alerts`, not `isp_alerts`: CONTEXT.md names the object *alerta
-	 * sanitaria ISP* and lists *alerta ISP* under Avoid. The id is public — it is
-	 * a key in the OCS payload — so it follows the glossary, not the class
-	 * constant it happens to be stored under.
-	 */
-	public const SANITARY_ALERTS = 'sanitary_alerts';
-
 	/** Every source, in the order the app presents them. */
-	public const ALL = [self::ALERTS, self::REPORTS, self::SANITARY_ALERTS];
+	public const ALL = [self::ALERTS, self::REPORTS];
 
 	/**
-	 * What each fuente can be narrowed by. Absent means "nothing" — MINSAL publishes a
-	 * year and a month, so neither a category nor a cursor means anything to it.
-	 *
-	 * A constant and not a sample of the data: see page(). Adding a narrowing to a fuente
-	 * is a deliberate act, and this is the one line it takes.
-	 */
-	private const NARROWABLE = [self::SANITARY_ALERTS => ['categories', 'at']];
-
-	/** The category values each fuente publishes. Only the ISP has any. */
-	private const VOCABULARY = [self::SANITARY_ALERTS => IspRepository::TERMS];
-
-	/**
-	 * The two that carry alerts somebody would search for by subject. An informe
-	 * is a weekly PDF identified by its semana epidemiológica, so matching
+	 * The sources that carry alerts somebody would search for by subject. An
+	 * informe is a weekly PDF identified by its semana epidemiológica, so matching
 	 * "sarampión" against its title finds nothing a reader wanted.
 	 */
-	private const SEARCHABLE = [self::ALERTS, self::SANITARY_ALERTS];
-
-	/**
-	 * Items per narrowed response. One number, because it is the only thing standing
-	 * between a caller and the whole 1.423-alert archive in a single payload — which is
-	 * the problem the narrowing exists to solve.
-	 */
-	private const PAGE = 100;
+	private const SEARCHABLE = [self::ALERTS];
 
 	public function __construct(
 		private MinsalRepository $minsal,
-		private IspRepository $isp,
 		private IspReportRepository $informes,
 	) {
 	}
@@ -83,7 +53,7 @@ class Sources {
 	 * Every source with its freshness and its state — the whole payload of the page
 	 * and of the OCS route.
 	 *
-	 * @return array<string, array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}>
+	 * @return array<string, array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool, total: int, has_more: bool}>
 	 */
 	public function all(): array {
 		$sources = [];
@@ -95,88 +65,7 @@ class Sources {
 	}
 
 	/**
-	 * One source, narrowed — a category and/or everything older than a cursor.
-	 *
-	 * Returns NULL when the source cannot answer the narrowing asked of it. That is
-	 * the whole point of the guard: the filters read `categories` and `at`, which only
-	 * ISP items carry. MINSAL items carry `year` and `month`, so the old code answered
-	 * a MINSAL request with confident nonsense — `category` matched nothing and
-	 * returned an empty archive, `olderThan` compared against a defaulted 0 and
-	 * returned everything, both labelled as if the filter had been applied.
-	 *
-	 * Refusing is better than guessing. A caller asking for something a fuente cannot
-	 * express has made a mistake, and a wrong answer that looks right is the failure
-	 * this repository keeps paying for elsewhere.
-	 *
-	 * @param ?string $category one of the source's own category slugs, or null for all
-	 * @param ?int    $olderThan epoch; only items published strictly before it
-	 * @return ?array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool, total: int, has_more: bool}
-	 */
-	public function page(string $id, ?string $category = null, ?int $olderThan = null): ?array {
-		$source = $this->get($id);
-
-		/*
-		 * Judged on the FUENTE, not on a sample of its contents.
-		 *
-		 * This used to read the keys off `items[0]`, so that a fuente growing an `at`
-		 * later would start being narrowable with no constant to remember. The cost was
-		 * that the guard disappeared exactly when there was nothing to sample: during a
-		 * MINSAL outage the same unanswerable narrowing that gets 400 on a good day came
-		 * back 200 with an empty list. What a fuente can express is a fact about the
-		 * fuente, and an empty one has not stopped being MINSAL.
-		 */
-		$narrowable = self::NARROWABLE[$id] ?? [];
-		if ($category !== null && !in_array('categories', $narrowable, true)) {
-			return null;
-		}
-		if ($olderThan !== null && !in_array('at', $narrowable, true)) {
-			return null;
-		}
-
-		/*
-		 * A category the fuente does not publish is a narrowing it cannot express, the
-		 * same as asking MINSAL for one — so it gets the same 400. Judged against the
-		 * vocabulary, never against the items: during an outage the items are empty, and
-		 * answering "no hay alertas" to a valid category would be the confident-empty
-		 * this route already refuses elsewhere.
-		 */
-		if ($category !== null && !in_array($category, self::VOCABULARY[$id] ?? [], true)) {
-			return null;
-		}
-
-		// A cursor is an instant. `?olderThan=abc` arrives here as 0 after PHP's cast,
-		// and 0 silently matches nothing rather than saying the request was nonsense.
-		if ($olderThan !== null && $olderThan <= 0) {
-			return null;
-		}
-
-		$source['items'] = array_values(array_filter(
-			$source['items'],
-			static fn (array $i): bool =>
-				($category === null || in_array($category, $i['categories'] ?? [], true))
-				&& ($olderThan === null || (int)($i['at'] ?? 0) < $olderThan),
-		));
-
-		// Capped so one call cannot ask for the whole archive by omitting the cursor —
-		// the reason this route exists is that the whole archive is too big to hand over
-		// in one response. Items are already newest-first, so this is the newest page of
-		// whatever was asked for, and the caller pages back with the last `at` it saw.
-		//
-		// `total` and `has_more` because the cap was invisible: a narrowed response of
-		// 100 looked exactly like a complete one, and naming a source returned FEWER
-		// items than not naming one — 100 against 273 — with nothing in the envelope
-		// saying so. A consumer that cannot tell "that is all" from "that is a page" is
-		// the confident-empty defect again, one level up.
-		$total = count($source['items']);
-		$source['items'] = array_slice($source['items'], 0, self::PAGE);
-		$source['total'] = $total;          // of the NARROWING, not of the fuente
-		$source['has_more'] = $total > self::PAGE;
-
-		return $source;
-	}
-
-	/**
-	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool, total: int, has_more: bool}
 	 */
 	public function get(string $id): array {
 		// No default arm on purpose, here and below: an id added to ALL and nowhere
@@ -187,12 +76,10 @@ class Sources {
 		$source = match ($id) {
 			self::ALERTS => $this->minsal->get(MinsalRepository::ALERTS),
 			self::REPORTS => $this->informes->get(),
-			self::SANITARY_ALERTS => $this->isp->get(),
 		};
 
-		// Every source says how many it holds and whether anything was left out, so a
-		// narrowed answer and a whole one are the same shape — the property
-		// testPageLeavesTheEnvelopeAlone records. Whole means nothing was left out.
+		// Every source says how many it holds and whether anything was left out.
+		// Whole means nothing was left out.
 		$source['total'] = count($source['items']);
 		$source['has_more'] = false;
 
@@ -204,13 +91,25 @@ class Sources {
 		return match ($id) {
 			self::ALERTS => $this->minsal->probe(MinsalRepository::ALERTS),
 			self::REPORTS => $this->informes->probe(),
-			self::SANITARY_ALERTS => $this->isp->probe(),
 		};
 	}
 
 	/**
+	 * The accumulating fuente's deep pass — the one-shot backfill and the
+	 * document archiver (L3-08). The read path serves page 1 and stops; this
+	 * is the job's door to everything deeper. Only REPORTS accumulates a
+	 * back catalogue — an in-force set replaces itself whole inside get() —
+	 * so the call is direct rather than a match: a second fuente that starts
+	 * accumulating says so by gaining an arm here, the same loudness every
+	 * other method of this class carries.
+	 */
+	public function converge(): void {
+		$this->informes->converge();
+	}
+
+	/**
 	 * What the source is called mid-sentence, institution included: "no se pudo leer
-	 * las alertas sanitarias del ISP". The institution is part of the phrase rather
+	 * las alertas del MINSAL". The institution is part of the phrase rather
 	 * than a second parameter because that is the fact the old notification got
 	 * wrong — it said "desde MINSAL" for every feed that was not the IRAG one.
 	 */
@@ -218,7 +117,6 @@ class Sources {
 		return match ($id) {
 			self::ALERTS => $l->t('las alertas epidemiológicas vigentes del MINSAL'),
 			self::REPORTS => $l->t('el informe semanal de Circulación de Virus Respiratorios del ISP'),
-			self::SANITARY_ALERTS => $l->t('las alertas sanitarias del ISP'),
 		};
 	}
 
@@ -232,13 +130,13 @@ class Sources {
 		return match ($id) {
 			self::ALERTS => $l->t('Alerta epidemiológica MINSAL'),
 			self::REPORTS => $l->t('Informe del ISP'),
-			self::SANITARY_ALERTS => $l->t('Alerta sanitaria ISP'),
 		};
 	}
 
 	/**
-	 * Cache-only search across the searchable sources, carrying each hit's source
-	 * with it so the caller can label it. Never fetches — see MinsalRepository::search().
+	 * Search across the searchable sources — the cache, then the durable table
+	 * behind each fuente — carrying each hit's source with it so the caller can
+	 * label it. Never fetches — see MinsalRepository::search().
 	 *
 	 * @return list<array{source: string, item: array<string, string>}>
 	 */
@@ -247,7 +145,6 @@ class Sources {
 		foreach (self::SEARCHABLE as $id) {
 			$items = match ($id) {
 				self::ALERTS => $this->minsal->search($term),
-				self::SANITARY_ALERTS => $this->isp->search($term),
 			};
 
 			foreach ($items as $item) {

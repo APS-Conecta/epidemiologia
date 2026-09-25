@@ -36,15 +36,18 @@ occ() { docker exec -u www-data "$CONTAINER" php occ "$@"; }
 # run. Not the environment either — /proc/*/environ is the same shape of leak, one step
 # narrower. App passwords are alphanumeric, so nothing here needs quoting beyond this.
 #
-# --max-time is not tuning, it is the difference between a gate that fails and a gate that
-# hangs. /sources walks 24 ISP feeds plus up to 2 backfill pages, each bounded at 15 s in
-# IspRepository — 435 s of wall clock in the worst case, and an observed run took 363 s
-# with this script printing nothing at all meanwhile. 600 is IspRepository::LOCK_FOR: the
-# window that class already reserves for one walk. Anything under ~440 s would kill a slow
-# but succeeding walk and report it as a defect of ours.
+# --max-time is not tuning, it is the difference between a gate that fails and a gate
+# that hangs. /sources reads MINSAL's one page and the ISP's informes feed — and the
+# first read after an install is that reader's one-shot backfill: page 1 plus
+# WALK_PAGES at 15 s each plus the archiver's document budget, every fetch bounded
+# at 15 s, which is 1110 s of network in the worst case. 1440 is
+# IspReportRepository::LOCK_FOR: the window that class already reserves for one
+# refresh, holding a quarter above its own worst case for the interleaved upserts.
+# Anything under ~1110 s would kill a slow but succeeding walk and report it as a
+# defect of ours.
 web() {
 	printf 'user = "%s:%s"\n' "$USER_ID" "$TOKEN" \
-		| docker exec -i -u www-data "$CONTAINER" curl -sS --max-time 600 -K - "$@" 2>/dev/null
+		| docker exec -i -u www-data "$CONTAINER" curl -sS --max-time 1440 -K - "$@" 2>/dev/null
 }
 
 failures=0
@@ -123,22 +126,22 @@ fi
 
 # Every source keyed by its own id. A missing key means Sources::ALL and the
 # payload have drifted apart, which is the failure the registry exists to stop.
-for source in alerts reports sanitary_alerts; do
+for source in alerts reports; do
 	expect "$sources" "\"$source\"" \
 		"source $source is in the response" \
 		"source $source is NOT in the response"
 done
 
-# --- narrowing (#51) --------------------------------------------------------
-# The whole point of the parameters is that a narrowed answer is SMALLER and still
+# --- one route keyed by source (ADR-0006) -------------------------------------
+# The whole point of the parameter is that a named answer is SMALLER and still
 # the same envelope. Asserting only that it answers would pass against a route that
-# ignored them, which is the failure worth catching.
-narrowed="$(web -H "$OCSH" "$OCS/sources?format=json&source=sanitary_alerts")"
-expect "$narrowed" '"sanitary_alerts"' \
+# ignored it, which is the failure worth catching.
+named="$(web -H "$OCSH" "$OCS/sources?format=json&source=reports")"
+expect "$named" '"reports"' \
 	"?source= returns the asked source" \
 	"?source= did not return the asked source"
-if printf '%s' "$narrowed" | grep -q '"alerts"'; then
-	fail "?source=sanitary_alerts also returned the other sources — the parameter is being ignored"
+if printf '%s' "$named" | grep -q '"alerts"'; then
+	fail "?source=reports also returned the other sources — the parameter is being ignored"
 else
 	pass "?source= excludes the sources that were not asked for"
 fi
@@ -155,13 +158,14 @@ expect "$(web -H "$OCSH" -o /dev/null -w '%{http_code}' "$OCS/sources?format=jso
 	"an unknown source id answers 404" \
 	"an unknown source id does NOT answer 404 — a 500 here is UnhandledMatchError"
 
-# olderThan=1 is before anything the ISP has published, so a route that honours it
-# returns no items and one that ignores it returns the archive.
-empty="$(web -H "$OCSH" "$OCS/sources?format=json&source=sanitary_alerts&olderThan=1")"
-oldcount="$(printf '%s' "$empty" | grep -o '"title"' | wc -l | tr -d ' ')"
-[ "$oldcount" -eq 0 ] \
-	&& pass "olderThan= narrows to nothing when nothing is older" \
-	|| fail "olderThan= returned $oldcount items when nothing is older than epoch 1"
+# The narrowing retired with SANITARY_ALERTS (ADR-0016): no fuente can be narrowed
+# any more, and the route refuses the parameters rather than ignoring them. A
+# consumer still sending `?olderThan` that got 200 with the whole series would read
+# the retirement as data — so 400 is the retirement being honest, and a 200 here is
+# either the narrowing coming back or the parameter being silently swallowed.
+expect "$(web -H "$OCSH" -o /dev/null -w '%{http_code}' "$OCS/sources?format=json&source=reports&olderThan=1")" '400' \
+	"a retired narrowing parameter answers 400" \
+	"a narrowing parameter did NOT answer 400 — it is being honoured or silently ignored"
 
 # Not the same statement as the guard above: this one also fails on a payload that
 # publishes no degraded key at all, which is the envelope losing a documented field.

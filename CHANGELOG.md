@@ -10,13 +10,25 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-20
+
+**Breaking:** `sanitary_alerts` is removed from the published OCS contract and every narrowing parameter answers **400** — an incompatible change raises the minor, hence 0.10.0. See [ADR-0016](docs/adr/0016-the-isp-has-one-job.md).
+
 ### Added
 
+- The app's mount shows its loading state instead of a blank frame while the bundle boots —
+  spinner and `<noscript>` from the suite theme, the same component in every custom app
+  (territorio review L0-04). Vue's mount replaces the stub's children on boot, so it removes itself.
 - A render error in any pane now shows *"No pudimos mostrar esta sección"* instead of a blank page.
-  The panes are shown with `v-show`, so all six are mounted at once and one throwing pane took the
+  The panes are shown with `v-show`, so every pane is mounted at once and one throwing pane took the
   whole app down on load — and an empty page looks exactly like the instance being broken. The error
   still reaches the browser console and any app-level handler, so the fallback does not cost a
   diagnosis.
+- **The app's first two tables persist both surviving fuentes.** The informes are one row per (year, semana); the in-force alertas are a url-keyed set. An app update no longer takes the informes with it when the platform empties the cache, and search self-heals without a fetch ([ADR-0015](docs/adr/0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md)).
+- **Each informe's document is kept, once, and served by the instance.** A row whose document is archived links `/informe/{year}/{semana}` — the copy answers when the publisher's own link dies, and a revised document replaces its copy instead of arriving as new.
+- **A daily refresh job keeps an install nobody opens current.** New informes and their documents arrive within a day of publication; the probe stays the only writer of the failure counts.
+- **A repair step wipes the retired fuente's residue** — its two probe config keys and any notification rows its outages filed — idempotently, on install and after migrations.
+- **Every outbound request names itself**: `User-Agent: APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)`, so a publisher's WAF sees a visitor it can identify.
 
 ### Changed
 
@@ -32,12 +44,10 @@ made belongs in the commit, the issue, or a comment beside the code.
   anywhere and have no reachable home. The admin bell and *Administración → Visión general* name it the
   same way, so *ETI/IRAG* now appears only on the **tablero**, which really is MINSAL's report. The
   pane's navigation row moved from the MINSAL group to the ISP's, its degraded notice links the ISP,
-  and the fuente **accumulates one informe per semana
-  epidemiológica**: the ISP publishes only the current one and its year archive renders client-side, so
-  the back catalogue cannot be fetched at all. Any app update on the instance empties the accumulation
-  and it restarts from the current week, and **the log now says so when it happens** — the ISP archive
-  already did, and it is the one of the two that can walk itself back
-  ([ADR-0012](docs/adr/0012-the-archive-is-a-cache-and-any-app-update-empties-it.md)).
+  and the fuente keeps one informe per **semana epidemiológica** — the ISP publishes only the current
+  one; the series is read from its feed and persisted now
+  ([ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md),
+  [ADR-0015](docs/adr/0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md)).
 - **Installing no longer requires importing the ISP's intermediate certificate by hand.** The app ships
   the certificate `www.ispch.gob.cl` omits from its chain and merges it with the instance's own trust
   anchors for its ISP requests only; verification is unchanged and `verify => false` is still forbidden.
@@ -47,9 +57,6 @@ made belongs in the commit, the issue, or a comment beside the code.
   contract.** All three advertised *informes IRAG*, which was the previous publisher's name for a
   document this app no longer reads; `openapi.json` is generated from the summary and had not been
   regenerated.
-- The *"Ver en el sitio oficial"* link in the ISP's degraded notice now opens the ISP's alert index
-  rather than the `anamed` category. It is shown exactly when the app cannot reach the ISP, and it
-  sent a reader to one of the 24 categories with nothing saying the other 23 exist.
 - **An ISP outage now says what failed.** The single warning an administrator sees carries the
   underlying error — `cURL error 60: SSL certificate problem`, for instance — instead of only *"No
   ISP feed could be reached"*. Per-feed causes stay at `debug`, which Nextcloud does not log by
@@ -58,13 +65,20 @@ made belongs in the commit, the issue, or a comment beside the code.
   Both degrade and both serve the last good copy, but *"returned 0 items"* is a claim about MINSAL
   that is false when MINSAL was never reached — and a body that is not a page (a WAF block, a proxy
   error) previously produced no log line at all.
+- **The weekly informe is read from the ISP's feed**, no longer scraped from the page it links. The year of a semana comes from the feed's `pubDate` in the publisher's own timezone, a reissue replaces its own week, and the series backfills itself once from the feed's pages.
+- **A publisher that answers 4xx or 5xx arms the freno.** The app stops re-asking that host on the doubling curve; the daily probe is the one ask that still goes through, so a host that answers again is read again the same day. A timeout or a TLS fault keeps the five-minute cooldown — those lift on their own, a refusal does not.
+- **`?source=reports` answers the whole series.** The 100-item cap and its cursor machinery are gone; a narrowing parameter is refused loudly on every source.
+
+### Removed
+
+- **The ISP's alertas sanitarias retired** with their pane, their vocabulary and their probe: MINSAL owns the alertas, the ISP keeps only the weekly informe ([ADR-0016](docs/adr/0016-the-isp-has-one-job.md)). 1.022 lines of `IspRepository` and its suite went with them.
 
 ### Fixed
 
-- **A CA bundle that only half-wrote can no longer poison both ISP fuentes permanently.** The merge
+- **A CA bundle that only half-wrote can no longer poison the ISP's own fuente permanently.** The merge
   is written beside its destination and renamed onto it, so the identity path only ever holds a whole
   bundle. Written straight to that path, a truncated file stayed there under a correct name and a
-  correct owner — every later request trusted it and none rebuilt it, so both fuentes failed
+  correct owner — every later request trusted it and none rebuilt it, so the fuente failed
   `cURL error 60` until the instance's anchors happened to change.
 - **The daily sondeo can see the alerts page change again.** It compared a publication date the
   publisher does not move — that date read June while the page listed alerts dated July — so it

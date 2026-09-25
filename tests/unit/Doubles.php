@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCP\AppFramework\Services\IAppConfig;
+use OCP\Files\AppData\IAppDataFactory;
 use OCP\ICache;
 use OCP\IL10N;
 
@@ -126,5 +127,18 @@ trait Doubles {
 		});
 
 		return $config;
+	}
+
+	/**
+	 * The factory double for the app-data fake — the repositories' constructor
+	 * type (OCP\Files\AppData\IAppDataFactory). The fake is passed in, not
+	 * minted here, because the suite's assertions live on the same instance
+	 * the repository holds: never-refetch is a claim about ONE store's ledger.
+	 */
+	private function appDataFactory(FakeAppData $data): IAppDataFactory {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$factory->method('get')->willReturn($data);
+
+		return $factory;
 	}
 }

@@ -6,9 +6,9 @@
 	spends 34px on a toolbar holding its action, its breadcrumb and three filters.
 	This is that row, on the platform's own clickable-area grid.
 
-	It exists as a component rather than as markup in each pane so the two panes
-	cannot drift apart again — which is exactly what happened to their titles, their
-	degraded notices and their filters when each was written separately.
+	It exists as a component rather than as markup in each pane so the controls
+	cannot drift apart again — which is exactly what happened to the two panes'
+	titles, their degraded notices and their filters when each was written separately.
 
 	The provenance line it replaces is not lost: the navigation footer already
 	carried the same sentence, so every screen was printing it twice.
@@ -34,10 +34,7 @@
 			     even that the result count fell to zero. -->
 			<p class="epi-bar__count" role="status" aria-live="polite">
 				{{ count }}
-				<template v-if="fetchedAt">
-					· {{ t('epidemiologia', 'leído') }}
-					<NcDateTime :timestamp="fetchedAt * 1000" relative-time="long" />
-				</template>
+				<Procedencia v-if="fetchedAt" :fetched-at="fetchedAt" />
 			</p>
 		</div>
 
@@ -67,9 +64,11 @@
 </template>
 
 <script setup>
-import { NcChip, NcDateTime, NcTextField } from '@nextcloud/vue'
+import NcChip from '@nextcloud/vue/components/NcChip'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { t } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
+import Procedencia from './Procedencia.vue'
 
 defineProps({
 	query: { type: String, default: '' },
@@ -93,9 +92,9 @@ defineEmits(['update:query', 'clear'])
    screen. The row is only one line tall where there is room for one. */
 /*
 	Sticky, because the filter state was unreachable the moment you scrolled. The
-	ISP archive is 276 rows and ~18.500px tall; by row 40 nothing on screen said
+	ISP archive was 276 rows and ~18.500px tall; by row 40 nothing on screen said
 	which year, month, search or category was narrowing it — and the empty state
-	says "Ninguna alerta del ISP coincide con esos filtros" while the filters
+	said "Ninguna alerta del ISP coincide con esos filtros" while the filters
 	themselves had scrolled away.
 
 	`top: 0` against `.app-content`, which is the scrolling ancestor: measured on
@@ -103,7 +102,7 @@ defineEmits(['update:query', 'clear'])
 	not assumed. Everything between it and this row is `overflow: visible`, so
 	nothing traps the sticky box.
 
-	The background is not decoration. A transparent sticky row lets 276 alert
+	The background is not decoration. A transparent sticky row lets the alert
 	titles slide visibly through the search field, and it must be the token rather
 	than white so it survives a stock Nextcloud dark theme.
 */
