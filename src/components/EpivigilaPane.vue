@@ -45,7 +45,8 @@
 </template>
 
 <script setup>
-import { NcButton, NcNoteCard } from '@nextcloud/vue'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { t } from '@nextcloud/l10n'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import PaneHeader from './PaneHeader.vue'

@@ -15,6 +15,7 @@ use OCP\Notification\IManager;
 use OCP\Notification\INotification;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use RuntimeException;
 
 /**
  * The backoff schedule, which is the whole point of this job's rewrite.
@@ -138,18 +139,40 @@ class ProbeJobTest extends TestCase {
 		self::assertSame(['tecnico', 'tecnico'], $this->notified);
 	}
 
+	/**
+	 * Per-source isolation (L3-03): probe() throws for ALERTS, answers true
+	 * for REPORTS — both fuentes keep their own judgement, the thrower as a
+	 * failure and the sibling as the healthy day it had. Unrecorded, the
+	 * thrower's day would count as neither and the [2, 7, 30] schedule would
+	 * silently skip it.
+	 */
+	public function testAThrowingProbeIsRecordedAsAFailureAndDrownsNobody(): void {
+		$this->runDays(1, healthy: true, throwFor: 'alerts');
+
+		self::assertSame(1, $this->probeRecord()->consecutive(Sources::ALERTS));
+		self::assertSame(0, $this->probeRecord()->consecutive(Sources::REPORTS));
+	}
+
 	// -----------------------------------------------------------------------
 
-	private function runDays(int $days, bool $healthy): void {
+	private function runDays(int $days, bool $healthy, ?string $throwFor = null): void {
 		for ($day = 0; $day < $days; $day++) {
-			$job = $this->job($healthy, self::NOW + $day * 86400);
+			$job = $this->job($healthy, self::NOW + $day * 86400, $throwFor);
 			(new ReflectionMethod($job, 'run'))->invoke($job, null);
 		}
 	}
 
-	private function job(bool $healthy, int $now): ProbeJob {
+	private function job(bool $healthy, int $now, ?string $throwFor = null): ProbeJob {
 		$sources = $this->createMock(Sources::class);
-		$sources->method('probe')->willReturn($healthy);
+		$sources->method('probe')->willReturnCallback(
+			function (string $id) use ($healthy, $throwFor): bool {
+				if ($id === $throwFor) {
+					throw new RuntimeException('the probe threw instead of answering');
+				}
+
+				return $healthy;
+			},
+		);
 
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn($now);

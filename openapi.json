@@ -108,7 +108,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Each source asked for, with its items, its freshness and its own degraded flag",
+                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; alerts does not), per SourcesTest's name-every-key doctrine",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -149,8 +149,28 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url",
+                                                                        "year",
+                                                                        "month"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },
@@ -172,7 +192,7 @@
                         }
                     },
                     "400": {
-                        "description": "A narrowing parameter: the narrowing retired with SANITARY_ALERTS, and refusing it loudly is how a still-paging consumer learns that",
+                        "description": "Array-shaped garbage in a query parameter (`?source[]=x`), or a narrowing parameter (retired with SANITARY_ALERTS — refusing it loudly is how a still-paging consumer learns that)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -213,8 +233,28 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url",
+                                                                        "year",
+                                                                        "month"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },
@@ -277,8 +317,28 @@
                                                                 "type": "array",
                                                                 "items": {
                                                                     "type": "object",
-                                                                    "additionalProperties": {
-                                                                        "type": "string"
+                                                                    "required": [
+                                                                        "title",
+                                                                        "url",
+                                                                        "year",
+                                                                        "month"
+                                                                    ],
+                                                                    "properties": {
+                                                                        "title": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "url": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "year": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "month": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "se": {
+                                                                            "type": "string"
+                                                                        }
                                                                     }
                                                                 }
                                                             },

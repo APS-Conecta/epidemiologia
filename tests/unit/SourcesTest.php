@@ -51,6 +51,34 @@ class SourcesTest extends TestCase {
 	}
 
 	/**
+	 * The catalogue's door to the deep pass (L3-08) — the file's own walk
+	 * doctrine applied to the one method that takes no id: converge() is
+	 * direct (only REPORTS accumulates a back catalogue; see the method),
+	 * and after it runs every id in ALL still answers — the deep pass must
+	 * not disturb the read path's answers.
+	 */
+	public function testConvergeRunsAndLeavesEveryFuenteAnswering(): void {
+		$passes = 0;
+		$payload = ['items' => [], 'fetched_at' => null, 'degraded' => false];
+		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal->method('get')->willReturn($payload);
+		$informes = $this->createMock(IspReportRepository::class);
+		$informes->method('get')->willReturn($payload);
+		$informes->method('converge')->willReturnCallback(function () use (&$passes): void {
+			$passes++;
+		});
+
+		$sources = new Sources($minsal, $informes);
+		$sources->converge();
+
+		self::assertSame(1, $passes, 'the accumulating fuente\'s deep pass ran through the catalogue\'s door');
+		foreach (Sources::ALL as $id) {
+			self::assertArrayHasKey('items', $sources->get($id), $id);
+			self::assertArrayHasKey('degraded', $sources->get($id), $id);
+		}
+	}
+
+	/**
 	 * The institution is inside the phrase, not appended by the caller. The bug this
 	 * replaces was a caller appending "desde MINSAL" to whatever it was handed.
 	 */

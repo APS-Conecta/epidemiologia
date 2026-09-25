@@ -24,7 +24,7 @@
 				records the cost: a screen-reader user loses H-key jumping between groups.
 			-->
 			<NcAppNavigationList :aria-label="t('epidemiologia', 'Vistas')">
-				<NcAppNavigationItem v-for="pane in panes"
+				<NcAppNavigationItem v-for="pane in top"
 					:key="pane.id"
 					:name="pane.name"
 					:active="current === pane.id"
@@ -35,11 +35,11 @@
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
 
-			<NcAppNavigationList v-for="group in groups"
-				:key="group.id"
-				:aria-labelledby="`epi-nav-${group.id}`">
-				<NcAppNavigationCaption :name="group.name" :heading-id="`epi-nav-${group.id}`" />
-				<NcAppNavigationItem v-for="pane in group.panes"
+			<!-- The registry's 'minsal' group, rendered under one caption because
+			     the rows share a publisher (ADR-0008) — see src/panes.js. -->
+			<NcAppNavigationList :aria-labelledby="'epi-nav-minsal'">
+				<NcAppNavigationCaption :name="t('epidemiologia', 'MINSAL')" heading-id="epi-nav-minsal" />
+				<NcAppNavigationItem v-for="pane in minsal"
 					:key="pane.id"
 					:name="pane.name"
 					:active="current === pane.id"
@@ -75,11 +75,13 @@
 				     the informe's publisher is the ISP (Sources::name(REPORTS)) —
 				     not by whether a row narrows an archive, a kind of row this app
 				     no longer has. -->
-				<NcAppNavigationItem :name="ispReport.name"
-					:active="current === ispReport.id"
-					@click="current = ispReport.id">
+				<NcAppNavigationItem v-for="pane in isp"
+					:key="pane.id"
+					:name="pane.name"
+					:active="current === pane.id"
+					@click="current = pane.id">
 					<template #icon>
-						<component :is="ispReport.icon" :size="20" />
+						<component :is="pane.icon" :size="20" />
 					</template>
 				</NcAppNavigationItem>
 			</NcAppNavigationList>
@@ -112,50 +114,52 @@
 		</NcAppNavigation>
 
 		<NcAppContent :page-heading="t('epidemiologia', 'Epidemiología')">
-			<!-- Around `.epi`, not inside it. The panes are selected as `.epi > section`
-			     by scripts/layout.mjs, and `.epi:has(> .epi-inicio…)` below sizes Inicio
-			     to the viewport — both are direct-child rules, so the boundary stays
-			     outside the element they are written about rather than relying on a
-			     fragment root staying transparent. -->
-			<ErrorBoundary>
-				<div class="epi">
-					<!--
-						v-show, never v-if. The tablero pane holds an iframe whose Power BI
-						report takes 15–20 s to paint; unmounting it on every tab switch would
-						re-pay that each time. This is the single easiest thing to get wrong here.
-					-->
-					<InicioPane v-show="current === 'inicio'" @open="open" />
-					<AlertsPane v-show="current === 'alertas'" />
-					<!-- (The IspPane mount that stood here is deleted with its
-					     fuente — ADR-0016. Five panes: Inicio, Alertas vigentes,
-					     the informe, the tablero, EPIVIGILA — the count
-					     scripts/layout.mjs waits on.) -->
-					<ReportPane v-show="current === 'informe'" />
-					<TableroPane v-show="current === 'tablero'" :mounted="tableroSeen" />
-					<EpivigilaPane v-show="current === 'epivigila'" />
-				</div>
-			</ErrorBoundary>
+			<div class="epi">
+				<!--
+					v-show, never v-if — the tablero pane holds an iframe whose Power BI
+					report takes 15–20 s to paint; unmounting it on every tab switch would
+					re-pay that each time.
+
+					One boundary PER PANE (L3-21): every pane is v-show-mounted together on
+					first paint, so a fault while drawing one must not take the other four
+					down with it — four panes survive the fifth's fault. ErrorBoundary
+					renders no wrapper element of its own, so each pane's <section>
+					stays a direct child of `.epi`: layout.mjs's `.epi > section` count and
+					the `:has()` sizing rule below match unchanged, and v-show on the
+					boundary lands on that same section (the component's root element).
+				-->
+				<ErrorBoundary v-for="pane in paneComponents"
+					:key="pane.id"
+					v-show="current === pane.id">
+					<!-- `mounted` bound IN-TEMPLATE, not through a v-bind object
+					     (F5): nested refs are not unwrapped in v-bind objects,
+					     and the tablero's first-open latch would read as
+					     always-truthy. The template's render proxy unwraps
+					     `tableroSeen` here. -->
+					<component :is="pane.component"
+						:mounted="pane.id === 'tablero' ? tableroSeen : undefined"
+						@open="open" />
+				</ErrorBoundary>
+			</div>
 		</NcAppContent>
 	</NcContent>
 </template>
 
 <script setup>
 import { markRaw, ref, watch } from 'vue'
-import {
-	NcAppContent,
-	NcAppNavigation,
-	NcAppNavigationCaption,
-	NcAppNavigationItem,
-	NcAppNavigationList,
-	NcContent,
-} from '@nextcloud/vue'
+import NcAppContent from '@nextcloud/vue/components/NcAppContent'
+import NcAppNavigation from '@nextcloud/vue/components/NcAppNavigation'
+import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
+import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
+import NcAppNavigationList from '@nextcloud/vue/components/NcAppNavigationList'
+import NcContent from '@nextcloud/vue/components/NcContent'
 import { t } from '@nextcloud/l10n'
 import Alert from 'vue-material-design-icons/Alert.vue'
 import ChartBellCurve from 'vue-material-design-icons/ChartBellCurve.vue'
 import ChartBox from 'vue-material-design-icons/ChartBox.vue'
 import Home from 'vue-material-design-icons/Home.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
-import { paneName } from './panes.js'
+import { PANES, paneName } from './panes.js'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
@@ -173,67 +177,50 @@ watch(current, (pane) => {
 	}
 })
 
-/**
- * Inicio first, then the MINSAL group, then the ISP list.
- *
- * ONE caption per group, and it groups by publisher — not by pane type, and not by
- * whether a row narrows an archive or opens a whole pane. There used to be three
- * captions, and the third grouped by function: "Notificación" over EPIVIGILA.
- * EPIVIGILA is epivigila.minsal.cl, so under the publisher rule it belongs to
- * MINSAL, and moving it there leaves one rule instead of two. The ISP's rows used
- * to label themselves, on the grounds that a caption spending 38px on a single row
- * is chrome rather than structure; #52 made it six rows and the caption arrived.
- * The six retired with the alertas sanitarias (ADR-0016) and the caption stayed
- * over the one row left: that row's own name — the ISP's title for its weekly
- * report — does not say the institution, so the 38px buys the one word the list
- * would otherwise lose.
- *
- * The informe moved from this MINSAL group to the ISP list when its fuente did
- * (Sources::name(REPORTS)): the rule is by publisher, so a pane stays only as long
- * as its publisher does, same as Sources itself and panes.js's title for it.
- *
- * Names come from panes.js. This file used to hold one wording and each pane
- * another; see ADR-0008 for why the groups do not collapse.
- *
- * No counters. Nextcloud uses a counter bubble for what needs action, and neither
- * of ours is that: MINSAL's 75 holds until it republishes, and the ISP's series
- * grows one week at a time. A number that never means "act on me" is
- * decoration that trains people to ignore the one place a real count will one day
- * appear. Each pane states its own count where the number can change — the alertas
- * toolbar as you filter, the informe header as the series grows — and therefore
- * means something.
- */
-const pane = (id, icon) => ({ id, name: paneName(id), icon: markRaw(icon) })
+/** The registry's icon names → the icon components (names, so panes.js stays node-loadable — L3-18). */
+const ICONS = {
+	home: markRaw(Home),
+	alert: markRaw(Alert),
+	'chart-box': markRaw(ChartBox),
+	'chart-bell-curve': markRaw(ChartBellCurve),
+	'shield-account': markRaw(ShieldAccount),
+}
 
-/** Ungrouped, above the caption. */
-const panes = [pane('inicio', Home)]
+// Declared above the derived lists — the consts below call it at module eval.
+const paneIcon = (id) => PANES.find((p) => p.id === id).icon
 
-const groups = [
-	{
-		id: 'minsal',
-		name: t('epidemiologia', 'MINSAL'),
-		panes: [
-			pane('alertas', Alert),
-			pane('tablero', ChartBox),
-			pane('epivigila', ShieldAccount),
-		],
-	},
-]
-
-/**
- * The ISP's own weekly report, and the ISP list's whole content since the
- * alertas sanitarias retired (ADR-0016): a plain row rather than a caption of
- * its own, because the caption above it already says the institution — the
- * same reasoning that holds for the MINSAL group's rows holds for this one.
- */
-const ispReport = pane('informe', ChartBellCurve)
+const entry = (id) => ({ id, name: paneName(id), icon: ICONS[paneIcon(id)] })
 
 /*
- * (FAMILY_ICONS, ispEntries, `ispFamily` and `openIsp()` are deleted with the
- * rows they served: the families were narrowings of the ISP's alert archive,
- * and the archive retired with the alertas sanitarias (ADR-0016). Nothing else
- * reads familias.js, which this slice deletes with its two pinning suites.)
+ * Inicio first, then the MINSAL group, then the ISP list — all three derived
+ * from the registry (L3-18), so the navigation and the pane count can no
+ * longer disagree about what exists.
+ *
+ * ONE caption per group, and it groups by publisher (ADR-0008) — the rule's
+ * whole story lives in src/panes.js's registry docblock and the caption
+ * comments above. Names come from panes.js; no counters (a number that never
+ * means "act on me" is decoration that trains people to ignore the one place
+ * a real count will one day appear — each pane states its own count where the
+ * number can change).
  */
+const top = PANES.filter((p) => p.group === 'top').map((p) => entry(p.id))
+const minsal = PANES.filter((p) => p.group === 'minsal').map((p) => entry(p.id))
+const isp = PANES.filter((p) => p.group === 'isp').map((p) => entry(p.id))
+
+/*
+ * The panes the content area renders, in registry order: the registry cannot
+ * hold `.vue` imports and stay node-loadable, so the component map lives here
+ * and the panes div walks this list through per-pane boundaries (L3-21).
+ */
+const COMPONENTS = {
+	inicio: markRaw(InicioPane),
+	alertas: markRaw(AlertsPane),
+	informe: markRaw(ReportPane),
+	tablero: markRaw(TableroPane),
+	epivigila: markRaw(EpivigilaPane),
+}
+
+const paneComponents = PANES.map((p) => ({ id: p.id, component: COMPONENTS[p.id] }))
 
 /**
  * Opening a pane by name always shows that pane WHOLE.

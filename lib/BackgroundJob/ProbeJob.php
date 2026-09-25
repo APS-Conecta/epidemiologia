@@ -16,6 +16,7 @@ use OCP\BackgroundJob\TimedJob;
 use OCP\IGroupManager;
 use OCP\Notification\IManager;
 use OCP\Notification\INotification;
+use Throwable;
 
 /**
  * Detects that a source changed under us.
@@ -85,11 +86,24 @@ class ProbeJob extends TimedJob {
 		// JSON endpoint's `modified` did — and only skips rewriting the cache when a
 		// digest of the parsed items is unchanged. IspReportRepository's probe is one
 		// feed fetch through the brake, re-upserting page 1 as it goes (no digest to
-		// skip on, D8) — the one-shot backfill walk only while a walk is still due.
+		// skip on, D8) — the deep pass is converge()'s, on the refresh job (L3-08).
 		// That cost is each repository's own business, not this job's — which is why
 		// this loop names neither of them.
+		//
+		// Per-source isolation (L3-03): a probe that THROWS must neither starve the
+		// sibling fuente nor vanish this one's ProbeRecord — unrecorded, the day
+		// counts as neither a failure nor a success and the [2, 7, 30] schedule
+		// silently skips it. Thrown answers as false, the loop continues, and each
+		// fuente keeps its own judgement either way: the property this loop has
+		// always promised.
 		foreach (Sources::ALL as $source) {
-			$this->judge($source, $this->sources->probe($source));
+			try {
+				$reachable = $this->sources->probe($source);
+			} catch (Throwable) {
+				$reachable = false;
+			}
+
+			$this->judge($source, $reachable);
 		}
 	}
 

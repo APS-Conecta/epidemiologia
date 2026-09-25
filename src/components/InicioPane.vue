@@ -12,8 +12,9 @@
 	   own fetched_at and degraded flag, so one banner across the pane would
 	   force a choice between alarming about everything and staying quiet about
 	   everything; only the failing source turns gold. The informe card below
-	   carries neither on purpose: its weeks are the series the table holds, and
-	   the pane it opens is where that fuente's degraded state renders.
+	   carries the degraded sentence too (L3-16) but no freshness badge: its
+	   weeks are the series the table holds, and the pane it opens is where
+	   that fuente's freshness renders.
 -->
 <template>
 	<section class="epi-inicio">
@@ -40,10 +41,7 @@
 						:class="{ 'epi-fresh--stale': source.feed.degraded }">
 						<span class="epi-fresh__dot" />
 						<template v-if="source.feed.degraded">{{ t('epidemiologia', 'sin contacto') }}</template>
-						<template v-else-if="source.feed.fetched_at">
-							{{ t('epidemiologia', 'leído') }}
-							<NcDateTime :timestamp="source.feed.fetched_at * 1000" relative-time="long" />
-						</template>
+						<Procedencia v-else-if="source.feed.fetched_at" :fetched-at="source.feed.fetched_at" />
 					</span>
 				</div>
 
@@ -91,7 +89,16 @@
 				</NcButton>
 			</div>
 
-			<NcEmptyContent v-if="!reports.items.length"
+			<!-- Degraded first (L3-16): an informe card with nothing in it used to
+			     assert "El ISP no ha publicado el informe de esta semana" for a
+			     fuente the page had not managed to READ — a publication claim
+			     about a publisher nobody asked. The alertas card above has had
+			     this branch since it existed; the informe card was the drift. -->
+			<p v-if="reports.degraded" class="epi-card__warn">
+				{{ degradedText(FUENTES.isp) }}
+			</p>
+
+			<NcEmptyContent v-else-if="!reports.items.length"
 				class="epi-card__empty"
 				:name="t('epidemiologia', 'Sin informes')"
 				:description="t('epidemiologia', 'El ISP no ha publicado el informe de esta semana.')">
@@ -128,12 +135,14 @@
 
 <script setup>
 import { computed } from 'vue'
-import { NcButton, NcDateTime, NcEmptyContent } from '@nextcloud/vue'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { t, n } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
+import Procedencia from './Procedencia.vue'
 import { paneName } from '../panes.js'
-import { alerts, degradedText, emptyText, fecha, mes, reports } from '../state.js'
+import { alerts, degradedText, emptyText, fecha, mes, reports, FUENTES } from '../state.js'
 
 defineEmits(['open'])
 
@@ -165,8 +174,8 @@ const sources = computed(() => [
 		feed: alerts,
 		pane: 'alertas',
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
-		emptyText: emptyText('MINSAL'),
-		degradedText: degradedText('MINSAL'),
+		emptyText: emptyText(FUENTES.minsal),
+		degradedText: degradedText(FUENTES.minsal),
 	},
 ])
 </script>

@@ -1,16 +1,18 @@
 import { t } from '@nextcloud/l10n'
 
 /**
- * What each pane is called. Once.
+ * The pane registry (L3-18): id → name, icon, group, order — one place.
  *
- * Every pane used to be named two or three times over — the navigation said
- * "Informe semanal", the Inicio card said "Informes ETI/IRAG" and the heading said
- * "Informe semanal de vigilancia ETI e IRAG", written in three files. On a phone the
- * heading is the only thing naming the pane, so a reader tapped one wording and
- * landed on another.
+ * App.vue used to hold the ids as string literals twice over and the count
+ * was pinned independently by scripts/layout.mjs; the three disagreed at
+ * every change. The registry is the single source now: App.vue renders the
+ * groups from it, layout.mjs derives its count from its ids, and the suites
+ * walk it. Icons are NAMES, not imports — this module stays loadable by
+ * plain node, which is the property layout.mjs and the tests consume.
  *
- * This is the same move `Sources` makes on the PHP side: the fact lives in one
- * place, and the places that need it read it from here.
+ * The group is the navigation's, and it groups by publisher (ADR-0008):
+ * 'top' renders before the captions, 'minsal' under the MINSAL caption,
+ * 'isp' under the ISP caption.
  *
  * The names themselves follow two rules, both visible in what they dropped:
  *
@@ -29,6 +31,14 @@ import { t } from '@nextcloud/l10n'
  * and the institution is still said, once, by the caption above the row in
  * App.vue's navigation; see ADR-0008.
  */
+export const PANES = [
+	{ id: 'inicio', group: 'top', icon: 'home' },
+	{ id: 'alertas', group: 'minsal', icon: 'alert' },
+	{ id: 'tablero', group: 'minsal', icon: 'chart-box' },
+	{ id: 'epivigila', group: 'minsal', icon: 'shield-account' },
+	{ id: 'informe', group: 'isp', icon: 'chart-bell-curve' },
+]
+
 const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
 	alertas: () => t('epidemiologia', 'Alertas vigentes'),
@@ -37,14 +47,13 @@ const PANE_NAMES = {
 	epivigila: () => t('epidemiologia', 'EPIVIGILA'),
 }
 
-/**
- * Thunks rather than plain strings: `t()` needs the l10n bundle loaded, and a
- * module evaluated at import time can run before it is. Calling at use site is
- * what every pane already does.
- *
- * @param {string} id - The pane's id, as used by App.vue's `current`.
- * @return {string} Its name, translated.
- */
+/** Thunks rather than plain strings: `t()` needs the l10n bundle loaded. An
+ * unknown id answers undefined (F2) — the registry has no entry for it, and
+ * crashing mid-render over a typo'd id is the caller's fault, named as such
+ * by the unit pin. */
 export function paneName(id) {
-	return PANE_NAMES[id]()
+	return PANE_NAMES[id]?.()
 }
+
+/** The registry's ids, in order — what layout.mjs counts and the tests walk. */
+export const PANE_IDS = PANES.map((pane) => pane.id)

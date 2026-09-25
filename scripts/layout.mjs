@@ -10,6 +10,7 @@
 //
 // Usage: EPI_TOKEN=<token> node scripts/layout.mjs <base-url> <user>
 import { chromium } from 'playwright'
+import { PANE_IDS } from '../src/panes.js'
 
 // The token comes through the ENVIRONMENT, not argv. A command line is readable from
 // /proc/*/cmdline by any local user for as long as the run lasts, and this one holds a
@@ -398,8 +399,13 @@ for (const { w, h } of VIEWPORTS) {
 	await page.goto(`${baseUrl}/apps/epidemiologia/`, { waitUntil: 'load' })
 	// The panes are rendered by Vue after load, so wait for the thing itself
 	// rather than for a duration — a sleep long enough to be safe here would be
-	// long enough to make the whole run tedious.
-	await page.waitForFunction(() => document.querySelectorAll('.epi > section').length === 5, null, { timeout: 20000 })
+	// long enough to make the whole run tedious. The count is the registry's
+	// ids (src/panes.js): no independent literal to disagree with it (L3-18).
+	await page.waitForFunction(
+		(count) => document.querySelectorAll('.epi > section').length === count,
+		PANE_IDS.length,
+		{ timeout: 20000 },
+	)
 
 	console.log(`  \x1b[1m${w}×${h}\x1b[0m`)
 	const count = await page.evaluate(() => document.querySelectorAll('.epi > section').length)

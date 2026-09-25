@@ -2,7 +2,7 @@
 	<section>
 		<PaneHeader :title="paneName('alertas')" />
 
-		<DegradedNotice v-if="alerts.degraded" source="MINSAL" url="https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/" />
+		<DegradedNotice v-if="alerts.degraded" :source="FUENTES.minsal" url="https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/" />
 
 		<FilterBar :query="query"
 			:count="countLabel"
@@ -56,7 +56,7 @@
 			:name="alerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
 			:description="alerts.items.length
 				? t('epidemiologia', 'Ninguna alerta vigente coincide con esa búsqueda.')
-				: emptyText('MINSAL')">
+				: emptyText(FUENTES.minsal)">
 			<template #icon>
 				<Magnify :size="20" />
 			</template>
@@ -66,7 +66,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { NcEmptyContent } from '@nextcloud/vue'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { t, n } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
@@ -77,7 +77,7 @@ import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, emptyText, mes } from '../state.js'
+import { alerts, emptyText, mes, FUENTES } from '../state.js'
 import { useFilters } from '../filters.js'
 
 // The filter pair, its menus and its stranding rule live in src/filters.js — the

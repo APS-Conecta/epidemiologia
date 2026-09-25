@@ -541,18 +541,30 @@ class IspReportRepositoryTest extends TestCase {
 			3 => $this->rss([['d' => 'Informe circulación virus respiratorios SE32', 'u' => 'https://www.ispch.gob.cl/se32.pdf', 'p' => 'Tue, 11 Aug 2026 12:00:00 +0000']]),
 		];
 
-		$items = $this->repository(body: $this->rss([self::WEEK]))->get()['items'];
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+
+		// The reader's bound (L3-08): a cold get() serves page 1 and asks no walk page —
+		// the walk's rows reach the pane only through the NEXT store() read-back.
+		self::assertSame([], $this->pagesRequested, 'the reader path triggers no walk pages');
+		self::assertSame(['35'], array_column($repository->get()['items'], 'se'), 'first paint is page 1 alone');
+
+		// The deep pass is converge()'s now — the same walk, the same retirement.
+		$repository->converge();
+		self::assertSame(0, $this->cursor(), 'the 404 past the last page retired the walk');
+
+		$items = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
 
 		self::assertSame(['35', '33', '32'], array_column($items, 'se'), 'the walked weeks are in the series');
-		self::assertSame(0, $this->cursor(), 'the 404 past the last page retired the walk');
 	}
 
 	public function testARetiredWalkIsNeverWalkedAgain(): void {
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 		self::assertSame(0, $this->cursor(), 'precondition: page 2 404ed and retired the walk');
 
 		$this->pagesRequested = [];
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$repository->converge();
 
 		self::assertSame([], $this->pagesRequested, 'a retired walk must cost no page requests');
 	}
@@ -560,12 +572,14 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAnUnreadablePageIsResumedRatherThanRetiredOrSkipped(): void {
 		$this->pagesOffline = true;
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertSame(2, $this->cursor(), 'an unreadable page must not advance the walk');
 		self::assertSame(1, $this->stalls(), 'the first stall is counted');
 
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$repository->converge();
 
 		self::assertContains(2, $this->pagesRequested, 'the walk resumes from the page it could not read');
 		self::assertSame(2, $this->cursor(), 'and does not advance past it on a second stall');
@@ -580,9 +594,11 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAPageThatCanNeverBeReadIsSteppedOver(): void {
 		$this->pagesOffline = true;
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 2 * self::STALE)->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
+		$repository->converge();
+		$repository->converge();
 
 		self::assertGreaterThan(2, $this->cursor(), 'after three stalls the walk steps over the page');
 		$warnings = implode(' | ', $this->loggedAt('warning'));
@@ -597,7 +613,9 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAWafPageIsNotExhaustion(): void {
 		$this->pages = [2 => '<html><body>Attention Required</body></html>'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertSame(2, $this->cursor(), 'a 200 that parses to nothing is not the 404 that retires');
 		self::assertSame(1, $this->stalls());
@@ -613,10 +631,13 @@ class IspReportRepositoryTest extends TestCase {
 	public function testADeepPageRefusalStopsTheWalkWithoutBrakingTheRead(): void {
 		$this->pagesRefused = 403;
 
-		$items = $this->repository(body: $this->rss([self::WEEK]))->get()['items'];
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$items = $repository->get()['items'];
 
 		self::assertNotSame([], $items, 'page 1 answered — the deep page is not the read');
 		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'a deep page must not arm the freno');
+
+		$repository->converge();
 		self::assertSame(2, $this->cursor(), 'the walk resumes from the same page next refresh');
 
 		$this->requested = [];
@@ -635,7 +656,9 @@ class IspReportRepositoryTest extends TestCase {
 			$this->pages[$p] = $this->rss([['d' => "Informe circulación virus respiratorios SE$p", 'u' => "https://www.ispch.gob.cl/se$p.pdf"]]);
 		}
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertCount(63, $this->pagesRequested, 'the walk stopped at its budget');
 		self::assertSame(65, $this->cursor(), 'the cursor advanced past every walked page');
@@ -644,14 +667,14 @@ class IspReportRepositoryTest extends TestCase {
 
 	// --- one walk at a time ------------------------------------------------------
 
-	public function testASecondReaderServesTheStoredCopyRatherThanItsOwnWalk(): void {
+	public function testASecondReaderServesTheStoredCopyRatherThanItsOwnRefresh(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 		$this->requested = [];
 		$this->locks['refresh-isp-informes'] = true;   // another request, mid-refresh
 
 		$served = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
 
-		self::assertSame([], $this->requested, 'one walk at a time');
+		self::assertSame([], $this->requested, 'one refresh at a time');
 		self::assertNotSame([], $served['items'], 'and the reader still gets the series');
 		self::assertFalse($served['degraded'], 'someone else refreshing is not an outage');
 	}
@@ -660,14 +683,19 @@ class IspReportRepositoryTest extends TestCase {
 	 * With nothing stored — a fresh install; the table survives app updates
 	 * now, so this window is once per install rather than per flush — there
 	 * is no copy to serve, and answering "no informes" would be the lie the
-	 * degraded/empty distinction exists to prevent, so a cold reader walks.
+	 * degraded/empty distinction exists to prevent, so a cold reader
+	 * refreshes rather than waits. Since the walk moved to converge()
+	 * (L3-08), two of them racing are two bounded page-1 fetches, not two
+	 * walks — the exception's old excuse is gone and the behaviour stays.
 	 */
-	public function testAColdReaderWalksEvenWhileAnotherReaderHoldsTheLock(): void {
+	public function testAColdReaderRefreshesWhileAnotherReaderHoldsTheLock(): void {
 		$this->locks['refresh-isp-informes'] = true;
 
-		$items = $this->repository(body: $this->rss([self::WEEK]))->get()['items'];
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$items = $repository->get()['items'];
 
-		self::assertNotSame([], $items);
+		self::assertNotSame([], $items, 'the cold reader serves page 1');
+		self::assertSame([], $this->pagesRequested, 'the reader path asks no walk page (L3-08)');
 		self::assertArrayHasKey(
 			'refresh-isp-informes',
 			$this->locks,
@@ -717,7 +745,7 @@ class IspReportRepositoryTest extends TestCase {
 
 		self::assertFalse($after['degraded']);
 		self::assertNotNull($this->store['isp-informes']['v']['fetched_at'] ?? null, 'the cache re-materialized from the table in one fetch');
-		self::assertCount(1, $this->requested, 'one fetch — the walk is retired and page 1 is all it costs');
+		self::assertCount(1, $this->requested, 'one fetch — the reader path is page 1 alone since L3-08; walking is converge()\'s, on the job');
 	}
 
 	/**
@@ -770,7 +798,9 @@ class IspReportRepositoryTest extends TestCase {
 		$bytes = '%PDF-1.4 the week 35 informe, kept by the install';
 		$this->docs = [self::WEEK['u'] => $bytes];
 
-		$items = $this->repository(body: $this->rss([self::WEEK]))->get()['items'];
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		$row = $this->rows['2026-35'];
 		self::assertSame('informe-2026-35.pdf', $row->getPath(), 'the document is kept, its name on the row');
@@ -778,25 +808,30 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertSame([$bytes], array_values($this->appData->files), 'the bytes live in the app\'s own data');
 		self::assertSame(['informe-2026-35.pdf'], $this->appData->written, 'written once — fetched once, on first sight');
 		self::assertSame([self::WEEK['u']], $this->documents, 'one document request');
+
+		// The route href reaches the pane on the next store() read-back — the
+		// one exit the series has (L3-08).
+		$items = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
 		self::assertSame('/apps/epidemiologia/informe/2026/35', $items[0]['url'], 'a kept row\'s href IS the local route');
 		self::assertSame(['epidemiologia.informe.show'], $this->routes, 'the href names the route routes.php registers');
 	}
 
 	/**
-	 * The never-refetch pin: an hour later the feed re-serves the same item
-	 * at the same address, and the only honest cost is the feed read. The
-	 * row's url stands, so the row is not in the archiver's work list, so
-	 * the document is not asked for again — the hash matching is not even a
-	 * comparison here, it is the ABSENCE of the question (ADR-0015 §2,
-	 * "never re-downloading one it has").
+	 * The never-refetch pin: the next nightly pass finds the walk retired
+	 * and the row's url standing, so the row is not in the archiver's work
+	 * list and the document is not asked for again — the hash matching is
+	 * not even a comparison here, it is the ABSENCE of the question
+	 * (ADR-0015 §2, "never re-downloading one it has").
 	 */
 	public function testAKeptDocumentIsNeverRefetched(): void {
 		$this->docs = [self::WEEK['u'] => '%PDF-1.4 the week 35 informe'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 		self::assertSame(['informe-2026-35.pdf'], $this->appData->written);
 
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$repository->converge();
 
 		self::assertSame(['informe-2026-35.pdf'], $this->appData->written, 'and never re-written');
 		self::assertCount(1, $this->documents, 'a row whose document is kept is never re-downloaded');
@@ -811,7 +846,9 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAKeptDocumentSurvivesAnAppUpdateWithoutBeingRefetched(): void {
 		$this->docs = [self::WEEK['u'] => '%PDF-1.4 the week 35 informe'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 		self::assertCount(1, $this->documents);
 
 		// The app update: cache namespace moved; the table and the kept file hold.
@@ -838,10 +875,13 @@ class IspReportRepositoryTest extends TestCase {
 			$v4 => '%PDF-1.4 the V4 informe',
 		];
 
-		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v3]]))->get();
+		$repository = $this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v3]]));
+		$repository->get();
+		$repository->converge();
 		self::assertSame(hash('sha256', '%PDF-1.4 the V3 informe'), $this->rows['2026-35']->getHash());
 
 		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v4]]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$repository->converge();
 
 		self::assertSame([$v3, $v4], $this->documents, 'the reissue was fetched — the one re-download the hash change is worth');
 		self::assertSame(hash('sha256', '%PDF-1.4 the V4 informe'), $this->rows['2026-35']->getHash(), 'the row now vouches for the reissue\'s bytes');
@@ -858,7 +898,9 @@ class IspReportRepositoryTest extends TestCase {
 	public function testADocumentRefusalLeavesTheRowLinkedAndDoesNotBrakeTheRead(): void {
 		$this->docsRefused = 403;
 
-		$result = $this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$result = $repository->get();
+		$repository->converge();
 
 		self::assertFalse($result['degraded'], 'a document that cannot be kept is not the fuente\'s failure');
 		self::assertNull($this->rows['2026-35']->getPath(), 'nothing is claimed that was not kept');
@@ -876,7 +918,9 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAWafPageIsNotKeptAsADocument(): void {
 		$this->docs = [self::WEEK['u'] => '<html><body>Attention Required</body></html>'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertNull($this->rows['2026-35']->getPath(), 'an HTML answer is not the informe');
 		self::assertSame([], $this->appData->written);
@@ -886,20 +930,22 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAnOversizeDocumentIsNotKept(): void {
 		$this->docs = [self::WEEK['u'] => str_repeat('%PDF-1.4 ', 1_048_577)];   // ~9.4 MB
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertNull($this->rows['2026-35']->getPath(), 'an oversize body is refused, not kept');
 		self::assertSame([], $this->appData->written);
 	}
 
 	/**
-	 * A fresh install's walk names years of weeks at once; the pass keeps the
-	 * newest ARCHIVE_BUDGET of them and the rest wait for the next refresh —
-	 * the current week is always in the first pass, and the back catalogue
-	 * converges over hours of pane opens instead of holding the reader's
-	 * worker for one long download.
+	 * A fresh install's walk names years of weeks at once; the nightly pass
+	 * keeps the newest ARCHIVE_BUDGET of them and the rest wait for the next
+	 * pass — the current week is always in the first one, and the back
+	 * catalogue converges over the job's daily cadence instead of holding
+	 * anyone's worker for one long download (L3-08).
 	 */
-	public function testArchivalIsBoundedPerRefreshAndContinuesNextRefresh(): void {
+	public function testArchivalIsBoundedPerPassAndContinuesTheNextPass(): void {
 		$this->docs = ['https://www.ispch.gob.cl/se40.pdf' => '%PDF-1.4 se40'];
 
 		$weeks = [];
@@ -910,7 +956,9 @@ class IspReportRepositoryTest extends TestCase {
 		}
 		$this->pages = [2 => $this->rss($weeks)];
 
-		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE40', 'u' => 'https://www.ispch.gob.cl/se40.pdf']]))->get();
+		$repository = $this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE40', 'u' => 'https://www.ispch.gob.cl/se40.pdf']]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertCount(10, $this->documents, 'the pass stopped at its budget');
 		self::assertCount(10, $this->appData->written);
@@ -918,9 +966,9 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertNotNull($this->rows['2026-31']->getPath());
 		self::assertNull($this->rows['2026-30']->getPath(), 'the oldest week waited — the work list is newest first');
 
-		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE40', 'u' => 'https://www.ispch.gob.cl/se40.pdf']]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$repository->converge();
 
-		self::assertCount(11, $this->documents, 'the next refresh finished the list');
+		self::assertCount(11, $this->documents, 'the next nightly pass finished the list');
 		self::assertCount(11, $this->appData->written);
 		self::assertNotNull($this->rows['2026-30']->getPath());
 	}
@@ -937,7 +985,9 @@ class IspReportRepositoryTest extends TestCase {
 		$this->pages = [2 => $this->rss([['d' => 'Informe circulación virus respiratorios SE39', 'u' => 'https://www.ispch.gob.cl/se39.pdf', 'p' => 'Tue, 08 Sep 2026 12:00:00 +0000']])];
 		$this->docs = ['https://www.ispch.gob.cl/se39.pdf' => '%PDF-1.4 se39'];
 
-		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE40', 'u' => 'https://www.ispch.gob.cl/se40.pdf']]))->get();
+		$repository = $this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE40', 'u' => 'https://www.ispch.gob.cl/se40.pdf']]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertNull($this->rows['2026-40']->getPath(), 'the dead document is not claimed');
 		self::assertSame('informe-2026-39.pdf', $this->rows['2026-39']->getPath(), 'the row behind the dead one was kept in the same pass');
@@ -955,7 +1005,9 @@ class IspReportRepositoryTest extends TestCase {
 		$this->appData->withFolder = false;
 		$this->docs = [self::WEEK['u'] => '%PDF-1.4 the week 35 informe'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertSame('informe-2026-35.pdf', $this->rows['2026-35']->getPath(), 'the first keep made the folder and kept the document through it');
 		self::assertSame(['informe-2026-35.pdf'], $this->appData->written);
@@ -970,7 +1022,9 @@ class IspReportRepositoryTest extends TestCase {
 	public function testEveryDocumentFetchNamesItselfStaysBoundedAndVerifiesAgainstTheMergedBundle(): void {
 		$this->docs = [self::WEEK['u'] => '%PDF-1.4 the week 35 informe'];
 
-		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$repository = $this->repository(body: $this->rss([self::WEEK]));
+		$repository->get();
+		$repository->converge();
 
 		self::assertNotSame([], $this->documents, 'precondition: a document was actually fetched');
 		$options = $this->options[count($this->options) - 1];

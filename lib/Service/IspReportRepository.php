@@ -39,8 +39,8 @@ use Throwable;
  * flush (ADR-0012) no longer takes with it. The back catalogue is unfetchable
  * from the page — the year archive renders client-side — so the feed's paged
  * history is the one place the series exists server-side, and the one-shot
- * backfill walks it once, under a lock, until the 404 past the last page
- * retires the walk for good.
+ * backfill walks it once, on the refresh job (L3-08), until the 404 past the
+ * last page retires the walk for good.
  *
  * Each informe's document is KEPT (ADR-0015 §2): fetched once on first
  * sight into IAppData, the path and the sha256 of the kept bytes on the
@@ -149,16 +149,12 @@ class IspReportRepository {
 	private const UA = 'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)';
 
 	/**
-	 * How long the refresh lock is held before another reader may take it:
-	 * above the worst case the refresh can cost — the page-1 fetch plus
-	 * WALK_PAGES at 15 s each is 960 s of network, the archiver adds
-	 * ARCHIVE_BUDGET document fetches at 15 s each (150 s), and the upserts
-	 * the walk and the archiver interleave are DB round trips the 15 s does
-	 * not count — so the lock holds a quarter again, 24 minutes. Past it the
-	 * lock expires under a still-refreshing reader and a concurrent one may
-	 * co-refresh, which the composite (year, se) key and idempotent document
-	 * writes keep harmless — the walk is idempotent — but which is still
-	 * two refreshes, so the number is stated rather than guessed.
+	 * How long the refresh lock is held before another reader may take it.
+	 * Stated for the walk it used to bound and kept rather than re-derived
+	 * (L3-08): the number no longer bounds a walk — the walk is converge()'s
+	 * now, and holds no lock — and it still sits comfortably above the page-1
+	 * refresh's worst case (a 15-second fetch plus the upserts), and shrinking
+	 * it buys nothing.
 	 */
 	private const LOCK_FOR = 1440;
 
@@ -299,27 +295,22 @@ class IspReportRepository {
 		}
 
 		/*
-		 * One walk at a time: the one-shot backfill and the archiver's
-		 * bounded pass hold a PHP-FPM worker for the whole run, and the
-		 * cooldown does not cover it — degrade() needs
-		 * EVERY fetch to fail, and a merely slow feed counts as reached.
-		 * `add()` because it is atomic; a loser serves the copy it already
+		 * One refresh at a time: the page-1 refresh is a fetch, some upserts
+		 * and a read-back — seconds, not minutes, since the walk moved out
+		 * (L3-08) — and `add()` is atomic; a loser serves the copy it already
 		 * has, which is at most an hour older than the one being fetched.
 		 *
-		 * Only when there IS a copy. With nothing stored — a fresh install,
-		 * not a flushed cache; the table survives the flush now — answering
-		 * "no informes" would be the exact lie the empty-versus-degraded rule
-		 * exists to prevent, so a cold reader walks rather than waits. The
-		 * ADR-0012 caveat transfers: locking a cold loser would make a healthy
-		 * publisher show the degraded banner on first paint, which is the
-		 * worse first impression of the two.
+		 * Cold readers do not lock either, and no longer need the exception's
+		 * old excuse: a cold reader refreshes page 1 and serves it, so two of
+		 * them racing are two bounded fetches, not two walks.
 		 *
-		 * ponytail: once per install two concurrent first-reads can both walk;
-		 * idempotent upserts and document writes keep it harmless, the freno
-		 * still applies, and
-		 * the fix (take the lock unconditionally, serve the degraded banner
-		 * to cold losers) is worth it only when the double walk is observed,
-		 * not reasoned about.
+		 * The co-refresh defense, corrected (L3-09): what actually makes a
+		 * concurrent winner harmless is the composite (year, se) primary key
+		 * — a racing insert dies on the PK and lands in store()'s catch —
+		 * and NOT "idempotent upserts and document writes", this block's old
+		 * claim. The upserts are find-then-write; the claim was prose, not
+		 * mechanism, and the mapper suite (tests/integration/) pins the real
+		 * one now.
 		 */
 		$held = $stored !== null && $this->lock->add($this->lockKey(), 1, self::LOCK_FOR);
 
@@ -349,10 +340,10 @@ class IspReportRepository {
 	 * and an answer clears it, exactly as on the hourly path, because
 	 * request() runs the classification either way.
 	 *
-	 * The ask is also archival: probe() runs store(), so a daily probe keeps
-	 * documents too, bounded by the archiver's own budget — an unopened
-	 * install converges on its back catalogue at ARCHIVE_BUDGET documents a
-	 * day, and the refresh job that follows does the same through get().
+	 * The ask is no longer archival (L3-08): probe() runs store(), which
+	 * upserts page 1 and reads the table back — the document archiver and
+	 * the back-catalogue walk are converge()'s, on the refresh job. An
+	 * unopened install converges there, at ARCHIVE_BUDGET documents a day.
 	 */
 	public function probe(): bool {
 		return $this->refresh($this->stored())['degraded'] === false;
@@ -403,13 +394,13 @@ class IspReportRepository {
 	 * Turns a freshly parsed reading into the persisted series and the cache
 	 * entry over it.
 	 *
-	 * The table is the series: this reading is upserted, the backfill adds
-	 * whatever the walk reaches, and the entry served — and cached — is the
-	 * table read back. The read-back is load-bearing, not tidy: the walk's
-	 * older pages reach the pane only through it.
+	 * The table is the series: this reading is upserted, and the entry served
+	 * — and cached — is the table read back.
 	 *
-	 * The archiver runs between the backfill and the read-back, so a
-	 * document kept this pass is served under its route in this same entry.
+	 * The deep work — the backfill walk and the document archiver — does not
+	 * run here any more (L3-08): the reader path is bounded to page 1, and
+	 * converge() is the job's door to everything deeper. The read-back stays
+	 * load-bearing: it is the one exit the series has.
 	 *
 	 * A storage failure is its own fault class (ADR-0015 §2, the sibling's
 	 * store() doctrine): logged, retried on the next store(), never a
@@ -427,10 +418,6 @@ class IspReportRepository {
 			foreach ($fresh as $item) {
 				$this->reports->upsert($this->entity($item));
 			}
-
-			$this->backfill();
-
-			$this->archive();
 
 			$entry = ['items' => $this->wire($this->reports->all()), 'fetched_at' => $now];
 		} catch (Throwable $e) {
@@ -658,6 +645,27 @@ class IspReportRepository {
 			$report->setHash(hash('sha256', $body));
 			$this->reports->upsert($report);
 		}
+	}
+
+	/**
+	 * The deep pass, out of the request path (L3-08): the one-shot backfill
+	 * and the document archiver, which the reader used to run inside
+	 * store() — holding PageController::index() for WALK_PAGES of pages plus
+	 * ARCHIVE_BUDGET of documents at 15 s each on a cold install, the ~18
+	 * minutes the review named. First paint serves page 1; this is where the
+	 * back catalogue converges, on the refresh job's daily cadence.
+	 *
+	 * Walked rows reach the pane on the NEXT store(): the read-back is the
+	 * series' one exit, and rewriting the cache entry here would be a second
+	 * writer for store() to disagree with. A day of latency is the documented
+	 * convergence cadence — the same "within a day" the archiver already
+	 * promises — and the weeks a clinician opens first are page 1's, which
+	 * get() has already served.
+	 */
+	public function converge(): void {
+		$this->backfill();
+
+		$this->archive();
 	}
 
 	/**

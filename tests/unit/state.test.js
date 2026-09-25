@@ -9,7 +9,8 @@
  * costs milliseconds.
  */
 import { describe, expect, it } from 'vitest'
-import { degradedText, emptyText, fecha, monthOptions, tally, yearOptions } from '../../src/state.js'
+import * as stateExports from '../../src/state.js'
+import { alerts, degradedText, emptyText, fecha, mes, monthOptions, reports, tally, yearOptions } from '../../src/state.js'
 
 /**
  * Shaped like what the alert panes actually held: MINSAL carries year/month, the
@@ -132,5 +133,31 @@ describe('degradedText / emptyText', () => {
 	it('puts the source into the sentence', () => {
 		expect(degradedText('MINSAL')).toBe('No hemos podido contactar con MINSAL, así que esta lista puede estar incompleta.')
 		expect(emptyText('El ISP')).toBe('El ISP no trae alertas en este momento.')
+	})
+})
+
+describe('the state half (L3-17)', () => {
+	// The setup shim answers no initial-state node, so `sources` is the
+	// fallback {} — which makes THIS suite the missing-key path (L3-14):
+	// an undefined key reads as degraded, never as a publisher saying zero.
+	it('reads a missing fuente as degraded, not as empty', () => {
+		expect(alerts).toEqual({ items: [], fetched_at: null, degraded: true })
+		expect(reports).toEqual({ items: [], fetched_at: null, degraded: true })
+	})
+
+	// The split's contract: the import sites that predate it keep resolving.
+	it('re-exports the pure half', () => {
+		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'FUENTES']) {
+			expect(stateExports).toHaveProperty(name)
+		}
+	})
+})
+
+describe('mes (L3-19)', () => {
+	// The assertion tests/setup.js's own comment has promised since it was
+	// written — "mes() must render 'julio de 2026', never 'July 2026" — and
+	// no test ever made.
+	it('renders the month in the page\'s locale', () => {
+		expect(mes('2026-07')).toBe('julio de 2026')
 	})
 })

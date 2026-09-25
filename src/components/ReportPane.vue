@@ -19,15 +19,12 @@
 	<section>
 		<PaneHeader :title="paneName('informe')" />
 
-		<DegradedNotice v-if="reports.degraded" source="el ISP" url="https://www.ispch.gob.cl/virusrespiratorios/" />
+		<DegradedNotice v-if="reports.degraded" :source="FUENTES.isp" url="https://www.ispch.gob.cl/virusrespiratorios/" />
 
 		<template v-if="reports.items.length">
 			<p class="epi-count">
 				{{ n('epidemiologia', '%n informe', '%n informes', reports.items.length) }}
-				<template v-if="reports.fetched_at">
-					· {{ t('epidemiologia', 'leído') }}
-					<NcDateTime :timestamp="reports.fetched_at * 1000" relative-time="long" />
-				</template>
+				<Procedencia v-if="reports.fetched_at" :fetched-at="reports.fetched_at" />
 			</p>
 
 			<ul class="epi-weeks">
@@ -68,14 +65,15 @@
 </template>
 
 <script setup>
-import { NcDateTime, NcEmptyContent } from '@nextcloud/vue'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { t, n } from '@nextcloud/l10n'
 import FilePdfBox from 'vue-material-design-icons/FilePdfBox.vue'
 import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
 import PaneHeader from './PaneHeader.vue'
+import Procedencia from './Procedencia.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { mes, reports } from '../state.js'
+import { mes, reports, FUENTES } from '../state.js'
 </script>
 
 <style scoped>

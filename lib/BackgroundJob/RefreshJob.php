@@ -10,6 +10,8 @@ namespace OCA\Epidemiologia\BackgroundJob;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
+use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Keeps an install nobody opened fresh.
@@ -50,6 +52,7 @@ class RefreshJob extends TimedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private Sources $sources,
+		private LoggerInterface $logger,
 	) {
 		parent::__construct($time);
 
@@ -64,8 +67,29 @@ class RefreshJob extends TimedJob {
 		// The answer is ignored on purpose — this job warms; ProbeJob detects,
 		// and a degraded payload is a fact the read path renders, not one to
 		// act on here.
+		//
+		// Per-source isolation (L3-03), the refresher's half: a get() that
+		// throws is logged and stepped over — the sibling fuente still gets
+		// its pass, and tomorrow's run retries the thrower. Deliberately NOT
+		// recorded as a probe failure: the counts are ProbeJob's alone (see
+		// the class docblock), and this class has no cleaner signal than the
+		// log for a throw that is not an outage verdict.
 		foreach (Sources::ALL as $source) {
-			$this->sources->get($source);
+			try {
+				$this->sources->get($source);
+			} catch (Throwable $e) {
+				$this->logger->warning('The refresh pass of {source} threw instead of answering', [
+					'source' => $source,
+					'exception' => $e,
+				]);
+			}
 		}
+
+		// The deep pass (L3-08): the read path serves page 1 and stops, so the
+		// one-shot backfill and the document archiver run HERE — off the
+		// request path, where their worst case (WALK_PAGES of pages and
+		// ARCHIVE_BUDGET of documents, 15 s each) costs a nightly window
+		// nobody waits in.
+		$this->sources->converge();
 	}
 }

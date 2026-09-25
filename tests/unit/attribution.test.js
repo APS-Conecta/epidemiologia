@@ -33,10 +33,11 @@ describe('attribution', () => {
 	})
 
 	it('credits each fuente to the institution that publishes it', () => {
-		// "el ISP", with the article: state.js documents that the article differs
-		// between "MINSAL" and "el ISP", and the app's remaining ISP call site
-		// (ReportPane's DegradedNotice) carries it.
-		expect(src('components/ReportPane.vue')).toContain('source="el ISP"')
+		// "el ISP", with the article: the constants document that the article
+		// differs between "MINSAL" and "el ISP" (L3-20 — FUENTES, in
+		// src/pure.js), and the app's remaining ISP call site (ReportPane's
+		// DegradedNotice) carries the constant, not the literal.
+		expect(src('components/ReportPane.vue')).toContain(':source="FUENTES.isp"')
 		expect(src('components/AlertsPane.vue')).toContain('degreyd.minsal.cl')
 	})
 })

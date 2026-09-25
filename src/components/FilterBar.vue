@@ -34,10 +34,7 @@
 			     even that the result count fell to zero. -->
 			<p class="epi-bar__count" role="status" aria-live="polite">
 				{{ count }}
-				<template v-if="fetchedAt">
-					· {{ t('epidemiologia', 'leído') }}
-					<NcDateTime :timestamp="fetchedAt * 1000" relative-time="long" />
-				</template>
+				<Procedencia v-if="fetchedAt" :fetched-at="fetchedAt" />
 			</p>
 		</div>
 
@@ -67,9 +64,11 @@
 </template>
 
 <script setup>
-import { NcChip, NcDateTime, NcTextField } from '@nextcloud/vue'
+import NcChip from '@nextcloud/vue/components/NcChip'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { t } from '@nextcloud/l10n'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
+import Procedencia from './Procedencia.vue'
 
 defineProps({
 	query: { type: String, default: '' },

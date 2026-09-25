@@ -18,8 +18,9 @@ use Throwable;
  * below is what keeps a half-replaced set from ever being visible.
  *
  * ponytail: the branches here are replaceSet()'s rollback and readSet()'s
- * ordering; their home test is the deferred integration suite (the design's
- * Not Building names the deferral) — the repository suites mock this class.
+ * ordering; their home test is the integration suite (tests/integration/,
+ * L3-06 — the deferral this paragraph used to carry) — the repository
+ * suites mock this class.
  * Within-month order is not preserved on this path (no sequence column; the
  * cache — the hot path — keeps Minsal's own curation); the table serves only
  * after flushes and outages, where a cosmetic within-month reshuffle is the

@@ -135,6 +135,23 @@ class ApiControllerTest extends TestCase {
 	}
 
 	/**
+	 * Array garbage at the door (L3-05): `?source[]=x` used to fatal the
+	 * typed parameter into an OCS 500 before any guard could run — the
+	 * same class as territorio's L1-12 and farmacia's L2-03. The door now
+	 * refuses it the way it refuses a narrowing: 400, the loudest version
+	 * of the confident-empty defect this route exists to refuse.
+	 */
+	public function testArrayGarbageInAQueryParameterAnswers400NotA500(): void {
+		$controller = $this->controller();
+
+		$reply = $controller->sources(['x'], null, null);
+		self::assertSame(Http::STATUS_BAD_REQUEST, $reply->getStatus());
+
+		$reply = $controller->sources(null, null, ['1']);
+		self::assertSame(Http::STATUS_BAD_REQUEST, $reply->getStatus());
+	}
+
+	/**
 	 * Every id in the catalogue is answerable, walked from `Sources::ALL` rather than
 	 * named — the move `SourcesTest` makes for the same reason. A third fuente added to
 	 * the list and rejected by the controller's `in_array` guard fails here.

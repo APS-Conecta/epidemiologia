@@ -17,10 +17,9 @@ use OCP\IDBConnection;
  * SQL chain.
  *
  * ponytail: this class DOES branch (find()'s catch, upsert()'s find-then-write)
- * and those branches' home test is the deferred integration suite — the
- * design's Not Building names the deferral, and the unit seam for the
- * repository suites is the mapper MOCK, not this class. Add the
- * territorio-style integration suite when a mapper bug escapes, not before.
+ * and those branches' home test is the integration suite (tests/integration/,
+ * L3-06 — the deferral this paragraph used to carry) — the unit seam for the
+ * repository suites is the mapper MOCK, not this class.
  *
  * Inserts are hand-rolled, not QBMapper::insert(): the inherited insert
  * unconditionally calls setId(getLastInsertId()), which on Postgres runs

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Integration suite: runs INSIDE the Nextcloud container (the same one
+  scripts/test.sh already targets), against its own in-memory SQLite — never
+  the install's database. Separate from phpunit.xml on purpose: the unit
+  suite borrows only the container's OCP interfaces via its autoloader, and
+  this one boots the real thing.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+         bootstrap="tests/integration/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache">
+    <testsuites>
+        <testsuite name="integration">
+            <directory>tests/integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

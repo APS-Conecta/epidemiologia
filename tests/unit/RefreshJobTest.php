@@ -12,6 +12,7 @@ use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use ReflectionMethod;
 use RuntimeException;
 
@@ -37,8 +38,16 @@ class RefreshJobTest extends TestCase {
 	/** @var list<string> every Sources::get() ask, in order — the job's whole visible behaviour */
 	private array $fetched = [];
 
+	/** @var int calls to Sources::converge() — the deep pass's ledger (L3-08) */
+	private int $converged = 0;
+
+	/** @var list<string> every fuente whose get() threw, in order — the isolation ledger (L3-03) */
+	private array $threw = [];
+
 	protected function setUp(): void {
 		$this->fetched = [];
+		$this->converged = 0;
+		$this->threw = [];
 		$this->config = [];
 	}
 
@@ -70,10 +79,38 @@ class RefreshJobTest extends TestCase {
 		self::assertSame(self::NOW, $record->failingSince(Sources::ALERTS), 'and so does the stamp');
 	}
 
+	/**
+	 * Per-source isolation, the refresher's half (L3-03): a get() that
+	 * throws is logged and stepped over — the sibling fuente still gets its
+	 * pass, and tomorrow's run retries the thrower. No probe state is
+	 * written: the counts are ProbeJob's alone, and a throw here is not an
+	 * outage verdict.
+	 */
+	public function testAThrowingFuenteDoesNotStarveItsSibling(): void {
+		$record = $this->probeRecord();
+
+		$this->runJob(throwFor: Sources::ALERTS);
+
+		self::assertSame([Sources::REPORTS], $this->fetched, 'the sibling fuente still got its pass');
+		self::assertSame([Sources::ALERTS], $this->threw, 'the thrower was stepped over, not buried');
+		self::assertSame(0, $record->consecutive(Sources::ALERTS), 'the throw was not counted — a get() that throws is not an outage verdict, and ProbeRecord is ProbeJob\'s alone');
+	}
+
+	/**
+	 * The deep pass (L3-08): converge() asked exactly once, after the get()
+	 * loop — the read path's page-1 bound is only honest if the deep work
+	 * has a home.
+	 */
+	public function testTheRunEndsWithTheDeepPass(): void {
+		$this->runJob();
+
+		self::assertSame(1, $this->converged, 'converge() asked exactly once, after the loop');
+	}
+
 	// -----------------------------------------------------------------------
 
-	private function runJob(): void {
-		$job = $this->job();
+	private function runJob(?string $throwFor = null): void {
+		$job = $this->job($throwFor);
 		(new ReflectionMethod($job, 'run'))->invoke($job, null);
 	}
 
@@ -83,10 +120,15 @@ class RefreshJobTest extends TestCase {
 	 * two doors differ in exactly one load-bearing way — probe() asks
 	 * through the freno (#218beba) — and a mutation that swapped them would
 	 * hammer a refusing host once a day, green on every other pin.
+	 * converge() is the deep pass's ledger (L3-08).
 	 */
-	private function job(): RefreshJob {
+	private function job(?string $throwFor = null): RefreshJob {
 		$sources = $this->createMock(Sources::class);
-		$sources->method('get')->willReturnCallback(function (string $id): array {
+		$sources->method('get')->willReturnCallback(function (string $id) use ($throwFor): array {
+			if ($id === $throwFor) {
+				$this->threw[] = $id;
+				throw new RuntimeException('the fuente threw instead of answering');
+			}
 			$this->fetched[] = $id;
 
 			return ['items' => [], 'fetched_at' => null, 'degraded' => false, 'total' => 0, 'has_more' => false];
@@ -94,11 +136,14 @@ class RefreshJobTest extends TestCase {
 		$sources->method('probe')->willThrowException(
 			new RuntimeException('the refresher must ride get(), which consults the freno — not probe(), which asks through it'),
 		);
+		$sources->method('converge')->willReturnCallback(function (): void {
+			$this->converged++;
+		});
 
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn(self::NOW);
 
-		return new RefreshJob($time, $sources);
+		return new RefreshJob($time, $sources, $this->createMock(LoggerInterface::class));
 	}
 
 	/**

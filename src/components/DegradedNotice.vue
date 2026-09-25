@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { NcNoteCard } from '@nextcloud/vue'
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { t } from '@nextcloud/l10n'
 import { degradedText } from '../state.js'
 

@@ -74,20 +74,33 @@ class ApiController extends OCSController {
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category Retired with SANITARY_ALERTS (ADR-0016): no fuente can be narrowed, so any value is a 400
 	 * @param ?int $olderThan Retired with the narrowing: any value is a 400
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array<string, string>>, total?: int, has_more?: bool}>, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array{title: string, url: string, year: string, month: string, se?: string}>, total?: int, has_more?: bool}>, array{}>
 	 *
-	 * 200: Each source asked for, with its items, its freshness and its own degraded flag
-	 * 400: A narrowing parameter: the narrowing retired with SANITARY_ALERTS, and refusing it loudly is how a still-paging consumer learns that
+	 * 200: Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; alerts does not), per SourcesTest's name-every-key doctrine
+	 * 400: Array-shaped garbage in a query parameter (`?source[]=x`), or a narrowing parameter (retired with SANITARY_ALERTS — refusing it loudly is how a still-paging consumer learns that)
 	 * 404: No such source
 	 */
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: self::LIMIT, period: self::PERIOD)]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/sources')]
 	public function sources(
-		?string $source = null,
-		?string $category = null,
-		?int $olderThan = null,
+		$source = null,
+		$category = null,
+		$olderThan = null,
 	): DataResponse {
+		/*
+		 * Array garbage at the door (L3-05): `?source[]=x` arrives as an array,
+		 * and the typed parameter this method used to declare fatal-ed into an
+		 * OCS 500 before any guard below could run. Untyped on purpose and
+		 * refused here — 400, the same answer the narrowing gets, because a
+		 * request that cannot even name its parameter is the loudest version
+		 * of the confident-empty defect this route exists to refuse. Same
+		 * class as territorio's L1-12 and farmacia's L2-03.
+		 */
+		if (is_array($source) || is_array($category) || is_array($olderThan)) {
+			return new DataResponse([], Http::STATUS_BAD_REQUEST);
+		}
+
 		/*
 		 * An OMITTED parameter is null; an EMPTY one is ''. A consumer building
 		 * `&source=${selected}` with nothing selected sent the empty string, and `''`

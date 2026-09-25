@@ -70,3 +70,40 @@ describe('useFilters', () => {
 		expect(titles(f)).toEqual(['Dengue en la Región'])
 	})
 })
+
+describe('useFilters — the token flow (L3-19)', () => {
+	// This block's own fixtures (the file's existing `items`/`accessors` are
+	// scoped to the other describe callback — N2):
+	const ITEMS = [
+		{ title: 'Sarampión', year: '2026', month: '2026-07' },
+		{ title: 'OFICIO D', year: '2025', month: '2025-11' },
+	]
+	const ACCESSORS = { yearOf: (a) => a.year, monthOf: (a) => a.month, textOf: (a) => a.title }
+
+	it('shows a token per set filter, worded', () => {
+		const { query, year, month, active } = useFilters(ITEMS, ACCESSORS)
+		expect(active.value).toEqual([])
+
+		query.value = 'sarampión'
+		year.value = '2026'
+		month.value = '2026-07'
+		expect(active.value.map((t) => t.id)).toEqual(['query', 'year', 'month'])
+		expect(active.value[0].label).toContain('sarampión')
+	})
+
+	it('clearing the year takes the month with it', () => {
+		const { year, month, active, clear, months } = useFilters(ITEMS, ACCESSORS)
+		year.value = '2025'
+		month.value = months.value.find((m) => m.id.startsWith('2025-'))?.id ?? null
+		clear('year')
+		expect(year.value).toBeNull()
+		expect(month.value).toBeNull('a month stranded inside no year reads as broken data — the rule that "shipped untested once already"')
+		expect(active.value).toEqual([])
+	})
+
+	it('ignores a token id it does not own', () => {
+		const { clear, active } = useFilters(ITEMS, ACCESSORS)
+		expect(() => clear('family')).not.toThrow()
+		expect(active.value).toEqual([])
+	})
+})

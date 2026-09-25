@@ -95,6 +95,19 @@ class Sources {
 	}
 
 	/**
+	 * The accumulating fuente's deep pass — the one-shot backfill and the
+	 * document archiver (L3-08). The read path serves page 1 and stops; this
+	 * is the job's door to everything deeper. Only REPORTS accumulates a
+	 * back catalogue — an in-force set replaces itself whole inside get() —
+	 * so the call is direct rather than a match: a second fuente that starts
+	 * accumulating says so by gaining an arm here, the same loudness every
+	 * other method of this class carries.
+	 */
+	public function converge(): void {
+		$this->informes->converge();
+	}
+
+	/**
 	 * What the source is called mid-sentence, institution included: "no se pudo leer
 	 * las alertas del MINSAL". The institution is part of the phrase rather
 	 * than a second parameter because that is the fact the old notification got

@@ -60,7 +60,8 @@
 
 <script setup>
 import { computed } from 'vue'
-import { NcActionRadio, NcActions } from '@nextcloud/vue'
+import NcActionRadio from '@nextcloud/vue/components/NcActionRadio'
+import NcActions from '@nextcloud/vue/components/NcActions'
 
 const props = defineProps({
 	/** What the button says when nothing is chosen: "Año", "Tipo", "Mes". */
