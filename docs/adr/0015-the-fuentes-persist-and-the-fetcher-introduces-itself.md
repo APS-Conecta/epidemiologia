@@ -83,8 +83,8 @@ Database tables via this app's migration are the one store every install has.
 ### 3. Nothing depends on this VPS
 
 The persistence, the probe, and the fetch ride Nextcloud's own abstractions only: `TimedJob`
-([ProbeJob](../lib/BackgroundJob/ProbeJob.php) and whatever refresh job follows),
-`IClientService` with [CertificateBundle](../lib/Service/CertificateBundle.php), the migration
+([ProbeJob](../../lib/BackgroundJob/ProbeJob.php) and whatever refresh job follows),
+`IClientService` with [CertificateBundle](../../lib/Service/CertificateBundle.php), the migration
 system, `IAppConfig`. No systemd timer, no cron line on one machine, no path under
 `/opt/aps-conecta-org`, no assumption that the install's cache backend is Redis. A clinic
 installing this app on any box gets the same behaviour — including the one this dev VPS cannot
@@ -101,7 +101,7 @@ looks, from the app's side, exactly like an outage. So the fetcher, on every req
 - **backs off, does not hammer** — the `COOLDOWN` pattern stays: one failure is remembered, and
   the next page load does not retry the dead host;
 - **stops retrying when a host says no** — a 403 from Cloudflare is an answer, not a challenge;
-  the probe records it, admins hear about it on the [ProbeJob](../lib/BackgroundJob/ProbeJob.php)
+  the probe records it, admins hear about it on the [ProbeJob](../../lib/BackgroundJob/ProbeJob.php)
   schedule, and the app serves its database.
 
 ## Consequences
