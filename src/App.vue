@@ -125,18 +125,22 @@
 					down with it — four panes survive the fifth's fault. ErrorBoundary
 					renders no wrapper element of its own, so each pane's <section>
 					stays a direct child of `.epi`: layout.mjs's `.epi > section` count and
-					the `:has()` sizing rule below match unchanged, and v-show on the
-					boundary lands on that same section (the component's root element).
+					the `:has()` sizing rule below match unchanged. v-show rides the pane
+					component, never the boundary: ErrorBoundary renders its slot as a
+					fragment, and Vue silently drops directives on a component whose root
+					is not an element (prod strips the warning); on the pane component the
+					directive lands on its root <section> — an element — and works. Each
+					pane component must keep exactly one element root for this to hold.
 				-->
 				<ErrorBoundary v-for="pane in paneComponents"
-					:key="pane.id"
-					v-show="current === pane.id">
+					:key="pane.id">
 					<!-- `mounted` bound IN-TEMPLATE, not through a v-bind object
 					     (F5): nested refs are not unwrapped in v-bind objects,
 					     and the tablero's first-open latch would read as
 					     always-truthy. The template's render proxy unwraps
 					     `tableroSeen` here. -->
 					<component :is="pane.component"
+						v-show="current === pane.id"
 						:mounted="pane.id === 'tablero' ? tableroSeen : undefined"
 						@open="open" />
 				</ErrorBoundary>
