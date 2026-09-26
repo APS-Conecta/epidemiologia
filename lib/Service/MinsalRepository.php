@@ -72,6 +72,8 @@ class MinsalRepository {
 
 	private ICache $cache;
 
+	private Freno $freno;
+
 	public function __construct(
 		private IClientService $clients,
 		private ITimeFactory $time,
@@ -80,6 +82,10 @@ class MinsalRepository {
 		ICacheFactory $cacheFactory,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
+		// One grain — this page — on the same cache it reads; the subject
+		// keeps the brake's log sentence byte-identical to the copy this
+		// replaces (L3-02).
+		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-' . self::ALERTS, 'MINSAL');
 	}
 
 	/**
@@ -110,7 +116,7 @@ class MinsalRepository {
 		 * cache or, after an app update, from the table. The probe is the one
 		 * ask that goes through, once a day — see probe().
 		 */
-		if ($this->braked()) {
+		if ($this->freno->braked()) {
 			return $this->present($stored, true);
 		}
 
@@ -570,13 +576,11 @@ class MinsalRepository {
 			]);
 
 			/*
-			 * An answer — any answer — is the host not refusing. The brake lifts
-			 * here and not on a successful parse so recovery is one step (the
-			 * IspRepository precedent: a success removes the key outright), and a
-			 * WAF 200 lands in the cooldown, not back under the brake it just
-			 * lifted. One cache DELETE per successful fetch, priced and kept.
+			 * An answer — any answer — is the host not refusing. See
+			 * Freno::lift(): recovery is one step, and a WAF 200 lands in
+			 * the cooldown, not back under the brake it just lifted.
 			 */
-			$this->cache->remove($this->frenoKey());
+			$this->freno->lift();
 
 			$body = (string)$response->getBody();
 
@@ -598,19 +602,7 @@ class MinsalRepository {
 
 			return $body;
 		} catch (Throwable $e) {
-			/*
-			 * getResponseFromThrowable() is the status affordance: it hands back
-			 * the response a BadResponseException carries — and RETHROWS when the
-			 * throwable has none, which is exactly the timeout/TLS class. So the
-			 * classification is a nested catch: the outer throwable reached this
-			 * line from the transport, the inner one asks whether an answer came
-			 * with it.
-			 */
-			try {
-				$status = $client->getResponseFromThrowable($e)->getStatusCode();
-			} catch (Throwable) {
-				$status = null;
-			}
+			$status = Freno::status($client, $e);
 
 			if ($status !== null && $status >= 400) {
 				// The host said no. The brake's own warning names the refusal,
@@ -618,7 +610,7 @@ class MinsalRepository {
 				// the reader's side, which is true — a refusal IS an unreadable
 				// page — but the "could not be read" sentence below stays for
 				// the faults with no answer attached.
-				$this->brake($status);
+				$this->freno->brake($status);
 
 				return null;
 			}
@@ -716,45 +708,6 @@ class MinsalRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
 	private function cooldownKey(): string {
 		return 'cooldown-' . self::ALERTS;
-	}
-
-	/**
-	 * Is this page still braked? The stored value IS the moment the brake
-	 * expires, so asking is a comparison and there is no sweep to run — the
-	 * IspRepository shape, one key, no $feed threaded because request() is the
-	 * one fixed-URL reader that arms it.
-	 */
-	private function braked(): bool {
-		$until = $this->cache->get($this->frenoKey());
-
-		return $until !== null && $this->time->getTime() < (int)$until['until'];
-	}
-
-	/**
-	 * Doubling from two hours, capped at a day — the curve lifted from
-	 * IspRepository unchanged (ADR-0015 §4, ADR-0010): two hours because
-	 * refreshes are hourly (FRESH_FOR), anything shorter is not a freno, it is
-	 * a rounding error. The count outlives the wait it caused, which is what
-	 * makes the next refusal cost more; an answer removes the key outright, so
-	 * recovery is one step and not a slow unwind.
-	 */
-	private function brake(int $status): void {
-		$n = (int)($this->cache->get($this->frenoKey())['n'] ?? 0) + 1;
-		$wait = min(2 * self::FRESH_FOR * (2 ** ($n - 1)), 86400);
-
-		$this->logger->warning('MINSAL answered {status}; under freno {n} time(s), waiting {wait}s', [
-			'status' => $status, 'n' => $n, 'wait' => $wait,
-		]);
-
-		$this->cache->set($this->frenoKey(), [
-			'n' => $n,
-			'until' => $this->time->getTime() + $wait,
-		], 86400 + $wait);
-	}
-
-	/** Distinct from key() and cooldownKey(), or the brake would be read as data. */
-	private function frenoKey(): string {
-		return 'freno-' . self::ALERTS;
 	}
 
 	/**

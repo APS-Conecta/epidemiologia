@@ -67,6 +67,13 @@ use Throwable;
  * the certificate: the ISP serves only its leaf, so `verify` points at
  * CertificateBundle's merged anchors or every request dies `cURL error 60` on
  * a fresh install. `verify => false` is forbidden here as everywhere.
+ *
+ * One file, with a trigger rule (L3-01): split into lib/Service/IspReport/
+ * only when the NEXT new concern arrives — a new document format, a third
+ * fuente grain. Until then the lifecycle is one fuente's and the docblock
+ * cross-references are the documentation; a Parser.php with one
+ * implementation is the speculative seam ADR-0010 forbids, and the split
+ * would buy navigability and zero runtime performance.
  */
 class IspReportRepository {
 	/**
@@ -242,6 +249,8 @@ class IspReportRepository {
 
 	private ICache $cache;
 
+	private Freno $freno;
+
 	private IMemcache $lock;
 
 	private IAppData $appData;
@@ -260,6 +269,10 @@ class IspReportRepository {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		$this->lock = $cacheFactory->createLocking('epidemiologia');
 		$this->appData = $appDataFactory->get(AppId::APP_ID);
+		// One grain — this feed — on the same cache it reads; the subject
+		// keeps the brake's log sentence byte-identical to the copy this
+		// replaces (L3-02).
+		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-isp-informes', 'The ISP informes feed');
 	}
 
 	/**
@@ -289,7 +302,7 @@ class IspReportRepository {
 		 * cache or, after an app update, from the table. The probe is the one
 		 * ask that goes through, once a day.
 		 */
-		if ($this->braked()) {
+		if ($this->freno->braked()) {
 			return $this->present($stored, true);
 		}
 
@@ -534,7 +547,7 @@ class IspReportRepository {
 			 * confused: treating it as failure would leave the cursor alive
 			 * forever and the walk would never end.
 			 *
-			 * Classified through getResponseFromThrowable() rather than mined
+			 * Classified through Freno::status() rather than mined
 			 * out of the message string — the one status semantics this app
 			 * had was a str_contains('404') on prose, and a WAF's HTML answer
 			 * can carry '404' in its body text.
@@ -547,11 +560,7 @@ class IspReportRepository {
 			 * not break. The stall counter is the whole of the deep page's
 			 * failure machinery.
 			 */
-			try {
-				$status = $client->getResponseFromThrowable($e)->getStatusCode();
-			} catch (Throwable) {
-				$status = null;
-			}
+			$status = Freno::status($client, $e);
 
 			if ($status === 404) {
 				return [];
@@ -869,13 +878,11 @@ class IspReportRepository {
 			]);
 
 			/*
-			 * An answer — any answer — is the host not refusing. The brake
-			 * lifts here and not on a successful parse so recovery is one
-			 * step, and a WAF 200 lands in the cooldown, not back under the
-			 * brake it just lifted. One cache DELETE per successful fetch,
-			 * priced and kept.
+			 * An answer — any answer — is the host not refusing. See
+			 * Freno::lift(): recovery is one step, and a WAF 200 lands in
+			 * the cooldown, not back under the brake it just lifted.
 			 */
-			$this->cache->remove($this->frenoKey());
+			$this->freno->lift();
 
 			$body = (string)$response->getBody();
 
@@ -893,15 +900,10 @@ class IspReportRepository {
 			 * getResponseFromThrowable() is the status affordance: it hands
 			 * back the response a BadResponseException carries — and RETHROWS
 			 * when the throwable has none, which is exactly the timeout/TLS
-			 * class. So the classification is a nested catch: the outer
-			 * throwable reached this line from the transport, the inner one
-			 * asks whether an answer came with it.
+			 * class. The classification lives in Freno::status() now, which
+			 * folds that rethrow into a null.
 			 */
-			try {
-				$status = $client->getResponseFromThrowable($e)->getStatusCode();
-			} catch (Throwable) {
-				$status = null;
-			}
+			$status = Freno::status($client, $e);
 
 			if ($status !== null && $status >= 400) {
 				// The host said no. The brake's own warning names the refusal,
@@ -909,7 +911,7 @@ class IspReportRepository {
 				// from the reader's side, which is true — a refusal IS an
 				// unreadable feed — but the "could not be read" sentence stays
 				// for the faults with no answer attached.
-				$this->brake($status);
+				$this->freno->brake($status);
 
 				return null;
 			}
@@ -1127,35 +1129,6 @@ class IspReportRepository {
 		return $this->present($stored, true);
 	}
 
-	/** Is the feed still braked? The stored value IS the moment the brake expires. */
-	private function braked(): bool {
-		$until = $this->cache->get($this->frenoKey());
-
-		return $until !== null && $this->time->getTime() < (int)$until['until'];
-	}
-
-	/**
-	 * Doubling from two hours, capped at a day — the curve lifted from the
-	 * old machinery unchanged (ADR-0015 §4): two hours because refreshes are
-	 * hourly (FRESH_FOR), anything shorter is not a freno, it is a rounding
-	 * error. The count outlives the wait it caused, which is what makes the
-	 * next refusal cost more; an answer removes the key outright, so recovery
-	 * is one step and not a slow unwind.
-	 */
-	private function brake(int $status): void {
-		$n = (int)($this->cache->get($this->frenoKey())['n'] ?? 0) + 1;
-		$wait = min(2 * self::FRESH_FOR * (2 ** ($n - 1)), 86400);
-
-		$this->logger->warning('The ISP informes feed answered {status}; under freno {n} time(s), waiting {wait}s', [
-			'status' => $status, 'n' => $n, 'wait' => $wait,
-		]);
-
-		$this->cache->set($this->frenoKey(), [
-			'n' => $n,
-			'until' => $this->time->getTime() + $wait,
-		], 86400 + $wait);
-	}
-
 	/** Its own key, beside the siblings' — unchanged from the page-scrape reader. */
 	private function key(): string {
 		return 'isp-informes';
@@ -1164,11 +1137,6 @@ class IspReportRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the series. */
 	private function cooldownKey(): string {
 		return 'cooldown-isp-informes';
-	}
-
-	/** Distinct from key() and cooldownKey(), or the brake would be read as data. */
-	private function frenoKey(): string {
-		return 'freno-isp-informes';
 	}
 
 	private function lockKey(): string {
