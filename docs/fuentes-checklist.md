@@ -35,7 +35,9 @@ to reconsider it.
 
 - [ ] `src/state.js`: the feed export (`sources.<id> === undefined ?
       DEGRADED_EMPTY : …` — a missing key degrades, never reads as zero).
-- [ ] `src/pure.js`: `FUENTES` gains the mid-sentence name with its article.
+- [ ] `src/pure.js`: `FUENTES` gains the publisher's entry — `{ name, url }`,
+      the mid-sentence name with its article and the official-site address
+      the degraded notice sends a reader to.
 - [ ] A pane — or an entry in Inicio's `sources` computed, which is the whole
       point of the auto-fit row. Names come from `src/panes.js`'s registry.
 - [ ] `tests/unit/attribution.test.js`'s `SURFACES`, if a new file renders

@@ -19,7 +19,7 @@
 	<section>
 		<PaneHeader :title="paneName('informe')" />
 
-		<DegradedNotice v-if="reports.degraded" :source="FUENTES.isp" url="https://www.ispch.gob.cl/virusrespiratorios/" />
+		<DegradedNotice v-if="reports.degraded" :source="FUENTES.isp.name" :url="FUENTES.isp.url" />
 
 		<template v-if="reports.items.length">
 			<p class="epi-count">
@@ -73,7 +73,8 @@ import PaneHeader from './PaneHeader.vue'
 import Procedencia from './Procedencia.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { mes, reports, FUENTES } from '../state.js'
+import { reports } from '../state.js'
+import { mes, FUENTES } from '../pure.js'
 </script>
 
 <style scoped>

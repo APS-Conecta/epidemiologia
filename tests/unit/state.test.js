@@ -10,7 +10,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as stateExports from '../../src/state.js'
-import { alerts, degradedText, emptyText, fecha, mes, monthOptions, reports, tally, yearOptions } from '../../src/state.js'
+import { alerts, reports } from '../../src/state.js'
+import { degradedText, emptyText, fecha, mes, monthOptions, tally, yearOptions } from '../../src/pure.js'
 
 /**
  * Shaped like what the alert panes actually held: MINSAL carries year/month, the
@@ -145,10 +146,13 @@ describe('the state half (L3-17)', () => {
 		expect(reports).toEqual({ items: [], fetched_at: null, degraded: true })
 	})
 
-	// The split's contract: the import sites that predate it keep resolving.
-	it('re-exports the pure half', () => {
+	// The split, completed (L7-01): the shim is gone, so a pure import can
+	// no longer drag the loadState machinery with it. The import sites
+	// resolve to pure.js directly — what this pins is the ABSENCE of the
+	// re-export, which is the property the split existed to deliver.
+	it('no longer re-exports the pure half', () => {
 		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'FUENTES']) {
-			expect(stateExports).toHaveProperty(name)
+			expect(stateExports).not.toHaveProperty(name)
 		}
 	})
 })

@@ -5,7 +5,7 @@
 
 	It used to name MINSAL in its own template, which is exactly why the ISP pane
 	wrote a second copy and Inicio a third and fourth. The fuente is a prop now, and
-	the sentence lives in state.js so there is one of it.
+	the sentence lives in pure.js so there is one of it.
 -->
 <template>
 	<NcNoteCard type="warning">
@@ -20,7 +20,7 @@
 <script setup>
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { t } from '@nextcloud/l10n'
-import { degradedText } from '../state.js'
+import { degradedText } from '../pure.js'
 
 defineProps({
 	/** How the fuente is named mid-sentence: "MINSAL", "el ISP". */

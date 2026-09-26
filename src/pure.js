@@ -2,11 +2,10 @@
  * The derivations, with no I/O in them (L3-17).
  *
  * state.js used to mix these with the initial-state reads, so every pure
- * consumer — titles.js, the suites — dragged the loadState machinery with
- * it, and the module could not run under plain node at all. Everything here
- * is a function of its arguments; state.js re-exports all of it so the
- * seven import sites that existed at the split keep working, and new code
- * imports from here.
+ * consumer dragged the loadState machinery with it, and the module could
+ * not run under plain node at all. Everything here is a function of its
+ * arguments, and every consumer imports from here directly — the re-export
+ * shim that briefly kept pre-split import sites resolving went with L7-01.
  *
  * fold comes from the vendored aps-common module (L0-03): one fold for the
  * org, PHP and JS, corpus-checked.
@@ -22,10 +21,22 @@ export { fold }
  * in state.js prose and pinned only by a test that reads component source as
  * text; the constants are the machine-checked half now. DegradedNotice's
  * docblock is the sentence-level rationale.
+ *
+ * `url` is the publisher's official site — where a reader is SENT when the
+ * pane cannot serve the list (L6-01) — deliberately NOT the address the
+ * repositories read from: where to READ is the backend's fact, where to
+ * SEND the reader is the frontend's, and the two only look alike. Each
+ * publisher is said once here; no pane carries an address inline.
  */
 export const FUENTES = {
-	minsal: 'MINSAL',
-	isp: t('epidemiologia', 'el ISP'),
+	minsal: {
+		name: 'MINSAL',
+		url: 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/',
+	},
+	isp: {
+		name: t('epidemiologia', 'el ISP'),
+		url: 'https://www.ispch.gob.cl/virusrespiratorios/',
+	},
 }
 
 /**

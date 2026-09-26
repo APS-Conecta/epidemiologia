@@ -35,9 +35,15 @@ describe('attribution', () => {
 	it('credits each fuente to the institution that publishes it', () => {
 		// "el ISP", with the article: the constants document that the article
 		// differs between "MINSAL" and "el ISP" (L3-20 — FUENTES, in
-		// src/pure.js), and the app's remaining ISP call site (ReportPane's
-		// DegradedNotice) carries the constant, not the literal.
-		expect(src('components/ReportPane.vue')).toContain(':source="FUENTES.isp"')
-		expect(src('components/AlertsPane.vue')).toContain('degreyd.minsal.cl')
+		// src/pure.js), and every pane carries the constant, never a literal.
+		expect(src('components/ReportPane.vue')).toContain(':source="FUENTES.isp.name"')
+		expect(src('components/AlertsPane.vue')).toContain(':source="FUENTES.minsal.name"')
+
+		// L6-01: each publisher's official-site URL is said once, in the
+		// FUENTES map — no pane carries an address inline any more.
+		expect(src('components/AlertsPane.vue')).not.toContain('degreyd.minsal.cl')
+		expect(src('components/ReportPane.vue')).not.toContain('ispch.gob.cl')
+		expect(src('pure.js')).toContain("url: 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/'")
+		expect(src('pure.js')).toContain("url: 'https://www.ispch.gob.cl/virusrespiratorios/'")
 	})
 })

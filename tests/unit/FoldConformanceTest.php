@@ -12,7 +12,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Accent folding exists twice — `MinsalRepository::fold()` for OCS and global search,
- * `fold()` in `src/state.js` for the in-browser filter — because a clinician types
+ * `fold()` in `src/pure.js` (re-exported through `src/state.js` until L7-01)
+ * for the in-browser filter — because a clinician types
  * "sarampion" on both sides of the wire. Two languages, so the duplication cannot be
  * removed, only kept honest.
  *

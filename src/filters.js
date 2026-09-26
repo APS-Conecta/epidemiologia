@@ -14,7 +14,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { t } from '@nextcloud/l10n'
-import { fold, monthOptions, yearOptions } from './state.js'
+import { fold, monthOptions, yearOptions } from './pure.js'
 
 /**
  * The filter pair the alertas pane carries: a search box, a year and a month.

@@ -2,7 +2,7 @@
 	<section>
 		<PaneHeader :title="paneName('alertas')" />
 
-		<DegradedNotice v-if="alerts.degraded" :source="FUENTES.minsal" url="https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/" />
+		<DegradedNotice v-if="alerts.degraded" :source="FUENTES.minsal.name" :url="FUENTES.minsal.url" />
 
 		<FilterBar :query="query"
 			:count="countLabel"
@@ -56,7 +56,7 @@
 			:name="alerts.items.length ? t('epidemiologia', 'Sin coincidencias') : t('epidemiologia', 'Sin alertas')"
 			:description="alerts.items.length
 				? t('epidemiologia', 'Ninguna alerta vigente coincide con esa búsqueda.')
-				: emptyText(FUENTES.minsal)">
+				: emptyText(FUENTES.minsal.name)">
 			<template #icon>
 				<Magnify :size="20" />
 			</template>
@@ -77,7 +77,8 @@ import FilterMenu from './FilterMenu.vue'
 import PaneHeader from './PaneHeader.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
-import { alerts, emptyText, mes, FUENTES } from '../state.js'
+import { alerts } from '../state.js'
+import { emptyText, mes, FUENTES } from '../pure.js'
 import { useFilters } from '../filters.js'
 
 // The filter pair, its menus and its stranding rule live in src/filters.js — the

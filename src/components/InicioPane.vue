@@ -95,7 +95,7 @@
 			     about a publisher nobody asked. The alertas card above has had
 			     this branch since it existed; the informe card was the drift. -->
 			<p v-if="reports.degraded" class="epi-card__warn">
-				{{ degradedText(FUENTES.isp) }}
+				{{ degradedText(FUENTES.isp.name) }}
 			</p>
 
 			<NcEmptyContent v-else-if="!reports.items.length"
@@ -142,7 +142,8 @@ import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
 import Procedencia from './Procedencia.vue'
 import { paneName } from '../panes.js'
-import { alerts, degradedText, emptyText, fecha, mes, reports, FUENTES } from '../state.js'
+import { alerts, reports } from '../state.js'
+import { degradedText, emptyText, fecha, mes, FUENTES } from '../pure.js'
 
 defineEmits(['open'])
 
@@ -174,8 +175,8 @@ const sources = computed(() => [
 		feed: alerts,
 		pane: 'alertas',
 		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
-		emptyText: emptyText(FUENTES.minsal),
-		degradedText: degradedText(FUENTES.minsal),
+		emptyText: emptyText(FUENTES.minsal.name),
+		degradedText: degradedText(FUENTES.minsal.name),
 	},
 ])
 </script>
