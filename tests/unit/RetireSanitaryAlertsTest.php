@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Migration\RetireSanitaryAlerts;
 use OCP\Migration\IOutput;
 use OCP\Notification\IManager;
@@ -102,7 +102,7 @@ class RetireSanitaryAlertsTest extends TestCase {
 			$notification = $this->createMock(INotification::class);
 			$notification->method('setApp')->willReturnCallback(
 				static function (string $app) use ($notification): INotification {
-					if ($app !== Application::APP_ID) {
+					if ($app !== AppId::APP_ID) {
 						throw new RuntimeException("the wipe must mark rows for this app, got '$app'");
 					}
 

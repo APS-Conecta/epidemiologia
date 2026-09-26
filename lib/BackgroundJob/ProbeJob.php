@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\BackgroundJob;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
@@ -159,7 +159,7 @@ class ProbeJob extends TimedJob {
 	 */
 	private function match(string $source): INotification {
 		return $this->notifications->createNotification()
-			->setApp(Application::APP_ID)
+			->setApp(AppId::APP_ID)
 			->setSubject('probe_failed')
 			->setObject('source', $source);
 	}

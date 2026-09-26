@@ -7,7 +7,6 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
-use InvalidArgumentException;
 use Normalizer;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
@@ -84,14 +83,10 @@ class MinsalRepository {
 	}
 
 	/**
-	 * @param self::ALERTS $feed
-	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
-	public function get(string $feed): array {
-		$this->assertKnownFuente($feed);
-
-		$stored = $this->stored($feed);
+	public function get(): array {
+		$stored = $this->stored();
 
 		if ($stored !== null && $stored['fetched_at'] + self::FRESH_FOR > $this->time->getTime()) {
 			return $this->present($stored, false);
@@ -101,10 +96,10 @@ class MinsalRepository {
 		 * A failed refresh writes nothing, so the entry stays expired and every read
 		 * retries. PageController::index() fetches synchronously while someone waits,
 		 * so against a host that drops packets rather than refusing them this is a
-		 * gateway timeout instead of the degraded banner. Per feed, so one source's
-		 * outage does not silence the other's.
+		 * gateway timeout instead of the degraded banner. One fuente, one cooldown —
+		 * the sibling repository keeps its own.
 		 */
-		if ($this->cache->get($this->cooldownKey($feed)) !== null) {
+		if ($this->cache->get($this->cooldownKey()) !== null) {
 			return $this->present($stored, true);
 		}
 
@@ -119,7 +114,7 @@ class MinsalRepository {
 			return $this->present($stored, true);
 		}
 
-		return $this->refresh($feed, $stored);
+		return $this->refresh($stored);
 	}
 
 	/**
@@ -129,11 +124,11 @@ class MinsalRepository {
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
-	private function refresh(string $feed, ?array $stored = null): array {
+	private function refresh(?array $stored = null): array {
 		$html = $this->request();
 		$items = $html === null ? [] : $this->parse($html);
 
-		return $items === [] ? $this->fail($feed, $html, $stored) : $this->store($feed, $items);
+		return $items === [] ? $this->fail($html, $stored) : $this->store($items);
 	}
 
 	/**
@@ -151,7 +146,7 @@ class MinsalRepository {
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
-	private function fail(string $feed, ?string $html, ?array $stored): array {
+	private function fail(?string $html, ?array $stored): array {
 		/*
 		 * Two different faults reach this guard, and naming them apart is the whole
 		 * value of the line: this is called both when the page answered with content
@@ -179,7 +174,7 @@ class MinsalRepository {
 				: 'The MINSAL alerts page carried no alerts',
 		);
 
-		return $this->degrade($feed, $stored);
+		return $this->degrade($stored);
 	}
 
 	/**
@@ -191,13 +186,13 @@ class MinsalRepository {
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
-	private function store(string $feed, array $items): array {
+	private function store(array $items): array {
 		$fresh = [
 			'items' => $items,
 			'digest' => self::digest($items),
 			'fetched_at' => $this->time->getTime(),
 		];
-		$this->cache->set($this->key($feed), $fresh, self::KEEP_FOR);
+		$this->cache->set($this->key(), $fresh, self::KEEP_FOR);
 
 		/*
 		 * The whole set, replaced: a withdrawn alert vanishes with the set that
@@ -253,24 +248,22 @@ class MinsalRepository {
 	 * @return bool false when MINSAL is unreachable, or changed into something we
 	 *              can no longer parse. Either way a human has to look.
 	 */
-	public function probe(string $feed): bool {
-		$this->assertKnownFuente($feed);
-
+	public function probe(): bool {
 		$html = $this->request();
 		$items = $html === null ? [] : $this->parse($html);
 
 		if ($items === []) {
-			$this->fail($feed, $html, $this->stored($feed));
+			$this->fail($html, $this->stored());
 
 			return false;
 		}
 
-		$stored = $this->stored($feed);
+		$stored = $this->stored();
 		if ($stored !== null && ($stored['digest'] ?? null) === self::digest($items)) {
 			return true;
 		}
 
-		$this->store($feed, $items);
+		$this->store($items);
 
 		return true;
 	}
@@ -290,7 +283,7 @@ class MinsalRepository {
 	 */
 	public function search(string $term): array {
 		$needle = self::fold($term);
-		$stored = $this->stored(self::ALERTS);
+		$stored = $this->stored();
 
 		if ($needle === '' || $stored === null) {
 			return [];
@@ -656,8 +649,8 @@ class MinsalRepository {
 	 * fetched_at either: that was the cache's fact and it left with the cache;
 	 * the wire says null and claims no freshness it cannot back.
 	 */
-	private function stored(string $feed): ?array {
-		$stored = $this->cache->get($this->key($feed));
+	private function stored(): ?array {
+		$stored = $this->cache->get($this->key());
 
 		if (is_array($stored) && isset($stored['items'], $stored['fetched_at'])) {
 			return $stored;
@@ -710,19 +703,19 @@ class MinsalRepository {
 	 * Degrade, and remember it briefly so an outage is not re-attempted on every read.
 	 * Every degrade path goes through here, so none can forget to.
 	 */
-	private function degrade(string $feed, ?array $stored): array {
-		$this->cache->set($this->cooldownKey($feed), 1, self::COOLDOWN);
+	private function degrade(?array $stored): array {
+		$this->cache->set($this->cooldownKey(), 1, self::COOLDOWN);
 
 		return $this->present($stored, true);
 	}
 
-	private function key(string $feed): string {
-		return 'feed-' . $feed;
+	private function key(): string {
+		return 'feed-' . self::ALERTS;
 	}
 
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
-	private function cooldownKey(string $feed): string {
-		return 'cooldown-' . $feed;
+	private function cooldownKey(): string {
+		return 'cooldown-' . self::ALERTS;
 	}
 
 	/**
@@ -762,32 +755,6 @@ class MinsalRepository {
 	/** Distinct from key() and cooldownKey(), or the brake would be read as data. */
 	private function frenoKey(): string {
 		return 'freno-' . self::ALERTS;
-	}
-
-	/**
-	 * `get()` and `probe()` still take `$feed` because that is the signature
-	 * `Sources` already calls — `$this->minsal->get(MinsalRepository::ALERTS)`,
-	 * always with that one argument — from when this class answered for two
-	 * fuentes and the informes had not yet split into their own sibling.
-	 * `Sources` does not address every repository the same way: IspReportRepository
-	 * was written after that split and its `get()`/`probe()` take nothing, because
-	 * a class with one fuente never needed the parameter. This one still has it,
-	 * and dropping it is a public-signature change for a caller this task does
-	 * not own — narrowing what the parameter accepts is the smaller, safe one.
-	 *
-	 * `request()` stopped reading `$feed` once the slug that used to route to a
-	 * page went with the informes, leaving only a docblock's `@param self::ALERTS`
-	 * between a typo and `get('whatever')` quietly minting a `feed-whatever` cache
-	 * entry that nothing else in this class would ever refresh, degrade or serve
-	 * correctly. One fuente lives here now; asking for another is a caller's
-	 * mistake, and a mistake should throw rather than be cached.
-	 */
-	private function assertKnownFuente(string $feed): void {
-		if ($feed !== self::ALERTS) {
-			throw new InvalidArgumentException(
-				"MinsalRepository has one fuente ('" . self::ALERTS . "'), not '$feed'",
-			);
-		}
 	}
 
 	/**

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
-use InvalidArgumentException;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\MinsalRepository;
@@ -80,7 +79,7 @@ class MinsalRepositoryTest extends TestCase {
 	public function testAlertsComeFromThePageAndParseIntoItems(): void {
 		$repo = $this->repository((string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html'));
 
-		$result = $repo->get(MinsalRepository::ALERTS);
+		$result = $repo->get();
 
 		self::assertFalse($result['degraded']);
 		self::assertNotSame([], $result['items'], 'the fixture must carry alerts, or this test asserts nothing');
@@ -98,13 +97,13 @@ class MinsalRepositoryTest extends TestCase {
 		// this assertion is what says so out loud.
 		$repo = $this->repository((string)file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html'));
 
-		$titles = array_column($repo->get(MinsalRepository::ALERTS)['items'], 'title');
+		$titles = array_column($repo->get()['items'], 'title');
 
 		self::assertSame(array_unique($titles), $titles);
 	}
 
 	public function testReadsEveryAlertMinsalPublishes(): void {
-		$alerts = $this->repository()->get(MinsalRepository::ALERTS);
+		$alerts = $this->repository()->get();
 
 		self::assertFalse($alerts['degraded']);
 		self::assertCount(13, $alerts['items']);
@@ -126,7 +125,7 @@ class MinsalRepositoryTest extends TestCase {
 		// By filename, not the full url: both PDFs are still hosted on the
 		// previous host (MINSAL moved the index page, not every file it links
 		// to), and this file otherwise carries zero references to it.
-		$urls = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'url');
+		$urls = array_column($this->repository()->get()['items'], 'url');
 
 		self::assertNotSame(
 			[],
@@ -141,7 +140,7 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testEveryAlertCarriesATitleAUrlAndAYear(): void {
-		foreach ($this->repository()->get(MinsalRepository::ALERTS)['items'] as $alert) {
+		foreach ($this->repository()->get()['items'] as $alert) {
 			self::assertNotSame('', $alert['title']);
 			self::assertStringEndsWith('.pdf', $alert['url']);
 			self::assertMatchesRegularExpression('/^20\d{2}$/', $alert['year']);
@@ -150,13 +149,13 @@ class MinsalRepositoryTest extends TestCase {
 
 	/** MINSAL does not repeat a PDF from two rows on this page, unlike the old one. */
 	public function testTheSamePdfIsListedOnce(): void {
-		$urls = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'url');
+		$urls = array_column($this->repository()->get()['items'], 'url');
 
 		self::assertSame(array_unique($urls), $urls);
 	}
 
 	public function testUnescapesEntitiesAndCollapsesWhitespaceInTitles(): void {
-		foreach ($this->repository()->get(MinsalRepository::ALERTS)['items'] as $alert) {
+		foreach ($this->repository()->get()['items'] as $alert) {
 			self::assertStringNotContainsString('&nbsp;', $alert['title']);
 			self::assertStringNotContainsString('&#', $alert['title']);
 			self::assertStringNotContainsString('  ', $alert['title']);
@@ -169,7 +168,7 @@ class MinsalRepositoryTest extends TestCase {
 	// --- ordering ----------------------------------------------------------
 
 	public function testSortsAlertsNewestFirstAllTheWayDown(): void {
-		$months = array_column($this->repository()->get(MinsalRepository::ALERTS)['items'], 'month');
+		$months = array_column($this->repository()->get()['items'], 'month');
 
 		for ($i = 1, $n = count($months); $i < $n; $i++) {
 			self::assertGreaterThanOrEqual(
@@ -222,7 +221,7 @@ class MinsalRepositoryTest extends TestCase {
 	 * order a comparator with ties happens to leave them.
 	 */
 	public function testKeepsMinsalsOwnOrderWithinTheSameMonth(): void {
-		$items = $this->repository()->get(MinsalRepository::ALERTS)['items'];
+		$items = $this->repository()->get()['items'];
 
 		$june = array_values(array_filter($items, static fn (array $a): bool => $a['month'] === '2026-06'));
 
@@ -256,7 +255,7 @@ class MinsalRepositoryTest extends TestCase {
 			$anchors .= sprintf('<a href="%s">Alerta %d</a>', $url, $i);
 		}
 
-		$items = $this->repository(body: $anchors)->get(MinsalRepository::ALERTS)['items'];
+		$items = $this->repository(body: $anchors)->get()['items'];
 
 		self::assertCount(1, $items, 'only the https anchor may survive');
 		self::assertSame('https://degreyd.minsal.cl/uploads/2026/01/real.pdf', $items[0]['url']);
@@ -264,11 +263,11 @@ class MinsalRepositoryTest extends TestCase {
 
 	/** A page of nothing but hostile anchors parses to zero, which is a failure, not a result. */
 	public function testAPageOfOnlyHostileUrlsIsTreatedAsAFailedParse(): void {
-		$good = $this->repository()->get(MinsalRepository::ALERTS);
+		$good = $this->repository()->get();
 		$cached = $this->store;
 
 		$hostile = '<a href="javascript:alert(1)/uploads/2026/01/x.pdf">Alerta</a>';
-		$after = $this->repository(body: $hostile, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$after = $this->repository(body: $hostile, now: self::NOW + 7200)->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
@@ -281,13 +280,13 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testAParseReturningNothingNeverOverwritesTheCache(): void {
 		$repository = $this->repository();
-		$good = $repository->get(MinsalRepository::ALERTS);
+		$good = $repository->get();
 		$cached = $this->store;
 
 		// MINSAL restructures: the page still answers 200, but no PDF anchors left.
 		// An hour later, so the cached copy is stale and a real refresh is attempted.
 		$after = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7200)
-			->get(MinsalRepository::ALERTS);
+			->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
@@ -295,10 +294,10 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testAnUnreachableMinsalServesTheLastGoodCopyFlaggedDegraded(): void {
-		$good = $this->repository()->get(MinsalRepository::ALERTS);
+		$good = $this->repository()->get();
 
 		$offline = $this->repository(offline: true, now: self::NOW + 7200);
-		$after = $offline->get(MinsalRepository::ALERTS);
+		$after = $offline->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertCount(13, $after['items']);
@@ -309,7 +308,7 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testWithNothingCachedAndMinsalDownItSaysDegradedRatherThanEmpty(): void {
-		$result = $this->repository(offline: true)->get(MinsalRepository::ALERTS);
+		$result = $this->repository(offline: true)->get();
 
 		self::assertTrue($result['degraded']);
 		self::assertSame([], $result['items']);
@@ -317,8 +316,8 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testServesTheCacheWithoutRefetchingWhileItIsFresh(): void {
 		$repository = $this->repository();
-		$repository->get(MinsalRepository::ALERTS);
-		$repository->get(MinsalRepository::ALERTS);
+		$repository->get();
+		$repository->get();
 
 		self::assertCount(1, $this->requested, 'a fresh cache must not be refetched');
 	}
@@ -330,14 +329,14 @@ class MinsalRepositoryTest extends TestCase {
 	 * degraded banner.
 	 */
 	public function testAnOutageIsNotRetriedOnEveryRead(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 		$this->requested = [];
 
-		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7200)->get();
 		self::assertNotSame([], $this->requested, 'precondition: the first read after expiry does try');
 		$this->requested = [];
 
-		$this->repository(offline: true, now: self::NOW + 7260)->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7260)->get();
 
 		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
 	}
@@ -357,7 +356,7 @@ class MinsalRepositoryTest extends TestCase {
 		$link = '<a href="https://degreyd.minsal.cl/wp-content/uploads/2026/07/x.pdf">Alerta</a>';
 		$huge = $link . str_repeat('<!-- pad -->', 60000);
 
-		$alerts = $this->repository(body: $huge)->get(MinsalRepository::ALERTS);
+		$alerts = $this->repository(body: $huge)->get();
 
 		self::assertSame([], $alerts['items'], 'a body that size is not a page, whatever it parses to');
 		self::assertTrue($alerts['degraded'], 'unread is not the same as empty');
@@ -377,7 +376,7 @@ class MinsalRepositoryTest extends TestCase {
 		// it is still an href ending in .pdf, which the cheap count does see.
 		$ghost = '<link rel="alternate" href="https://degreyd.minsal.cl/uploads/2026/01/ghost.pdf">';
 
-		$alerts = $this->repository(body: $good . $ghost)->get(MinsalRepository::ALERTS);
+		$alerts = $this->repository(body: $good . $ghost)->get();
 
 		self::assertFalse($alerts['degraded'], 'one real anchor is a healthy read, not a failed one');
 		self::assertCount(1, $alerts['items']);
@@ -400,7 +399,7 @@ class MinsalRepositoryTest extends TestCase {
 	 * whole difference, which is why it is the thing pinned here.
 	 */
 	public function testAPageThatCouldNotBeReadIsNotReportedAsOneThatCarriedNoAlerts(): void {
-		$alerts = $this->repository(offline: true)->get(MinsalRepository::ALERTS);
+		$alerts = $this->repository(offline: true)->get();
 
 		self::assertTrue($alerts['degraded'], 'an unreachable host is not an empty list');
 		self::assertNotSame([], $this->loggedAt('warning'), 'an unreadable page must say so');
@@ -418,7 +417,7 @@ class MinsalRepositoryTest extends TestCase {
 	 * restructuring its page into something the parser no longer recognises.
 	 */
 	public function testAPageThatWasReadAndParsedToNothingStillSaysSo(): void {
-		$alerts = $this->repository(body: '<p>Sin alertas publicadas.</p>')->get(MinsalRepository::ALERTS);
+		$alerts = $this->repository(body: '<p>Sin alertas publicadas.</p>')->get();
 
 		self::assertTrue($alerts['degraded'], 'zero items never overwrites a good copy');
 		self::assertStringContainsString(
@@ -429,53 +428,30 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
-		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->get();
 		$this->requested = [];
 
-		$this->repository(offline: true, now: self::NOW + 7200 + 301)->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7200 + 301)->get();
 
 		self::assertNotSame([], $this->requested, 'past COOLDOWN the feed must be asked again');
 	}
 
 	public function testTheCooldownStillServesTheLastGoodCopyAndStillSaysDegraded(): void {
-		$good = $this->repository()->get(MinsalRepository::ALERTS);
-		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$good = $this->repository()->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->get();
 
-		$during = $this->repository(offline: true, now: self::NOW + 7260)->get(MinsalRepository::ALERTS);
+		$during = $this->repository(offline: true, now: self::NOW + 7260)->get();
 
 		self::assertTrue($during['degraded'], 'a cooldown must never look like health');
 		self::assertSame($good['items'], $during['items']);
-	}
-
-	// --- an unknown fuente is a caller's mistake, not a cache entry ----------
-
-	public function testAskingForAnUnknownFuenteThrowsRatherThanMintingACacheEntry(): void {
-		$repository = $this->repository();
-
-		try {
-			$repository->get('bogus');
-			self::fail('an id other than ALERTS must not be answered');
-		} catch (InvalidArgumentException $e) {
-			// expected
-		}
-
-		// 'feed-bogus' is key()'s own prefix, unchanged — this asserts nothing
-		// was minted under it, not that the prefix itself should read differently.
-		self::assertArrayNotHasKey('feed-bogus', $this->store, 'a rejected fuente must not mint a cache entry');
-	}
-
-	public function testProbingAnUnknownFuenteAlsoThrows(): void {
-		$this->expectException(InvalidArgumentException::class);
-
-		$this->repository()->probe('bogus');
 	}
 
 	// --- search --------------------------------------------------------------
 
 	public function testFoldsAccentsSoSarampionFindsSarampion(): void {
 		$repository = $this->repository();
-		$repository->get(MinsalRepository::ALERTS);
+		$repository->get();
 
 		$hits = $repository->search('sarampion');
 
@@ -507,7 +483,7 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame([], $repository->search('sarampion'));
 		self::assertSame([], $this->requested, 'the global search box must never wait on MINSAL');
 
-		$repository->get(MinsalRepository::ALERTS);
+		$repository->get();
 
 		// The app update: ADR-0012's cache namespace move, the table left holding.
 		$this->store = [];
@@ -521,7 +497,7 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testSearchIgnoresAnEmptyTerm(): void {
 		$repository = $this->repository();
-		$repository->get(MinsalRepository::ALERTS);
+		$repository->get();
 
 		self::assertSame([], $repository->search('   '));
 	}
@@ -530,10 +506,10 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testTheProbeIsQuietWhenMinsalHasNotChanged(): void {
 		$repository = $this->repository();
-		$repository->get(MinsalRepository::ALERTS);
+		$repository->get();
 		$before = count($this->requested);
 
-		self::assertTrue($repository->probe(MinsalRepository::ALERTS));
+		self::assertTrue($repository->probe());
 		self::assertCount($before + 1, $this->requested, 'an unchanged feed costs exactly one probe');
 	}
 
@@ -562,13 +538,13 @@ class MinsalRepositoryTest extends TestCase {
 		$second = str_replace('uploads/2026/06/', 'uploads/2026/08/', $first);
 
 		$repo = $this->repository($first);
-		$repo->get(MinsalRepository::ALERTS);
+		$repo->get();
 		$before = count($this->requested);
 
 		$changed = $this->repository($second, reuseCache: true);
-		self::assertTrue($changed->probe(MinsalRepository::ALERTS));
+		self::assertTrue($changed->probe());
 
-		$urls = implode(' ', array_column($changed->get(MinsalRepository::ALERTS)['items'], 'url'));
+		$urls = implode(' ', array_column($changed->get()['items'], 'url'));
 		self::assertStringContainsString('/2026/08/', $urls, 'the digest must have caught the change and refreshed the cache');
 		self::assertStringNotContainsString('/2026/06/', $urls, 'the stale copy must not still be served');
 		self::assertCount($before + 1, $this->requested, 'one probe fetch, and no second one from get() since the refresh already left the cache fresh');
@@ -577,22 +553,22 @@ class MinsalRepositoryTest extends TestCase {
 	public function testTheProbeReportsFailureWhenMinsalStopsParsing(): void {
 		$repository = $this->repository(body: '<p>nada</p>');
 
-		self::assertFalse($repository->probe(MinsalRepository::ALERTS));
+		self::assertFalse($repository->probe());
 	}
 
 	public function testTheProbeReportsFailureWhenMinsalIsUnreachable(): void {
-		self::assertFalse($this->repository(offline: true)->probe(MinsalRepository::ALERTS));
+		self::assertFalse($this->repository(offline: true)->probe());
 	}
 
 	// --- the durable set: ADR-0015 §2 ----------------------------------------
 
 	public function testAnAppUpdateThatEmptiesTheCacheStillServesThePersistedSet(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 
 		// The app update emptied the cache (ADR-0012); MINSAL is down on top of it.
 		$offline = $this->repository(offline: true, reuseCache: false, now: self::NOW + 7200);
 
-		$after = $offline->get(MinsalRepository::ALERTS);
+		$after = $offline->get();
 
 		self::assertTrue($after['degraded'], 'an outage on top of an app update is still an outage');
 		self::assertCount(13, $after['items'], 'the persisted set is the durable last-good copy');
@@ -605,14 +581,14 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testAProbeOnAColdCacheRestoresRatherThanTrustsAReDerivedDigest(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 		self::assertCount(13, $this->rows);
 
 		// The app update: cache namespace moved (ADR-0012), table still holding.
 		$repository = $this->repository(reuseCache: false);
 		$this->requested = [];
 
-		self::assertTrue($repository->probe(MinsalRepository::ALERTS));
+		self::assertTrue($repository->probe());
 
 		// D8: the fabricated entry carries no digest, so the probe cannot
 		// "match" its way out of re-storing — the cache entry is back, from the
@@ -627,14 +603,14 @@ class MinsalRepositoryTest extends TestCase {
 			. '<a href="https://degreyd.minsal.cl/uploads/2026/07/b.pdf">Alerta retirada</a>';
 		$one = '<a href="https://degreyd.minsal.cl/uploads/2026/07/a.pdf">Alerta vigente</a>';
 
-		$this->repository(body: $two)->get(MinsalRepository::ALERTS);
+		$this->repository(body: $two)->get();
 		self::assertSame(
 			['https://degreyd.minsal.cl/uploads/2026/07/a.pdf', 'https://degreyd.minsal.cl/uploads/2026/07/b.pdf'],
 			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
 			'precondition: both alerts persisted',
 		);
 
-		$this->repository(body: $one, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository(body: $one, now: self::NOW + 7200)->get();
 
 		self::assertSame(
 			['https://degreyd.minsal.cl/uploads/2026/07/a.pdf'],
@@ -644,15 +620,15 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testAFailedParseWritesNothingToThePersistedSet(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 		$before = array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows);
 
 		// Both entry classes of fail(): nothing read at all, and read-but-parsed-
 		// to-nothing. The second read sits past +7501 on purpose: the offline read
 		// arms the cooldown until then, and a read inside it would short-circuit
 		// at the cooldown branch and never reach fail() — pinning nothing.
-		$offline = $this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
-		$maintenance = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+		$offline = $this->repository(offline: true, now: self::NOW + 7200)->get();
+		$maintenance = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7501)->get();
 
 		self::assertTrue($offline['degraded']);
 		self::assertTrue($maintenance['degraded']);
@@ -666,16 +642,16 @@ class MinsalRepositoryTest extends TestCase {
 	// --- the brake: an answer is not a challenge ------------------------------
 
 	public function testARefusalArmsTheBrakeAndReadsStopAsking(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 
-		$refused = $this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$refused = $this->repository(refused: 403, now: self::NOW + 7200)->get();
 		self::assertTrue($refused['degraded'], 'a refusal is served like any outage');
 		self::assertCount(2, $this->requested, 'precondition: the refusal was asked once, after expiry');
 
 		// Past COOLDOWN (armed at +7200, gone at +7500), still inside the brake
 		// (armed at +7200 until +14400). The cooldown-only code this replaces
 		// would have asked here — that ask is what this pin exists to hold.
-		$held = $this->repository(refused: 403, now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+		$held = $this->repository(refused: 403, now: self::NOW + 7501)->get();
 
 		self::assertTrue($held['degraded']);
 		self::assertCount(13, $held['items'], 'the last good copy serves while the brake holds');
@@ -684,19 +660,19 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	public function testATimeoutStaysCooldownClassAndNeverArmsTheBrake(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 
-		$this->repository(offline: true, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7200)->get();
 		self::assertArrayNotHasKey('freno-alerts', $this->store, 'no answer came back — there is no refusal to remember');
 
-		$this->repository(offline: true, now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+		$this->repository(offline: true, now: self::NOW + 7501)->get();
 
 		self::assertCount(3, $this->requested, 'past COOLDOWN the feed must be asked again — recovery stays automatic');
 	}
 
 	public function testTheProbeAsksThroughTheBrakeAndReportsARefusal(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
-		$this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->get();
 		$this->requested = [];
 
 		// #218beba: a fully-braked reader must still report unreachable to
@@ -704,27 +680,27 @@ class MinsalRepositoryTest extends TestCase {
 		// ask exactly as on the hourly path.
 		$probe = $this->repository(refused: 403, now: self::NOW + 7260);
 
-		self::assertFalse($probe->probe(MinsalRepository::ALERTS));
+		self::assertFalse($probe->probe());
 		self::assertCount(1, $this->requested, 'the probe asked through the brake');
 		self::assertSame(2, $this->store['freno-alerts']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
 	}
 
 	public function testAHostThatAnswersAgainClearsTheBrakeSoReadsResume(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
-		$this->repository(refused: 403, now: self::NOW + 7200)->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->get();
 		self::assertArrayHasKey('freno-alerts', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
-		self::assertTrue($this->repository(now: self::NOW + 7260)->probe(MinsalRepository::ALERTS));
+		self::assertTrue($this->repository(now: self::NOW + 7260)->probe());
 		self::assertArrayNotHasKey('freno-alerts', $this->store, 'an answer removes the key outright — recovery is one step');
 
 		// Past the cooldown the refusal left (+7500), the read resumes asking.
-		$this->repository(now: self::NOW + 7501)->get(MinsalRepository::ALERTS);
+		$this->repository(now: self::NOW + 7501)->get();
 		self::assertCount(4, $this->requested, 'the read resumed once the brake cleared');
 	}
 
 	public function testEveryRequestIntroducesItselfAndStaysBounded(): void {
-		$this->repository()->get(MinsalRepository::ALERTS);
+		$this->repository()->get();
 
 		self::assertSame(
 			'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)',

@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Controller;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -61,7 +61,7 @@ class ApiController extends OCSController {
 		IRequest $request,
 		private Sources $sources,
 	) {
-		parent::__construct(Application::APP_ID, $request);
+		parent::__construct(AppId::APP_ID, $request);
 	}
 
 	/**

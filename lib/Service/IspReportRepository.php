@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Service;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Db\Report;
 use OCA\Epidemiologia\Db\ReportMapper;
 use OCP\AppFramework\Services\IAppConfig;
@@ -183,11 +183,11 @@ class IspReportRepository {
 	/**
 	 * Where the kept documents live: one folder in the app's own IAppData,
 	 * beside the app's own tables — the same store-every-install-has doctrine,
-	 * one layer down (ADR-0015 §2). The controller that serves them carries
-	 * the same literal; its suite pins the served bytes against this folder,
-	 * so drift answers as a redirect, never as a broken link.
+	 * one layer down (ADR-0015 §2). InformeController imports this constant:
+	 * one home (L1-03), where the controller's own literal and its drift
+	 * pinning used to be.
 	 */
-	private const FOLDER = 'informes';
+	public const FOLDER = 'informes';
 
 	/**
 	 * The publisher's stable page base for one week: PAGE . 'semana-{se}-{year}/'
@@ -199,11 +199,10 @@ class IspReportRepository {
 	 * the kept copy cannot be vouched for. The row keeps the exact,
 	 * version-suffixed document address instead (provenance, the archiver's
 	 * target, the reissue signal); it never reaches a browser. The capture's
-	 * own <link>s pin the derivation, and the controller carries its own
-	 * literal — the FOLDER doctrine: drift answers as a failing pin, never
-	 * as a wrong redirect.
+	 * own <link>s pin the derivation, and InformeController imports this
+	 * constant — one home (L1-03), where its own literal used to be.
 	 */
-	private const PAGE = 'https://www.ispch.gob.cl/documento/';
+	public const PAGE = 'https://www.ispch.gob.cl/documento/';
 
 	/**
 	 * The route a kept row's href names — the one routes.php registers
@@ -212,7 +211,7 @@ class IspReportRepository {
 	 * the route name the wire asks for and a manual criterion walks the real
 	 * route once.
 	 */
-	private const ROUTE = Application::APP_ID . '.informe.show';
+	private const ROUTE = AppId::APP_ID . '.informe.show';
 
 	/**
 	 * The largest document we will keep. A bound, because everything that
@@ -260,7 +259,7 @@ class IspReportRepository {
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		$this->lock = $cacheFactory->createLocking('epidemiologia');
-		$this->appData = $appDataFactory->get(Application::APP_ID);
+		$this->appData = $appDataFactory->get(AppId::APP_ID);
 	}
 
 	/**

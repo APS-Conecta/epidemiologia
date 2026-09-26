@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Search;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IL10N;
 use OCP\IUser;
@@ -40,7 +40,7 @@ class AlertProvider implements IProvider {
 
 	#[\Override]
 	public function getId(): string {
-		return Application::APP_ID . '-alerts';
+		return AppId::APP_ID . '-alerts';
 	}
 
 	#[\Override]
@@ -50,7 +50,7 @@ class AlertProvider implements IProvider {
 
 	#[\Override]
 	public function getOrder(string $route, array $routeParameters): int {
-		return str_starts_with($route, Application::APP_ID . '.') ? -1 : 55;
+		return str_starts_with($route, AppId::APP_ID . '.') ? -1 : 55;
 	}
 
 	#[\Override]

@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Migration;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\Migration\IOutput;
 use OCP\Migration\IRepairStep;
@@ -74,7 +74,7 @@ class RetireSanitaryAlerts implements IRepairStep {
 		 */
 		$this->notifications->markProcessed(
 			$this->notifications->createNotification()
-				->setApp(Application::APP_ID)
+				->setApp(AppId::APP_ID)
 				->setSubject('probe_failed')
 				->setObject('source', 'sanitary_alerts'),
 		);

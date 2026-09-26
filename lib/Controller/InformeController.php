@@ -7,9 +7,10 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Controller;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Db\Report;
 use OCA\Epidemiologia\Db\ReportMapper;
+use OCA\Epidemiologia\Service\IspReportRepository;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -49,25 +50,13 @@ use Psr\Log\LoggerInterface;
  */
 #[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class InformeController extends Controller {
-	/** The one folder the reader keeps documents in — see IspReportRepository. */
-	private const FOLDER = 'informes';
-
-	/**
-	 * The publisher's stable page base for one week — see
-	 * IspReportRepository::PAGE for the doctrine. Carried as the controller's
-	 * own literal, the FOLDER pattern: the suite pins the redirect target, so
-	 * drift between the two answers as a failing pin, never as a wrong
-	 * redirect.
-	 */
-	private const PAGE = 'https://www.ispch.gob.cl/documento/';
-
 	public function __construct(
 		IRequest $request,
 		private ReportMapper $reports,
 		private IAppDataFactory $appData,
 		private LoggerInterface $logger,
 	) {
-		parent::__construct(Application::APP_ID, $request);
+		parent::__construct(AppId::APP_ID, $request);
 	}
 
 	/**
@@ -97,8 +86,8 @@ class InformeController extends Controller {
 
 		try {
 			$bytes = $this->appData
-				->get(Application::APP_ID)
-				->getFolder(self::FOLDER)
+				->get(AppId::APP_ID)
+				->getFolder(IspReportRepository::FOLDER)
 				->getFile($report->getPath())
 				->getContent();
 		} catch (NotFoundException) {
@@ -141,7 +130,7 @@ class InformeController extends Controller {
 	 * reissued.
 	 */
 	private function publisherPage(Report $report): string {
-		return sprintf(self::PAGE . 'semana-%s-%s/', $report->getSe(), $report->getYear());
+		return sprintf(IspReportRepository::PAGE . 'semana-%s-%s/', $report->getSe(), $report->getYear());
 	}
 }
 

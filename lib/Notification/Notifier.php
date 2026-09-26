@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Notification;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
@@ -30,21 +30,21 @@ class Notifier implements INotifier {
 
 	#[\Override]
 	public function getID(): string {
-		return Application::APP_ID;
+		return AppId::APP_ID;
 	}
 
 	#[\Override]
 	public function getName(): string {
-		return $this->l10nFactory->get(Application::APP_ID)->t('Epidemiología');
+		return $this->l10nFactory->get(AppId::APP_ID)->t('Epidemiología');
 	}
 
 	#[\Override]
 	public function prepare(INotification $notification, string $languageCode): INotification {
-		if ($notification->getApp() !== Application::APP_ID) {
+		if ($notification->getApp() !== AppId::APP_ID) {
 			throw new UnknownNotificationException();
 		}
 
-		$l = $this->l10nFactory->get(Application::APP_ID, $languageCode);
+		$l = $this->l10nFactory->get(AppId::APP_ID, $languageCode);
 		$params = $notification->getSubjectParameters();
 		$days = (int)($params['days'] ?? 0);
 		$source = (string)($params['source'] ?? '');
@@ -80,7 +80,7 @@ class Notifier implements INotifier {
 			// setIcon() rejects relative URLs. app-dark.svg is the unfilled variant —
 			// the notification tray is a light surface, unlike the app menu.
 			->setIcon($this->urls->getAbsoluteURL(
-				$this->urls->imagePath(Application::APP_ID, 'app-dark.svg')
+				$this->urls->imagePath(AppId::APP_ID, 'app-dark.svg')
 			))
 			->setLink($this->urls->linkToRouteAbsolute('epidemiologia.page.index'));
 	}

@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Controller;
 
-use OCA\Epidemiologia\AppInfo\Application;
+use OCA\Epidemiologia\AppInfo\AppId;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
@@ -34,7 +34,7 @@ class PageController extends Controller {
 		private Sources $sources,
 		private IInitialState $initialState,
 	) {
-		parent::__construct(Application::APP_ID, $request);
+		parent::__construct(AppId::APP_ID, $request);
 	}
 
 	#[NoAdminRequired]
@@ -61,12 +61,12 @@ class PageController extends Controller {
 		$this->initialState->provideInitialState('tablero', self::TABLERO_URL);
 
 		// The bundle name carries the app id — vite-config prefixes it.
-		Util::addScript(Application::APP_ID, 'epidemiologia-main');
+		Util::addScript(AppId::APP_ID, 'epidemiologia-main');
 		// 'epidemiologia-style', not '-main': with cssCodeSplit off Vite emits one
 		// stylesheet named after the library, not after the entry. See vite.config.js.
-		Util::addStyle(Application::APP_ID, 'epidemiologia-style');
+		Util::addStyle(AppId::APP_ID, 'epidemiologia-style');
 
-		$response = new TemplateResponse(Application::APP_ID, 'index');
+		$response = new TemplateResponse(AppId::APP_ID, 'index');
 
 		// Nextcloud blocks third-party frames by default. The tablero is a Power BI
 		// report published to the web, for which Microsoft generates an iframe

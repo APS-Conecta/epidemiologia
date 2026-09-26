@@ -74,7 +74,7 @@ class Sources {
 		// through every method so the failure lands in CI-less development, not in
 		// front of a clinician.
 		$source = match ($id) {
-			self::ALERTS => $this->minsal->get(MinsalRepository::ALERTS),
+			self::ALERTS => $this->minsal->get(),
 			self::REPORTS => $this->informes->get(),
 		};
 
@@ -89,7 +89,7 @@ class Sources {
 	/** @return bool false when the source is unreachable, or changed into something we cannot parse */
 	public function probe(string $id): bool {
 		return match ($id) {
-			self::ALERTS => $this->minsal->probe(MinsalRepository::ALERTS),
+			self::ALERTS => $this->minsal->probe(),
 			self::REPORTS => $this->informes->probe(),
 		};
 	}
