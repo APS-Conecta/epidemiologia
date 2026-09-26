@@ -11,6 +11,7 @@ use Normalizer;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClientService;
 use OCP\ICache;
 use OCP\ICacheFactory;
@@ -56,6 +57,14 @@ class MinsalRepository {
 	private const FRESH_FOR = 3600;
 
 	/**
+	 * How long the stale-serve dispatch marker lives: a revalidation job
+	 * that never runs (crashed, or a cron-less install between requests)
+	 * must not suppress the next dispatch forever — five minutes, the same
+	 * self-healing window the outage cooldown carries.
+	 */
+	private const MARKER_FOR = 300;
+
+	/**
 	 * How long the copy survives in Redis — far longer than FRESH_FOR, on purpose.
 	 * When MINSAL is unreachable we serve the last good copy flagged `degraded`,
 	 * and we can only do that if it outlived its own freshness window.
@@ -80,6 +89,7 @@ class MinsalRepository {
 		private LoggerInterface $logger,
 		private AlertMapper $alerts,
 		ICacheFactory $cacheFactory,
+		private IJobList $jobs,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		// One grain — this page — on the same cache it reads; the subject
@@ -120,6 +130,32 @@ class MinsalRepository {
 			return $this->present($stored, true);
 		}
 
+		/*
+		 * L1-01/L3-04: an expired-but-kept copy serves immediately, and the
+		 * refresh happens behind the response — first paint never waits on
+		 * a healthy-but-slow publisher. A stale serve is NOT the degraded
+		 * state: fetched_at carries the honest date and the banner appears
+		 * only when a revalidation actually fails (the cooldown it arms
+		 * makes the NEXT read degraded). The marker dedups the dispatch,
+		 * and its TTL self-heals a job that never runs.
+		 */
+		if ($stored !== null) {
+			if ($this->cache->get($this->revalidatingKey()) === null) {
+				$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
+				// The class name as a string, deliberately: importing the
+				// job would close MinsalRepository → RevalidateJob → Sources
+				// → MinsalRepository, the cycle shape Phase 1 spent itself
+				// killing. The suite pins the string against
+				// RevalidateJob::class, so a rename answers as a failing
+				// test, not as a silently dead dispatch.
+				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => self::ALERTS]);
+			}
+
+			return $this->present($stored, false);
+		}
+
+		// Cold install: nothing stored, so there is no copy to serve and
+		// today's bounded synchronous fetch stays — once per install.
 		return $this->refresh($stored);
 	}
 
@@ -708,6 +744,27 @@ class MinsalRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
 	private function cooldownKey(): string {
 		return 'cooldown-' . self::ALERTS;
+	}
+
+	/** Distinct from key()/cooldownKey(), or the dispatch marker would be read as data. */
+	private function revalidatingKey(): string {
+		return 'revalidating-' . self::ALERTS;
+	}
+
+	/**
+	 * The revalidation a stale serve dispatched: the background half of
+	 * get()'s serve-then-refresh. Runs the same refresh()/store() the
+	 * inline path ran — no second code path — and clears the dispatch
+	 * marker in a finally so a failed revalidation re-arms on the next
+	 * reader past the cooldown rather than suppressing dispatches until
+	 * the marker's TTL.
+	 */
+	public function revalidate(): void {
+		try {
+			$this->refresh($this->stored());
+		} finally {
+			$this->cache->remove($this->revalidatingKey());
+		}
 	}
 
 	/**

@@ -95,6 +95,18 @@ class Sources {
 	}
 
 	/**
+	 * The revalidation a stale serve dispatched (L1-01): the background
+	 * half of get()'s serve-then-refresh. Match arms like every other
+	 * method — an id added to ALL and nowhere else throws here too.
+	 */
+	public function revalidate(string $id): void {
+		match ($id) {
+			self::ALERTS => $this->minsal->revalidate(),
+			self::REPORTS => $this->informes->revalidate(),
+		};
+	}
+
+	/**
 	 * The accumulating fuente's deep pass — the one-shot backfill and the
 	 * document archiver (L3-08). The read path serves page 1 and stops; this
 	 * is the job's door to everything deeper. Only REPORTS accumulates a

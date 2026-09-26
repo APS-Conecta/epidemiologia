@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\BackgroundJob\RevalidateJob;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\MinsalRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -50,6 +52,9 @@ class MinsalRepositoryTest extends TestCase {
 	/** @var list<string> requests made against the client, in order */
 	private array $requested = [];
 
+	/** @var list<array{0: string, 1: mixed}> every IJobList::add() call, in order */
+	private array $jobs = [];
+
 	/** @var list<string> request URLs that matched no fixture; see fixture() */
 	private array $unmatched = [];
 
@@ -61,6 +66,7 @@ class MinsalRepositoryTest extends TestCase {
 		$this->rows = [];
 		$this->options = [];
 		$this->requested = [];
+		$this->jobs = [];
 		$this->unmatched = [];
 		$this->logged = [];
 	}
@@ -267,7 +273,8 @@ class MinsalRepositoryTest extends TestCase {
 		$cached = $this->store;
 
 		$hostile = '<a href="javascript:alert(1)/uploads/2026/01/x.pdf">Alerta</a>';
-		$after = $this->repository(body: $hostile, now: self::NOW + 7200)->get();
+		$this->repository(body: $hostile, now: self::NOW + 7200)->revalidate();
+		$after = $this->repository(body: $hostile, now: self::NOW + 7260)->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
@@ -284,9 +291,12 @@ class MinsalRepositoryTest extends TestCase {
 		$cached = $this->store;
 
 		// MINSAL restructures: the page still answers 200, but no PDF anchors left.
-		// An hour later, so the cached copy is stale and a real refresh is attempted.
-		$after = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7200)
-			->get();
+		// An hour later, the revalidation runs behind the response and the
+		// restructure degrades without ever touching the cache.
+		$this->repository(body: '<p>En mantención</p>', now: self::NOW + 7200)->revalidate();
+		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
+
+		$after = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7260)->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
@@ -296,8 +306,8 @@ class MinsalRepositoryTest extends TestCase {
 	public function testAnUnreachableMinsalServesTheLastGoodCopyFlaggedDegraded(): void {
 		$good = $this->repository()->get();
 
-		$offline = $this->repository(offline: true, now: self::NOW + 7200);
-		$after = $offline->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
+		$after = $this->repository(offline: true, now: self::NOW + 7260)->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertCount(13, $after['items']);
@@ -331,14 +341,16 @@ class MinsalRepositoryTest extends TestCase {
 	public function testAnOutageIsNotRetriedOnEveryRead(): void {
 		$this->repository()->get();
 		$this->requested = [];
+		$this->jobs = [];
 
-		$this->repository(offline: true, now: self::NOW + 7200)->get();
-		self::assertNotSame([], $this->requested, 'precondition: the first read after expiry does try');
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
+		self::assertNotSame([], $this->requested, 'precondition: the revalidation after expiry does try');
 		$this->requested = [];
 
 		$this->repository(offline: true, now: self::NOW + 7260)->get();
 
 		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
+		self::assertSame([], $this->jobs, 'a cooldown-gated read dispatches nothing');
 	}
 
 	/**
@@ -429,22 +441,86 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
 		$this->repository()->get();
-		$this->repository(offline: true, now: self::NOW + 7200)->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
 		$this->requested = [];
 
-		$this->repository(offline: true, now: self::NOW + 7200 + 301)->get();
+		$this->repository(offline: true, now: self::NOW + 7200 + 301)->revalidate();
 
 		self::assertNotSame([], $this->requested, 'past COOLDOWN the feed must be asked again');
 	}
 
 	public function testTheCooldownStillServesTheLastGoodCopyAndStillSaysDegraded(): void {
 		$good = $this->repository()->get();
-		$this->repository(offline: true, now: self::NOW + 7200)->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
 
 		$during = $this->repository(offline: true, now: self::NOW + 7260)->get();
 
 		self::assertTrue($during['degraded'], 'a cooldown must never look like health');
 		self::assertSame($good['items'], $during['items']);
+	}
+
+	// --- stale serve: first paint never waits (L1-01) -------------------------
+
+	public function testAStaleCopyServesImmediatelyAndDispatchesOneRevalidation(): void {
+		$this->repository()->get();
+		$this->requested = [];
+		$this->jobs = [];
+
+		$stale = $this->repository(now: self::NOW + 7200)->get();
+
+		self::assertFalse($stale['degraded'], 'a stale serve is not the degraded state');
+		self::assertCount(13, $stale['items']);
+		self::assertSame([], $this->requested, 'first paint asked nothing — the publisher wait moved off the render path');
+		self::assertSame(
+			[[RevalidateJob::class, ['source' => 'alerts']]],
+			$this->jobs,
+			'exactly one dispatch, argument the Sources id — and ::class pins the production string against a rename',
+		);
+		self::assertNotNull($this->store['revalidating-alerts'] ?? null, 'the marker holds the dispatch');
+	}
+
+	public function testASecondStaleReaderDoesNotDispatchAgain(): void {
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 7200)->get();
+		$this->repository(now: self::NOW + 7260)->get();
+
+		self::assertCount(1, $this->jobs, 'the marker dedups the dispatch');
+	}
+
+	public function testAMarkerThatOutlivesItsJobRedispatches(): void {
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 7200)->get();   // dispatch at 7200, marker TTL 300
+
+		$this->repository(now: self::NOW + 7501)->get();   // marker expired
+
+		self::assertCount(2, $this->jobs, 'a job that never ran is re-dispatched past the marker TTL');
+	}
+
+	public function testARevalidationClearsTheMarkerOnSuccessAndFailure(): void {
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 7200)->get();
+		self::assertArrayHasKey('revalidating-alerts', $this->store);
+
+		$this->repository(now: self::NOW + 7201)->revalidate();
+
+		self::assertArrayNotHasKey('revalidating-alerts', $this->store, 'a finished revalidation frees the next dispatch');
+
+		// Past the freshness window that successful revalidation re-armed
+		// (7201 + 3600): the entry must be STALE again before a reader
+		// re-dispatches — at +7202 it would serve fresh and never reach
+		// the marker. (Step 8 review catch.)
+		$this->repository(offline: true, now: self::NOW + 10801)->get();
+		self::assertArrayHasKey('revalidating-alerts', $this->store);
+		$this->repository(offline: true, now: self::NOW + 10802)->revalidate();
+		self::assertArrayNotHasKey('revalidating-alerts', $this->store, 'a FAILED revalidation clears it too — the cooldown, not the marker, paces the retry');
+	}
+
+	public function testAColdInstallStillFetchesSynchronouslyOnce(): void {
+		$result = $this->repository()->get();
+
+		self::assertFalse($result['degraded']);
+		self::assertCount(1, $this->requested, 'nothing stored: today\'s bounded synchronous fetch, once');
+		self::assertSame([], $this->jobs, 'no dispatch without a copy to serve');
 	}
 
 	// --- search --------------------------------------------------------------
@@ -567,6 +643,7 @@ class MinsalRepositoryTest extends TestCase {
 
 		// The app update emptied the cache (ADR-0012); MINSAL is down on top of it.
 		$offline = $this->repository(offline: true, reuseCache: false, now: self::NOW + 7200);
+		$offline->revalidate();
 
 		$after = $offline->get();
 
@@ -610,7 +687,7 @@ class MinsalRepositoryTest extends TestCase {
 			'precondition: both alerts persisted',
 		);
 
-		$this->repository(body: $one, now: self::NOW + 7200)->get();
+		$this->repository(body: $one, now: self::NOW + 7200)->revalidate();
 
 		self::assertSame(
 			['https://degreyd.minsal.cl/uploads/2026/07/a.pdf'],
@@ -624,14 +701,12 @@ class MinsalRepositoryTest extends TestCase {
 		$before = array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows);
 
 		// Both entry classes of fail(): nothing read at all, and read-but-parsed-
-		// to-nothing. The second read sits past +7501 on purpose: the offline read
-		// arms the cooldown until then, and a read inside it would short-circuit
-		// at the cooldown branch and never reach fail() — pinning nothing.
-		$offline = $this->repository(offline: true, now: self::NOW + 7200)->get();
-		$maintenance = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7501)->get();
+		// to-nothing. The second revalidation sits past +7501 on purpose: the first
+		// armed the cooldown until then, and a read inside it would short-circuit
+		// at the cooldown branch and never see the fault — pinning nothing.
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
+		$this->repository(body: '<p>En mantención</p>', now: self::NOW + 7501)->revalidate();
 
-		self::assertTrue($offline['degraded']);
-		self::assertTrue($maintenance['degraded']);
 		self::assertSame(
 			$before,
 			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
@@ -644,8 +719,7 @@ class MinsalRepositoryTest extends TestCase {
 	public function testARefusalArmsTheBrakeAndReadsStopAsking(): void {
 		$this->repository()->get();
 
-		$refused = $this->repository(refused: 403, now: self::NOW + 7200)->get();
-		self::assertTrue($refused['degraded'], 'a refusal is served like any outage');
+		$this->repository(refused: 403, now: self::NOW + 7200)->revalidate();
 		self::assertCount(2, $this->requested, 'precondition: the refusal was asked once, after expiry');
 
 		// Past COOLDOWN (armed at +7200, gone at +7500), still inside the brake
@@ -662,17 +736,17 @@ class MinsalRepositoryTest extends TestCase {
 	public function testATimeoutStaysCooldownClassAndNeverArmsTheBrake(): void {
 		$this->repository()->get();
 
-		$this->repository(offline: true, now: self::NOW + 7200)->get();
+		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
 		self::assertArrayNotHasKey('freno-alerts', $this->store, 'no answer came back — there is no refusal to remember');
 
-		$this->repository(offline: true, now: self::NOW + 7501)->get();
+		$this->repository(offline: true, now: self::NOW + 7501)->revalidate();
 
 		self::assertCount(3, $this->requested, 'past COOLDOWN the feed must be asked again — recovery stays automatic');
 	}
 
 	public function testTheProbeAsksThroughTheBrakeAndReportsARefusal(): void {
 		$this->repository()->get();
-		$this->repository(refused: 403, now: self::NOW + 7200)->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->revalidate();
 		$this->requested = [];
 
 		// #218beba: a fully-braked reader must still report unreachable to
@@ -687,7 +761,7 @@ class MinsalRepositoryTest extends TestCase {
 
 	public function testAHostThatAnswersAgainClearsTheBrakeSoReadsResume(): void {
 		$this->repository()->get();
-		$this->repository(refused: 403, now: self::NOW + 7200)->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->revalidate();
 		self::assertArrayHasKey('freno-alerts', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
@@ -695,7 +769,7 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertArrayNotHasKey('freno-alerts', $this->store, 'an answer removes the key outright — recovery is one step');
 
 		// Past the cooldown the refusal left (+7500), the read resumes asking.
-		$this->repository(now: self::NOW + 7501)->get();
+		$this->repository(now: self::NOW + 7501)->revalidate();
 		self::assertCount(4, $this->requested, 'the read resumed once the brake cleared');
 	}
 
@@ -784,6 +858,11 @@ class MinsalRepositoryTest extends TestCase {
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 
+		$jobs = $this->createMock(IJobList::class);
+		$jobs->method('add')->willReturnCallback(function ($job, $argument = null): void {
+			$this->jobs[] = [$job, $argument];
+		});
+
 		/*
 		 * The mapper double is the table, state-backed (ADR-0007): readSet answers
 		 * what replaceSet wrote, the whole set replaced — so a withdrawn alert is
@@ -795,7 +874,7 @@ class MinsalRepositoryTest extends TestCase {
 			$this->rows = $alerts;
 		});
 
-		return new MinsalRepository($clients, $time, $this->logger(), $mapper, $cacheFactory);
+		return new MinsalRepository($clients, $time, $this->logger(), $mapper, $cacheFactory, $jobs);
 	}
 
 	/**

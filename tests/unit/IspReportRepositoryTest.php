@@ -7,11 +7,13 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\BackgroundJob\RevalidateJob;
 use OCA\Epidemiologia\Db\Report;
 use OCA\Epidemiologia\Db\ReportMapper;
 use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\IspReportRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -90,6 +92,9 @@ class IspReportRepositoryTest extends TestCase {
 	/** @var list<string> page-1 requests made, in order (the walk's pages live in $pagesRequested) */
 	private array $requested = [];
 
+	/** @var list<array{0: string, 1: mixed}> every IJobList::add() call, in order */
+	private array $jobs = [];
+
 	/** @var list<array<string, mixed>> the options of every request made, in order — page 1 and walk */
 	private array $options = [];
 
@@ -136,6 +141,7 @@ class IspReportRepositoryTest extends TestCase {
 		$this->store = [];
 		$this->rows = [];
 		$this->requested = [];
+		$this->jobs = [];
 		$this->options = [];
 		$this->pagesRequested = [];
 		$this->pages = [];
@@ -273,7 +279,9 @@ class IspReportRepositoryTest extends TestCase {
 		$week1of2027 = $this->rss([['d' => 'Informe circulación virus respiratorios SE1', 'u' => 'https://www.ispch.gob.cl/2027-se1.pdf', 'p' => 'Fri, 08 Jan 2027 12:00:00 +0000']]);
 
 		$this->repository(body: $week1of2026)->get();
-		$items = $this->repository(body: $week1of2027, reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$second = $this->repository(body: $week1of2027, reuseCache: true, now: self::NOW + self::STALE);
+		$second->revalidate();
+		$items = $second->get()['items'];
 
 		self::assertCount(2, $this->rows, 'two years of SE 1 are two rows, not one replacing the other');
 		self::assertSame(['2027', '2026'], array_column($items, 'year'), 'and the newer one is served first');
@@ -290,7 +298,9 @@ class IspReportRepositoryTest extends TestCase {
 		$v4 = 'https://www.ispch.gob.cl/wp-content/uploads/2026/09/Informe-SE35-08-09-2026-V4.pdf';
 
 		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v3]]))->get();
-		$items = $this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v4]]), reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$second = $this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v4]]), reuseCache: true, now: self::NOW + self::STALE);
+		$second->revalidate();
+		$items = $second->get()['items'];
 
 		self::assertCount(1, $this->rows, 'a reissue is the same informe, not a second one');
 		self::assertSame($v4, $this->rows['2026-35']->getUrl(), 'the reissue\'s exact document address is the row\'s provenance now — the archiver\'s target and the reissue signal');
@@ -308,7 +318,9 @@ class IspReportRepositoryTest extends TestCase {
 		$bare = $this->rss([['d' => 'Informe circulación virus respiratorios SE5', 'u' => 'https://www.ispch.gob.cl/se5.pdf']]);
 
 		$this->repository(body: $padded)->get();
-		$items = $this->repository(body: $bare, reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$second = $this->repository(body: $bare, reuseCache: true, now: self::NOW + self::STALE);
+		$second->revalidate();
+		$items = $second->get()['items'];
 
 		self::assertCount(1, $this->rows, 'the same week, typed twice, is not two informes');
 		self::assertSame('5', $items[0]['se'], 'the semana is stored canonically, not as typed');
@@ -325,7 +337,9 @@ class IspReportRepositoryTest extends TestCase {
 		$january = $this->rss([['d' => 'Informe circulación virus respiratorios SE2', 'u' => 'https://www.ispch.gob.cl/se2.pdf', 'p' => 'Fri, 08 Jan 2027 12:00:00 +0000']]);
 
 		$this->repository(body: $december)->get();
-		$items = $this->repository(body: $january, reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$second = $this->repository(body: $january, reuseCache: true, now: self::NOW + self::STALE);
+		$second->revalidate();
+		$items = $second->get()['items'];
 
 		self::assertSame(['2', '52'], array_column($items, 'se'), 'the new year\'s second week outranks the old year\'s fifty-second');
 	}
@@ -335,7 +349,8 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAPageThatYieldsNoInformeDegradesAndKeepsTheLastGoodCopy(): void {
 		$good = $this->repository(body: $this->rss([self::WEEK]))->get()['items'];
 
-		$broken = $this->repository(body: '<p>En mantención</p>', reuseCache: true, now: self::NOW + self::STALE)->get();
+		$this->repository(body: '<p>En mantención</p>', reuseCache: true, now: self::NOW + self::STALE)->revalidate();
+		$broken = $this->repository(body: '<p>En mantención</p>', reuseCache: true, now: self::NOW + self::STALE + 60)->get();
 
 		self::assertTrue($broken['degraded']);
 		self::assertSame($good, $broken['items'], 'a failed read must never replace the last good copy');
@@ -396,20 +411,25 @@ class IspReportRepositoryTest extends TestCase {
 	 */
 	public function testAnOutageIsNotRetriedOnEveryRead(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->get();
+		$this->requested = [];
+		$this->jobs = [];
+
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->revalidate();
+		self::assertNotSame([], $this->requested, 'precondition: the revalidation after expiry does try');
 		$this->requested = [];
 
 		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 60, offline: true)->get();
 
 		self::assertSame([], $this->requested, 'the outage was retried instead of being remembered');
+		self::assertSame([], $this->jobs, 'a cooldown-gated read dispatches nothing');
 	}
 
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->revalidate();
 		$this->requested = [];
 
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 301, offline: true)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 301, offline: true)->revalidate();
 
 		self::assertNotSame([], $this->requested, 'past COOLDOWN the feed must be asked again — recovery stays automatic');
 	}
@@ -441,8 +461,7 @@ class IspReportRepositoryTest extends TestCase {
 	public function testARefusalArmsTheBrakeAndReadsStopAsking(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 
-		$refused = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->get();
-		self::assertTrue($refused['degraded'], 'a refusal is served like any outage');
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
 		self::assertCount(2, $this->requested, 'precondition: the refusal was asked once, after expiry');
 
 		// Past COOLDOWN (armed at +7200, gone at +7500), still inside the brake
@@ -459,10 +478,10 @@ class IspReportRepositoryTest extends TestCase {
 	public function testATimeoutStaysCooldownClassAndNeverArmsTheBrake(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->revalidate();
 		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'no answer came back — there is no refusal to remember');
 
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 7501, offline: true)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 7501, offline: true)->revalidate();
 
 		self::assertCount(3, $this->requested, 'past COOLDOWN the feed must be asked again — recovery stays automatic');
 	}
@@ -474,7 +493,7 @@ class IspReportRepositoryTest extends TestCase {
 	 */
 	public function testTheProbeAsksThroughTheBrakeAndReportsARefusal(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
 		$this->requested = [];
 
 		$probe = $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 7260, refused: 403);
@@ -486,7 +505,7 @@ class IspReportRepositoryTest extends TestCase {
 
 	public function testAHostThatAnswersAgainClearsTheBrakeSoReadsResume(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
 		self::assertArrayHasKey('freno-isp-informes', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
@@ -498,13 +517,13 @@ class IspReportRepositoryTest extends TestCase {
 		 * freshness write-back: the probe above runs store(), which re-caches
 		 * the reading with fetched_at at the probe's clock (NOW+7260, D8 —
 		 * the reader's probe has no digest skip by design), so the entry is
-		 * fresh until NOW+10860. A read inside that window serves the fresh
-		 * entry without asking — which is correct, and which is why the
-		 * +7501 this pin was born with (copied from the Minsal analog, whose
-		 * probe DOES digest-skip) asserted a fourth fetch that never
-		 * happened: 3, not 4. Past both windows, the read resumes asking.
+		 * fresh until NOW+10860. A revalidation inside that window would serve
+		 * the fresh entry rather than ask — which is correct, and which is why
+		 * the +7501 this pin was born with (copied from the Minsal analog,
+		 * whose probe DOES digest-skip) asserted a fourth fetch that never
+		 * happened: 3, not 4. Past both windows, the revalidator asks again.
 		 */
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 10861)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 10861)->revalidate();
 		self::assertCount(4, $this->requested, 'the read resumed once the brake cleared');
 	}
 
@@ -517,7 +536,7 @@ class IspReportRepositoryTest extends TestCase {
 	 */
 	public function testAWafPageAfterARefusalLandsInTheCooldownNotBackUnderTheBrake(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
 
 		$waf = $this->repository(body: '<html><body>Attention Required</body></html>', reuseCache: true, now: self::NOW + 7260);
 
@@ -552,7 +571,9 @@ class IspReportRepositoryTest extends TestCase {
 		$repository->converge();
 		self::assertSame(0, $this->cursor(), 'the 404 past the last page retired the walk');
 
-		$items = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$final = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE);
+		$final->revalidate();
+		$items = $final->get()['items'];
 
 		self::assertSame(['35', '33', '32'], array_column($items, 'se'), 'the walked weeks are in the series');
 	}
@@ -641,7 +662,7 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertSame(2, $this->cursor(), 'the walk resumes from the same page next refresh');
 
 		$this->requested = [];
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->revalidate();
 		self::assertNotSame([], $this->requested, 'the read still asks page 1 an hour later');
 	}
 
@@ -670,7 +691,7 @@ class IspReportRepositoryTest extends TestCase {
 	public function testASecondReaderServesTheStoredCopyRatherThanItsOwnRefresh(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 		$this->requested = [];
-		$this->locks['refresh-isp-informes'] = true;   // another request, mid-refresh
+		$this->locks['refresh-isp-informes'] = true;   // another revalidator, mid-refresh
 
 		$served = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
 
@@ -708,8 +729,45 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertArrayNotHasKey('refresh-isp-informes', $this->locks, 'a finished refresh must not leave the lock held');
 
 		$this->requested = [];
-		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->revalidate();
 		self::assertNotSame([], $this->requested, 'and the next refresh is free to run');
+	}
+
+	// --- stale serve: first paint never waits (L1-01) -------------------------
+
+	public function testAStaleSeriesServesImmediatelyAndDispatchesOneRevalidation(): void {
+		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$this->requested = [];
+		$this->jobs = [];
+
+		$stale = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+
+		self::assertFalse($stale['degraded']);
+		self::assertNotSame([], $stale['items']);
+		self::assertSame([], $this->requested, 'first paint asked nothing — page 1\'s latency moved off the render path');
+		self::assertSame(
+			[[RevalidateJob::class, ['source' => 'reports']]],
+			$this->jobs,
+			'exactly one dispatch, argument the Sources id — ::class pins the production string against a rename',
+		);
+	}
+
+	public function testASecondStaleReaderDoesNotDispatchAgain(): void {
+		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 60)->get();
+
+		self::assertCount(1, $this->jobs, 'the marker dedups the dispatch');
+	}
+
+	public function testRevalidationHoldsTheLockSoOneRefreshRunsAtATime(): void {
+		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$this->requested = [];
+		$this->locks['refresh-isp-informes'] = true;   // another revalidator, mid-refresh
+
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->revalidate();
+
+		self::assertSame([], $this->requested, 'one revalidation at a time — the loser serves what it has');
 	}
 
 	// --- the durable series -------------------------------------------------------
@@ -723,7 +781,10 @@ class IspReportRepositoryTest extends TestCase {
 	public function testAnAppUpdateThatEmptiesTheCacheStillServesTheSeries(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 
-		$after = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE, offline: true)->get();
+		$offline = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE, offline: true);
+		$offline->revalidate();
+
+		$after = $offline->get();
 
 		self::assertTrue($after['degraded'], 'an outage on top of an app update is still an outage');
 		self::assertNotSame([], $after['items'], 'the persisted series is the durable last-good copy');
@@ -741,11 +802,15 @@ class IspReportRepositoryTest extends TestCase {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 		$this->requested = [];
 
-		$after = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE)->get();
+		$reader = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE);
+		$reader->revalidate();
+
+		self::assertNotNull($this->store['isp-informes']['v']['fetched_at'] ?? null, 'the cache re-materialized from the table in one fetch');
+		self::assertCount(1, $this->requested, 'one fetch — the revalidation is page 1 alone since L3-08; walking is converge()\'s, on the job');
+
+		$after = $reader->get();
 
 		self::assertFalse($after['degraded']);
-		self::assertNotNull($this->store['isp-informes']['v']['fetched_at'] ?? null, 'the cache re-materialized from the table in one fetch');
-		self::assertCount(1, $this->requested, 'one fetch — the reader path is page 1 alone since L3-08; walking is converge()\'s, on the job');
 	}
 
 	/**
@@ -764,7 +829,9 @@ class IspReportRepositoryTest extends TestCase {
 		$week36 = $this->rss([
 			['d' => 'Informe circulación virus respiratorios SE36', 'u' => 'https://www.ispch.gob.cl/se36.pdf', 'p' => 'Tue, 22 Sep 2026 12:00:00 +0000'],
 		]);
-		$after = $this->repository(body: $week36, reuseCache: true, now: self::NOW + self::STALE)->get();
+		$reader = $this->repository(body: $week36, reuseCache: true, now: self::NOW + self::STALE);
+		$reader->revalidate();
+		$after = $reader->get();
 
 		self::assertFalse($after['degraded'], 'a storage failure is not a publisher failure');
 		self::assertSame(['36', '35'], array_column($after['items'], 'se'), 'the fresh reading serves, accumulated over the last copy');
@@ -811,7 +878,9 @@ class IspReportRepositoryTest extends TestCase {
 
 		// The route href reaches the pane on the next store() read-back — the
 		// one exit the series has (L3-08).
-		$items = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->get()['items'];
+		$reader = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE);
+		$reader->revalidate();
+		$items = $reader->get()['items'];
 		self::assertSame('/apps/epidemiologia/informe/2026/35', $items[0]['url'], 'a kept row\'s href IS the local route');
 		self::assertSame(['epidemiologia.informe.show'], $this->routes, 'the href names the route routes.php registers');
 	}
@@ -852,7 +921,9 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertCount(1, $this->documents);
 
 		// The app update: cache namespace moved; the table and the kept file hold.
-		$after = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE)->get();
+		$reader = $this->repository(body: $this->rss([self::WEEK]), reuseCache: false, now: self::NOW + self::STALE);
+		$reader->revalidate();
+		$after = $reader->get();
 
 		self::assertFalse($after['degraded']);
 		self::assertSame('/apps/epidemiologia/informe/2026/35', $after['items'][0]['url'], 'the route href re-materialized from the table');
@@ -880,7 +951,7 @@ class IspReportRepositoryTest extends TestCase {
 		$repository->converge();
 		self::assertSame(hash('sha256', '%PDF-1.4 the V3 informe'), $this->rows['2026-35']->getHash());
 
-		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v4]]), reuseCache: true, now: self::NOW + self::STALE)->get();
+		$this->repository(body: $this->rss([['d' => 'Informe circulación virus respiratorios SE35 08-09-2026', 'u' => $v4]]), reuseCache: true, now: self::NOW + self::STALE)->revalidate();
 		$repository->converge();
 
 		self::assertSame([$v3, $v4], $this->documents, 'the reissue was fetched — the one re-download the hash change is worth');
@@ -1278,6 +1349,11 @@ class IspReportRepositoryTest extends TestCase {
 		$cacheFactory->method('createDistributed')->willReturn($this->cache($now ?? self::NOW));
 		$cacheFactory->method('createLocking')->willReturn($this->locking());
 
+		$jobs = $this->createMock(IJobList::class);
+		$jobs->method('add')->willReturnCallback(function ($job, $argument = null): void {
+			$this->jobs[] = [$job, $argument];
+		});
+
 		/*
 		 * The mapper double is the table, state-backed (ADR-0007): upsert
 		 * answers what all() and unarchived() read, the (year, se) key
@@ -1345,7 +1421,7 @@ class IspReportRepositoryTest extends TestCase {
 		);
 
 		return new IspReportRepository(
-			$clients, $bundle, $time, $this->logger(), $mapper, $this->appConfig(), $urlGenerator, $cacheFactory, $this->appDataFactory($this->appData),
+			$clients, $bundle, $time, $this->logger(), $mapper, $this->appConfig(), $urlGenerator, $cacheFactory, $this->appDataFactory($this->appData), $jobs,
 		);
 	}
 

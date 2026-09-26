@@ -51,6 +51,30 @@ class SourcesTest extends TestCase {
 	}
 
 	/**
+	 * The catalogue's doors are walked, never named — revalidate joins get,
+	 * probe, name, kind and search in being pinned over ALL (the ISP-shipped-
+	 * invisible lesson; see the class docblock).
+	 */
+	public function testEveryIdCanBeRevalidated(): void {
+		$revalidated = [];
+		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal->method('revalidate')->willReturnCallback(function () use (&$revalidated): void {
+			$revalidated[] = Sources::ALERTS;
+		});
+		$informes = $this->createMock(IspReportRepository::class);
+		$informes->method('revalidate')->willReturnCallback(function () use (&$revalidated): void {
+			$revalidated[] = Sources::REPORTS;
+		});
+
+		$sources = new Sources($minsal, $informes);
+		foreach (Sources::ALL as $id) {
+			$sources->revalidate($id);
+		}
+
+		self::assertSame(Sources::ALL, $revalidated, 'revalidate walks the catalogue like every other door');
+	}
+
+	/**
 	 * The catalogue's door to the deep pass (L3-08) — the file's own walk
 	 * doctrine applied to the one method that takes no id: converge() is
 	 * direct (only REPORTS accumulates a back catalogue; see the method),

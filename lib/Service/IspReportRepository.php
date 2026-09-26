@@ -12,6 +12,7 @@ use OCA\Epidemiologia\Db\Report;
 use OCA\Epidemiologia\Db\ReportMapper;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\IAppData;
 use OCP\Files\NotFoundException;
@@ -148,6 +149,17 @@ class IspReportRepository {
 	private const KEEP_FOR = 30 * 24 * 3600;
 
 	/**
+	 * This fuente's id in Sources' vocabulary — the argument the stale-serve
+	 * dispatch hands the one-off job. Spelled here rather than imported:
+	 * Sources' constructor takes this class, so the import would close the
+	 * cycle Phase 1 killed; the value is pinned by the suites.
+	 */
+	private const CATALOGUE_ID = 'reports';
+
+	/** See MinsalRepository::MARKER_FOR — the same self-healing window. */
+	private const MARKER_FOR = 300;
+
+	/**
 	 * Who is asking, on every request. A bot the publishers have no reason to
 	 * block is a visitor they can name: anonymous is not a right, and a WAF
 	 * that blocks what it cannot identify looks, from this side, exactly like
@@ -265,6 +277,7 @@ class IspReportRepository {
 		private IURLGenerator $urlGenerator,
 		ICacheFactory $cacheFactory,
 		IAppDataFactory $appDataFactory,
+		private IJobList $jobs,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		$this->lock = $cacheFactory->createLocking('epidemiologia');
@@ -307,6 +320,56 @@ class IspReportRepository {
 		}
 
 		/*
+		 * L1-01/L3-04: an expired-but-kept copy serves immediately, and the
+		 * refresh happens behind the response — first paint never waits on
+		 * a healthy-but-slow publisher. A stale serve is NOT the degraded
+		 * state: fetched_at carries the honest date and the banner appears
+		 * only when a revalidation actually fails (the cooldown it arms
+		 * makes the NEXT read degraded). The marker dedups the dispatch,
+		 * and its TTL self-heals a job that never runs.
+		 */
+		if ($stored !== null) {
+			if ($this->cache->get($this->revalidatingKey()) === null) {
+				$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
+				// The class name as a string, deliberately: importing the
+				// job would close IspReportRepository → RevalidateJob →
+				// Sources → IspReportRepository, the cycle shape Phase 1
+				// spent itself killing. The suite pins the string against
+				// RevalidateJob::class, so a rename answers as a failing
+				// test, not as a silently dead dispatch.
+				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => self::CATALOGUE_ID]);
+			}
+
+			return $this->present($stored, false);
+		}
+
+		// Cold reader: today's lock dance + refresh, extracted so the
+		// revalidator runs the identical path.
+		return $this->refreshLocked($stored);
+	}
+
+	/**
+	 * The revalidation a stale serve dispatched: the background half of
+	 * get()'s serve-then-refresh. Runs the same refreshLocked() the cold
+	 * reader ran — no second code path — and clears the dispatch marker
+	 * in a finally so a failed revalidation re-arms on the next reader
+	 * past the cooldown rather than suppressing dispatches until the
+	 * marker's TTL.
+	 */
+	public function revalidate(): void {
+		try {
+			$this->refreshLocked($this->stored());
+		} finally {
+			$this->cache->remove($this->revalidatingKey());
+		}
+	}
+
+	/**
+	 * The cold reader's and the revalidator's shared path: one refresh at
+	 * a time, under the lock, releasing only what was taken.
+	 */
+	private function refreshLocked(?array $stored): array {
+		/*
 		 * One refresh at a time: the page-1 refresh is a fetch, some upserts
 		 * and a read-back — seconds, not minutes, since the walk moved out
 		 * (L3-08) — and `add()` is atomic; a loser serves the copy it already
@@ -334,7 +397,7 @@ class IspReportRepository {
 			return $this->refresh($stored);
 		} finally {
 			// Only what we took: a reader that never took the lock must not
-			// release the one another request is mid-walk under.
+			// release the one another request is mid-refresh under.
 			if ($held) {
 				$this->lock->remove($this->lockKey());
 			}
@@ -1137,6 +1200,11 @@ class IspReportRepository {
 	/** Distinct from key(), or the cooldown flag would be read as the series. */
 	private function cooldownKey(): string {
 		return 'cooldown-isp-informes';
+	}
+
+	/** Distinct from key()/cooldownKey(), or the dispatch marker would be read as data. */
+	private function revalidatingKey(): string {
+		return 'revalidating-isp-informes';
 	}
 
 	private function lockKey(): string {
