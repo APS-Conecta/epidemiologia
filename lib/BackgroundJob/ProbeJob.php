@@ -81,7 +81,7 @@ class ProbeJob extends TimedJob {
 		// failure count and its own "failing since" stamp, and each is notified on
 		// its own 2nd, 7th and 30th consecutive day.
 		//
-		// They probe differently underneath: MinsalRepository fetches its one page
+		// They probe differently underneath: AlertRepository fetches its one page
 		// every time — an HTML page carries no field-limited request the way its old
 		// JSON endpoint's `modified` did — and only skips rewriting the cache when a
 		// digest of the parsed items is unchanged. IspReportRepository's probe is one

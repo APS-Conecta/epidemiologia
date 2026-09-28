@@ -20,7 +20,7 @@ use OCP\Search\SearchResultEntry;
  * Puts the alerts in Nextcloud's global search box, so staff find them without
  * knowing this app exists.
  *
- * Reads the persisted set and nothing on the network — see MinsalRepository::search()
+ * Reads the persisted set and nothing on the network — see AlertRepository::search()
  * for why a provider must never fetch.
  *
  * It asks the catalogue what is searchable rather than naming one repository:

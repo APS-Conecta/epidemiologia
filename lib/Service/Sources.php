@@ -19,15 +19,18 @@ use OCP\IL10N;
  * would have produced it again. So: one list here, and everything else asks.
  *
  * It is a catalogue, NOT a base class. Its two owners are not merged and must not
- * be: MinsalRepository is one page whose emptiness is always a failure, and
- * IspReportRepository is one feed that ACCUMULATES what it reads, because the ISP
- * publishes only the current informe and the series' history lives in the feed's
- * pages. Those disagreements are the whole reason there are two classes — see
- * each one's docblock. This maps ids to owners; the owners keep their rules.
+ * be: AlertRepositories serves every alert fuente on one pipeline, an
+ * AlertRepository per fuente (ADR-0017), each a page whose emptiness is always
+ * a failure, and IspReportRepository is one feed that ACCUMULATES what it reads,
+ * because the ISP publishes only the current informe and the series' history
+ * lives in the feed's pages. Those disagreements are the whole reason there are
+ * two owners — see each one's docblock. This maps ids to owners; the owners keep
+ * their rules.
  *
- * Outside a repository, a source is identified by the id below. The repositories
- * keep their own internal feed names and cache keys, and this is the only place
- * the translation between the two lives.
+ * Outside a repository, a source is identified by the id below. An alert fuente
+ * carries the id itself — AlertRepositories spells each one in its own match, and
+ * AlertRepositoryTest walks ALL through it — while the informe keeps its own feed
+ * name and cache key, and this is where that one translates.
  */
 class Sources {
 	public const ALERTS = 'alerts';
@@ -44,7 +47,7 @@ class Sources {
 	private const SEARCHABLE = [self::ALERTS];
 
 	public function __construct(
-		private MinsalRepository $minsal,
+		private AlertRepositories $alerts,
 		private IspReportRepository $informes,
 	) {
 	}
@@ -74,7 +77,7 @@ class Sources {
 		// through every method so the failure lands in CI-less development, not in
 		// front of a clinician.
 		$source = match ($id) {
-			self::ALERTS => $this->minsal->get(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->get(),
 			self::REPORTS => $this->informes->get(),
 		};
 
@@ -89,7 +92,7 @@ class Sources {
 	/** @return bool false when the source is unreachable, or changed into something we cannot parse */
 	public function probe(string $id): bool {
 		return match ($id) {
-			self::ALERTS => $this->minsal->probe(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->probe(),
 			self::REPORTS => $this->informes->probe(),
 		};
 	}
@@ -101,7 +104,7 @@ class Sources {
 	 */
 	public function revalidate(string $id): void {
 		match ($id) {
-			self::ALERTS => $this->minsal->revalidate(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->revalidate(),
 			self::REPORTS => $this->informes->revalidate(),
 		};
 	}
@@ -148,7 +151,7 @@ class Sources {
 	/**
 	 * Search across the searchable sources — the cache, then the durable table
 	 * behind each fuente — carrying each hit's source with it so the caller can
-	 * label it. Never fetches — see MinsalRepository::search().
+	 * label it. Never fetches — see AlertRepository::search().
 	 *
 	 * @return list<array{source: string, item: array<string, string>}>
 	 */
@@ -156,7 +159,7 @@ class Sources {
 		$hits = [];
 		foreach (self::SEARCHABLE as $id) {
 			$items = match ($id) {
-				self::ALERTS => $this->minsal->search($term),
+				self::ALERTS => $this->alerts->repository(self::ALERTS)->search($term),
 			};
 
 			foreach ($items as $item) {

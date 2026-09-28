@@ -14,8 +14,8 @@ use Psr\Log\LoggerInterface;
 /**
  * The page parser against the page that takes the branch degreyd never does.
  *
- * degreyd's 13 alerts stay pinned where they always were — through the
- * repository, in MinsalRepositoryTest, untouched by the move. This suite reads
+ * degreyd's 13 alerts stay pinned through the repository, in
+ * AlertRepositoryTest, untouched by the move. This suite reads
  * epi.minsal.cl's "Alertas Epidemiológicas Vigentes" as the owner captured it
  * on 2026-09-27 from a residential connection (the VPS is answered with a
  * Cloudflare 403, ADR-0014): 78 PDF links in two tables, 27 of them labelled

@@ -22,7 +22,7 @@ sitio oficial.
     <namespace>Epidemiologia</namespace>
     <category>monitoring</category>
     <dependencies>
-        <!-- Nextcloud only *recommends* intl, but MinsalRepository::fold() needs
+        <!-- Nextcloud only *recommends* intl, but AlertRepository::fold() needs
              Normalizer, and fold() runs on every unified search by every user.
              Declared so a host without intl refuses to enable the app, instead of
              taking down global search with a fatal. -->

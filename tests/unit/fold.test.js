@@ -1,7 +1,7 @@
 /**
  * The browser half of the accent-folding conformance table.
  *
- * `FoldConformanceTest.php` asserts the same cases against `MinsalRepository::fold()`,
+ * `FoldConformanceTest.php` asserts the same cases against `AlertRepository::fold()`,
  * reading the same `fold-cases.json`, so one edit to the table fails a test in each
  * suite. See that file's docblock for why the two implementations exist at all and how
  * far they are allowed to differ.

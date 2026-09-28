@@ -8,8 +8,8 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Notification\Notifier;
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
@@ -120,7 +120,7 @@ class NotifierTest extends TestCase {
 		$urls->method('linkToRouteAbsolute')->willReturn('https://nc/apps/epidemiologia/');
 
 		$sources = new Sources(
-			$this->createMock(MinsalRepository::class),
+			$this->alertRepositories($this->createMock(AlertRepository::class)),
 			$this->createMock(IspReportRepository::class),
 		);
 

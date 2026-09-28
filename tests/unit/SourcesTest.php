@@ -7,8 +7,8 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use PHPUnit\Framework\TestCase;
 
@@ -57,7 +57,7 @@ class SourcesTest extends TestCase {
 	 */
 	public function testEveryIdCanBeRevalidated(): void {
 		$revalidated = [];
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('revalidate')->willReturnCallback(function () use (&$revalidated): void {
 			$revalidated[] = Sources::ALERTS;
 		});
@@ -66,7 +66,7 @@ class SourcesTest extends TestCase {
 			$revalidated[] = Sources::REPORTS;
 		});
 
-		$sources = new Sources($minsal, $informes);
+		$sources = new Sources($this->alertRepositories($minsal), $informes);
 		foreach (Sources::ALL as $id) {
 			$sources->revalidate($id);
 		}
@@ -84,7 +84,7 @@ class SourcesTest extends TestCase {
 	public function testConvergeRunsAndLeavesEveryFuenteAnswering(): void {
 		$passes = 0;
 		$payload = ['items' => [], 'fetched_at' => null, 'degraded' => false];
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('get')->willReturn($payload);
 		$informes = $this->createMock(IspReportRepository::class);
 		$informes->method('get')->willReturn($payload);
@@ -92,7 +92,7 @@ class SourcesTest extends TestCase {
 			$passes++;
 		});
 
-		$sources = new Sources($minsal, $informes);
+		$sources = new Sources($this->alertRepositories($minsal), $informes);
 		$sources->converge();
 
 		self::assertSame(1, $passes, 'the accumulating fuente\'s deep pass ran through the catalogue\'s door');
@@ -196,7 +196,7 @@ class SourcesTest extends TestCase {
 	private function sources(array $items = []): Sources {
 		$payload = ['items' => $items, 'fetched_at' => null, 'degraded' => false];
 
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('get')->willReturn($payload);
 		$minsal->method('probe')->willReturn(true);
 		$minsal->method('search')->willReturn([['title' => 'Una alerta del MINSAL', 'url' => 'https://x/a.pdf']]);
@@ -208,6 +208,6 @@ class SourcesTest extends TestCase {
 		$informes->method('get')->willReturn($payload);
 		$informes->method('probe')->willReturn(true);
 
-		return new Sources($minsal, $informes);
+		return new Sources($this->alertRepositories($minsal), $informes);
 	}
 }

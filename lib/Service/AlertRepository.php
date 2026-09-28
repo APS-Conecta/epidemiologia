@@ -10,7 +10,6 @@ namespace OCA\Epidemiologia\Service;
 use Normalizer;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
-use OCA\Epidemiologia\Service\Parser\PageParser;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClientService;
@@ -20,33 +19,26 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
- * The only place that knows where MINSAL publishes; how its page reads is
- * PageParser's (ADR-0017).
+ * One alert fuente's pipeline — ADR-0017. Every alert fuente runs through
+ * this class, one instance each, built by AlertRepositories from its Fuente:
+ * a named, bounded fetch through its host's freno → the Fuente's parser →
+ * the cache and the table → stale-serve and revalidation → degraded. What
+ * differs between fuentes is the Fuente's; everything here is the same for
+ * all of them.
  *
- * A read-through proxy over the page MINSAL publishes its in-force alerts on.
+ * It was MinsalRepository while degreyd's page was the only alert fuente,
+ * and it moved without a behaviour change: degreyd's address, keys, log
+ * sentences and wire shape are what its suite pinned before the move
+ * (AlertRepositoryTest).
+ *
+ * A read-through proxy over the document a publisher lists its alerts in.
  * The parsed set persists to the app's own table as metadata — the durable
  * last-good copy an app update's cache flush no longer takes with it
- * (ADR-0015 §2) — but nothing is mirrored: the PDFs are linked where MINSAL
- * publishes them, so staff always open the version in force.
+ * (ADR-0015 §2) — but nothing is mirrored: the documents are linked where
+ * their publisher keeps them, so staff always open the version in force.
  */
-class MinsalRepository {
-	public const ALERTS = 'alerts';
-
-	/**
-	 * The page MINSAL publishes its in-force alerts on.
-	 *
-	 * A fixed page address, and deliberately neither of the two alternatives. The
-	 * `/wp-json/` route is closed across MINSAL's estate and the query form that
-	 * still answers here is the same API reached by a spelling they missed — this
-	 * app's only alerts source should not rest on somebody's oversight. The RSS
-	 * feed was measured and rejected for a plainer reason: it carries the ten most
-	 * recent posts, the alerts post already sits behind three news items, and a
-	 * fuente that empties because its publisher had a busy news week is a fuente
-	 * that fails for no reason a reader could act on.
-	 */
-	private const API = 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/';
-
-	/** The largest response we will read; IspRepository::parse() carries the measurement. */
+class AlertRepository {
+	/** The largest response we will read; request() carries the measurement. */
 	private const MAX_BYTES = 512 * 1024;
 
 	/**
@@ -68,7 +60,7 @@ class MinsalRepository {
 
 	/**
 	 * How long the copy survives in Redis — far longer than FRESH_FOR, on purpose.
-	 * When MINSAL is unreachable we serve the last good copy flagged `degraded`,
+	 * When a publisher is unreachable we serve the last good copy flagged `degraded`,
 	 * and we can only do that if it outlived its own freshness window.
 	 */
 	private const KEEP_FOR = 30 * 24 * 3600;
@@ -81,31 +73,24 @@ class MinsalRepository {
 	 */
 	private const UA = 'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)';
 
-	/**
-	 * What the parser's log lines call this page — spelled so they read exactly
-	 * as they did while the parse lived here: "Dropped 2 non-https links from
-	 * the MINSAL alerts page".
-	 */
-	private const SUBJECT = 'MINSAL alerts page';
-
 	private ICache $cache;
 
 	private Freno $freno;
 
 	public function __construct(
+		private Fuente $fuente,
 		private IClientService $clients,
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
 		private AlertMapper $alerts,
 		ICacheFactory $cacheFactory,
 		private IJobList $jobs,
-		private PageParser $parser,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
-		// One grain — this page — on the same cache it reads; the subject
-		// keeps the brake's log sentence byte-identical to the copy this
-		// replaces (L3-02).
-		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-' . self::ALERTS, 'MINSAL');
+		// One grain — the fuente's host — on the same cache it reads; the
+		// publisher is who the brake's log sentence names, so degreyd's still
+		// reads "MINSAL answered …" (L3-02).
+		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-' . $fuente->host, $fuente->publisher);
 	}
 
 	/**
@@ -122,8 +107,8 @@ class MinsalRepository {
 		 * A failed refresh writes nothing, so the entry stays expired and every read
 		 * retries. PageController::index() fetches synchronously while someone waits,
 		 * so against a host that drops packets rather than refusing them this is a
-		 * gateway timeout instead of the degraded banner. One fuente, one cooldown —
-		 * the sibling repository keeps its own.
+		 * gateway timeout instead of the degraded banner. The cooldown is kept per
+		 * host (cooldownKey()), so a sibling's outage holds this read too (ADR-0017).
 		 */
 		if ($this->cache->get($this->cooldownKey()) !== null) {
 			return $this->present($stored, true);
@@ -153,12 +138,12 @@ class MinsalRepository {
 			if ($this->cache->get($this->revalidatingKey()) === null) {
 				$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
 				// The class name as a string, deliberately: importing the
-				// job would close MinsalRepository → RevalidateJob → Sources
-				// → MinsalRepository, the cycle shape Phase 1 spent itself
-				// killing. The suite pins the string against
-				// RevalidateJob::class, so a rename answers as a failing
-				// test, not as a silently dead dispatch.
-				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => self::ALERTS]);
+				// job would close AlertRepository → RevalidateJob → Sources
+				// → AlertRepositories → AlertRepository, the cycle shape
+				// Phase 1 spent itself killing. The suite pins the string
+				// against RevalidateJob::class, so a rename answers as a
+				// failing test, not as a silently dead dispatch.
+				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => $this->fuente->id]);
 			}
 
 			return $this->present($stored, false);
@@ -178,7 +163,7 @@ class MinsalRepository {
 	 */
 	private function refresh(?array $stored = null): array {
 		$html = $this->request();
-		$items = $html === null ? [] : $this->parser->parse($html, self::SUBJECT);
+		$items = $html === null ? [] : $this->fuente->parser->parse($html, $this->fuente->subject);
 
 		return $items === [] ? $this->fail($html, $stored) : $this->store($items);
 	}
@@ -212,18 +197,17 @@ class MinsalRepository {
 		 * wrong diagnosis for exactly the fault this fuente's previous host served,
 		 * without interruption, for eleven months before it moved here.
 		 *
-		 * Same correction IspRepository already carries, where logging count(TERMS)
-		 * rather than $attempted let "24 intentos" mean one.
-		 *
 		 * No 'app' key: the injected LoggerInterface is already app-scoped —
 		 * DIContainer wraps it in ScopedPsrLogger, which merges it in on every call.
-		 * No {feed} placeholder either, now that one fuente is all this class has —
-		 * naming it in every line stopped earning its keep when the informe left.
+		 * A {subject} placeholder instead, back since every alert fuente shares
+		 * these lines (ADR-0017): a line about one fuente must name it, and
+		 * degreyd's renders exactly as it read before the move.
 		 */
 		$this->logger->warning(
 			$html === null
-				? 'The MINSAL alerts page could not be read'
-				: 'The MINSAL alerts page carried no alerts',
+				? 'The {subject} could not be read'
+				: 'The {subject} carried no alerts',
+			['subject' => $this->fuente->subject],
 		);
 
 		return $this->degrade($stored);
@@ -263,9 +247,10 @@ class MinsalRepository {
 		}
 
 		try {
-			$this->alerts->replaceSet(self::ALERTS, $alerts);
+			$this->alerts->replaceSet($this->fuente->id, $alerts);
 		} catch (Throwable $e) {
-			$this->logger->warning('Could not persist the MINSAL alerts set', [
+			$this->logger->warning('Could not persist the {name} set', [
+				'name' => $this->fuente->name,
 				'exception' => $e,
 			]);
 		}
@@ -290,19 +275,19 @@ class MinsalRepository {
 	 * round trip against a foreign government server is what fail()/store() above
 	 * exist to avoid on every path, not only this one.
 	 *
-	 * Asks THROUGH the freno, exactly as IspRepository's does: a braked host is
+	 * Asks THROUGH the freno, exactly as IspReportRepository's does: a braked host is
 	 * not assumed unreachable, it is ASKED, once a day — #218beba's lesson, that
 	 * "we asked nothing" must never be answered as "nothing is wrong". A refusal
 	 * still escalates the brake's count and an answer still clears it (request()
 	 * does both), so the sondeo is also the brake's road back: the first day
-	 * MINSAL answers 200 again is the day the hourly reads resume.
+	 * the host answers 200 again is the day the hourly reads resume.
 	 *
-	 * @return bool false when MINSAL is unreachable, or changed into something we
-	 *              can no longer parse. Either way a human has to look.
+	 * @return bool false when the publisher is unreachable, or changed into something
+	 *              we can no longer parse. Either way a human has to look.
 	 */
 	public function probe(): bool {
 		$html = $this->request();
-		$items = $html === null ? [] : $this->parser->parse($html, self::SUBJECT);
+		$items = $html === null ? [] : $this->fuente->parser->parse($html, $this->fuente->subject);
 
 		if ($items === []) {
 			$this->fail($html, $this->stored());
@@ -324,7 +309,7 @@ class MinsalRepository {
 	 * Cache-then-table search, for Nextcloud's global search box.
 	 *
 	 * It must never fetch. Every registered provider runs on every search, so one
-	 * that called out to MINSAL would make all of Nextcloud's search wait on a
+	 * that called out to a publisher would make all of Nextcloud's search wait on a
 	 * foreign government server — for every user, including someone looking for a
 	 * Word document. The cache is the hot path; when only the cache is cold — an
 	 * app update's flush (ADR-0012) — the durable table behind the fuente answers
@@ -361,7 +346,8 @@ class MinsalRepository {
 	/**
 	 * The page's HTML, or null on anything that stops us reading it.
 	 *
-	 * One fixed URL, no slug and nothing to narrow the response to: this used to
+	 * One fixed URL per fuente — the Fuente's — with no slug and nothing to
+	 * narrow the response to: degreyd's used to
 	 * resolve a page by slug against a WordPress REST endpoint, and the fallback
 	 * loop that once tried more than one slug went with the informes — the
 	 * year-templated slug was theirs, and this page has never carried a year in
@@ -381,7 +367,7 @@ class MinsalRepository {
 		$client = $this->clients->newClient();
 
 		try {
-			$response = $client->get(self::API, [
+			$response = $client->get($this->fuente->url, [
 				'timeout' => 15,
 				'headers' => ['User-Agent' => self::UA],
 			]);
@@ -396,15 +382,15 @@ class MinsalRepository {
 			$body = (string)$response->getBody();
 
 			/*
-			 * The same bound IspRepository::parse() carries, and for the same reason:
-			 * an unbounded body risks the worker's memory in preg_match_all() rather
-			 * than in a JSON decoder, now that there is no JSON envelope to decode.
-			 * Measured against the live page, 66 743 B — the cap leaves close to eight
-			 * times that as headroom. A body this size is not this page, whatever it
-			 * claims to be.
+			 * An unbounded body risks the worker's memory in the parser's
+			 * preg_match_all() rather than in a JSON decoder, now that there is no
+			 * JSON envelope to decode. Measured against degreyd's live page,
+			 * 66 743 B — the cap leaves close to eight times that as headroom. A body
+			 * this size is not the fuente's document, whatever it claims to be.
 			 */
 			if (strlen($body) > self::MAX_BYTES) {
-				$this->logger->warning('MINSAL alerts page of {bytes} bytes, discarded', [
+				$this->logger->warning('{subject} of {bytes} bytes, discarded', [
+					'subject' => $this->fuente->subject,
 					'bytes' => strlen($body),
 				]);
 
@@ -430,7 +416,8 @@ class MinsalRepository {
 			// checks isset($entry['exception']) and serialises the class, the trace and
 				// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
-			$this->logger->warning('Could not reach the MINSAL alerts page', [
+			$this->logger->warning('Could not reach the {subject}', [
+				'subject' => $this->fuente->subject,
 				'exception' => $e,
 			]);
 
@@ -467,12 +454,13 @@ class MinsalRepository {
 					'year' => $alert->getYear(),
 					'month' => $alert->getMonth(),
 				],
-				$this->alerts->readSet(self::ALERTS),
+				$this->alerts->readSet($this->fuente->id),
 			);
 		} catch (Throwable $e) {
 			// The same fault class as the write side: logged, and the read falls
 			// back to a plain cold cache. Never routed through degrade().
-			$this->logger->warning('Could not read the persisted MINSAL alerts set', [
+			$this->logger->warning('Could not read the persisted {name} set', [
+				'name' => $this->fuente->name,
 				'exception' => $e,
 			]);
 
@@ -513,17 +501,21 @@ class MinsalRepository {
 	}
 
 	private function key(): string {
-		return 'feed-' . self::ALERTS;
+		return 'feed-' . $this->fuente->id;
 	}
 
-	/** Distinct from key(), or the cooldown flag would be read as the feed's data. */
+	/**
+	 * Distinct from key(), or the cooldown flag would be read as the feed's data.
+	 * Keyed by host, the freno's grain: one outage is one host's, whichever of
+	 * its fuentes met it.
+	 */
 	private function cooldownKey(): string {
-		return 'cooldown-' . self::ALERTS;
+		return 'cooldown-' . $this->fuente->host;
 	}
 
 	/** Distinct from key()/cooldownKey(), or the dispatch marker would be read as data. */
 	private function revalidatingKey(): string {
-		return 'revalidating-' . self::ALERTS;
+		return 'revalidating-' . $this->fuente->id;
 	}
 
 	/**
