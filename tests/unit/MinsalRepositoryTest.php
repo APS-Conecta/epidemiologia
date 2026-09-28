@@ -46,6 +46,9 @@ class MinsalRepositoryTest extends TestCase {
 	/** The persisted set: the AlertMapper double's table — Alert entities, like the real one holds. */
 	private array $rows = [];
 
+	/** @var list<string> the fuente every readSet()/replaceSet() was scoped to, in call order */
+	private array $scopes = [];
+
 	/** @var list<array> every request's options, in order — the UA pin reads the first */
 	private array $options = [];
 
@@ -64,6 +67,7 @@ class MinsalRepositoryTest extends TestCase {
 	protected function setUp(): void {
 		$this->store = [];
 		$this->rows = [];
+		$this->scopes = [];
 		$this->options = [];
 		$this->requested = [];
 		$this->jobs = [];
@@ -714,6 +718,23 @@ class MinsalRepositoryTest extends TestCase {
 		);
 	}
 
+	/**
+	 * ADR-0017: the table is every alert fuente's now, so this fuente reads and
+	 * replaces only its own set — asked for by id, never the whole table.
+	 * Recorded by the double rather than asserted inside it: store() catches
+	 * Throwable, so an assertion thrown there would be swallowed as a storage
+	 * fault and the test would pass for the wrong reason.
+	 */
+	public function testTheSetIsReadAndReplacedUnderItsOwnFuente(): void {
+		$this->repository()->get();
+
+		self::assertSame(
+			['alerts', 'alerts'],
+			$this->scopes,
+			'the cold read asked the table, then the fetch replaced the set — both under alerts',
+		);
+	}
+
 	// --- the brake: an answer is not a challenge ------------------------------
 
 	public function testARefusalArmsTheBrakeAndReadsStopAsking(): void {
@@ -869,8 +890,13 @@ class MinsalRepositoryTest extends TestCase {
 		 * assertable as an absent row, never as a call count.
 		 */
 		$mapper = $this->createMock(AlertMapper::class);
-		$mapper->method('readSet')->willReturnCallback(fn (): array => $this->rows);
-		$mapper->method('replaceSet')->willReturnCallback(function (array $alerts): void {
+		$mapper->method('readSet')->willReturnCallback(function (string $fuente): array {
+			$this->scopes[] = $fuente;
+
+			return $this->rows;
+		});
+		$mapper->method('replaceSet')->willReturnCallback(function (string $fuente, array $alerts): void {
+			$this->scopes[] = $fuente;
 			$this->rows = $alerts;
 		});
 

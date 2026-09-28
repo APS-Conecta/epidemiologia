@@ -253,7 +253,7 @@ class MinsalRepository {
 		}
 
 		try {
-			$this->alerts->replaceSet($alerts);
+			$this->alerts->replaceSet(self::ALERTS, $alerts);
 		} catch (Throwable $e) {
 			$this->logger->warning('Could not persist the MINSAL alerts set', [
 				'exception' => $e,
@@ -692,7 +692,7 @@ class MinsalRepository {
 					'year' => $alert->getYear(),
 					'month' => $alert->getMonth(),
 				],
-				$this->alerts->readSet(),
+				$this->alerts->readSet(self::ALERTS),
 			);
 		} catch (Throwable $e) {
 			// The same fault class as the write side: logged, and the read falls
