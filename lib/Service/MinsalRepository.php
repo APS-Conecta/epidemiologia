@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Service;
 use Normalizer;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
+use OCA\Epidemiologia\Service\Parser\PageParser;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClientService;
@@ -19,7 +20,8 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
- * The only place that knows about MINSAL.
+ * The only place that knows where MINSAL publishes; how its page reads is
+ * PageParser's (ADR-0017).
  *
  * A read-through proxy over the page MINSAL publishes its in-force alerts on.
  * The parsed set persists to the app's own table as metadata — the durable
@@ -79,6 +81,13 @@ class MinsalRepository {
 	 */
 	private const UA = 'APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)';
 
+	/**
+	 * What the parser's log lines call this page — spelled so they read exactly
+	 * as they did while the parse lived here: "Dropped 2 non-https links from
+	 * the MINSAL alerts page".
+	 */
+	private const SUBJECT = 'MINSAL alerts page';
+
 	private ICache $cache;
 
 	private Freno $freno;
@@ -90,6 +99,7 @@ class MinsalRepository {
 		private AlertMapper $alerts,
 		ICacheFactory $cacheFactory,
 		private IJobList $jobs,
+		private PageParser $parser,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		// One grain — this page — on the same cache it reads; the subject
@@ -168,7 +178,7 @@ class MinsalRepository {
 	 */
 	private function refresh(?array $stored = null): array {
 		$html = $this->request();
-		$items = $html === null ? [] : $this->parse($html);
+		$items = $html === null ? [] : $this->parser->parse($html, self::SUBJECT);
 
 		return $items === [] ? $this->fail($html, $stored) : $this->store($items);
 	}
@@ -292,7 +302,7 @@ class MinsalRepository {
 	 */
 	public function probe(): bool {
 		$html = $this->request();
-		$items = $html === null ? [] : $this->parse($html);
+		$items = $html === null ? [] : $this->parser->parse($html, self::SUBJECT);
 
 		if ($items === []) {
 			$this->fail($html, $this->stored());
@@ -349,241 +359,6 @@ class MinsalRepository {
 	}
 
 	/**
-	 * Decoded, with every kind of space collapsed — these titles are full of `&nbsp;`.
-	 *
-	 * The `\x{00A0}` is belt-and-braces, not the load-bearing part, and the comment that
-	 * used to be here said the opposite: "`\s` does not match U+00A0 even under /u".
-	 * Measured, that is false at both ends of the supported range — PHP 8.1 with PCRE2
-	 * 10.39 and PHP 8.5 with PCRE2 10.44 both match U+00A0, U+2000-U+200A, U+202F,
-	 * U+205F and U+3000 with `\s` alone, because PHP's /u carries UCP semantics. Kept
-	 * anyway: it costs nothing and does not depend on that holding. IspRepository's copy
-	 * names more codepoints for the same reason, and the difference is unobservable.
-	 */
-	private function text(string $html): string {
-		$decoded = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-		return trim((string)preg_replace('/[\s\x{00A0}]+/u', ' ', $decoded));
-	}
-
-	/**
-	 * The name each PDF is given by its own table row, keyed by URL.
-	 *
-	 * Empty when the page is not a table at all. So this adds a better title where one
-	 * exists and changes nothing where it does not — the anchor scan above still finds
-	 * every link either way.
-	 *
-	 * @return array<string, string>
-	 */
-	private function rowTitles(string $html): array {
-		if (preg_match_all('#<tr\b.*?</tr>#is', $html, $rows) === 0) {
-			return [];
-		}
-
-		$titles = [];
-		foreach ($rows[0] as $row) {
-			// `\s*` around the URL, same as parse()'s own anchor scan and for the
-			// same reason: this side must key its dictionary by the SAME trimmed
-			// URL parse() looks it up by, or a padded href would never match here.
-			if (preg_match('#<a[^>]+href="\s*([^"]+\.pdf)\s*"#i', $row, $link) !== 1) {
-				continue;
-			}
-			if (preg_match_all('#<td\b[^>]*>(.*?)</td>#is', $row, $cells) === 0) {
-				continue;
-			}
-			foreach ($cells[1] as $cell) {
-				$name = $this->text($cell);
-				// The first cell that says anything. `rowspan` cells and stray `&nbsp;`
-				// ones are real on this page.
-				if ($name !== '') {
-					$titles[trim(html_entity_decode($link[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'))] = $name;
-					break;
-				}
-			}
-		}
-
-		return $titles;
-	}
-
-	/**
-	 * @return list<array<string, string>>
-	 */
-	private function parse(string $html): array {
-		/*
-		 * `\s*` around the captured URL: two of the live page's own anchors pad
-		 * the href with a trailing space inside the quotes —
-		 * `href="…OFICIO_CP_N_11926_2026_ebola.pdf "` — which `[^"]+\.pdf"`
-		 * required to sit immediately before the closing quote and so silently
-		 * never matched. Both anchors are real, in-force alerts (the Bundibugyo/
-		 * ébola oficios), and this class's own $rejected counter below could not
-		 * see them either: they never entered $matches at all, and a counter
-		 * downstream of the regex cannot count what the regex never matched. A
-		 * browser strips this whitespace before treating the attribute as a URL,
-		 * so tolerating it here is reading what MINSAL means, not being lenient
-		 * about garbage.
-		 */
-		preg_match_all('#<a[^>]+href="\s*([^"]+\.pdf)\s*"[^>]*>(.*?)</a>#is', $html, $matches, PREG_SET_ORDER);
-
-		// warnOfMissedAnchors() runs even when $matches is empty: a page that
-		// carries pdf hrefs but zero readable anchors is the total-loss version
-		// of the exact defect above, and it deserves the same warning, not
-		// silence because the early return below has not happened yet.
-		$this->warnOfMissedAnchors($html, count($matches));
-
-		if ($matches === []) {
-			return [];
-		}
-
-		$rowTitles = $this->rowTitles($html);
-
-		/*
-		 * An anchor text used by more than one row is a LINK LABEL, not a title. On
-		 * the previous host's page — a table `Nombre de la alerta | Fecha | Descarga`
-		 * — the third cell repeated "Descargar Documento" 27 times out of 75, and
-		 * taking the anchor text put 27 indistinguishable rows in front of a
-		 * clinician. Nothing repeats on degreyd's page (a five-column table, `Evento
-		 * | Desde | Alcance territorial | Tipo | Documento para descarga`, measured
-		 * 0 repeated labels across 13 rows) — see testEveryAlertKeepsItsOwnTitle —
-		 * so this branch is dormant here, not deleted: rowTitles() below still has to
-		 * exist for whichever page MINSAL points this fuente at next.
-		 *
-		 * Detected by repetition rather than by a wordlist: a real title is unique, and
-		 * a repeated label is the only kind of string this rule needs to catch. That
-		 * also survives MINSAL rewording it, which a wordlist would not.
-		 */
-		$labels = array_count_values(array_map(
-			fn (array $m): string => $this->text($m[2]),
-			$matches,
-		));
-
-		$items = [];
-		$rejected = 0;
-		foreach ($matches as [, $href, $label]) {
-			// Trimmed for the same reason the regex above tolerates surrounding
-			// whitespace: every guard from here on — https, the upload-path date —
-			// must run on the URL a browser would actually request, not on a couple
-			// of stray bytes the regex already excluded from the capture.
-			$url = trim(html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-
-			// Only https. `p()` escapes quotes and angle brackets, so it cannot make a
-			// URL scheme safe: "javascript:alert(1)/uploads/2026/01/x.pdf" satisfies both
-			// the anchor pattern and the upload-folder pattern below, and reaches href
-			// byte for byte. Every URL MINSAL actually publishes is https, so this drops
-			// nothing real — and it guards all three consumers at once, because the API
-			// and the search provider read the same parsed items this page does.
-			//
-			// Counted rather than dropped quietly: a partial silent loss is the one
-			// failure this app is built to avoid, and only zero items raises the banner.
-			if (stripos($url, 'https://') !== 0) {
-				$rejected++;
-				continue;
-			}
-
-			// The upload folder is the only date signal there is, and it is not
-			// derivable from the epi week — SE 29 sits under 2026/07 while SE 24
-			// sits under 2026/06. Anchors are parsed, never constructed.
-			if (preg_match('#/uploads/(\d{4})/(\d{2})/#', $url, $when) !== 1) {
-				continue;
-			}
-
-			// The anchor text is the official title WHEN it is one. On the previous
-			// host's page it carried the oficio number, which the row's cell did not,
-			// and the fallback below took the row's first cell, headed "Nombre de la
-			// alerta" there. Neither holds on degreyd's page — 0 of 13 anchor texts
-			// carry an oficio number, and its own first cell is an EVENT/disease name
-			// ("Sarampión", "Influenza B"), which CONTEXT.md is explicit this context
-			// has no word for. The fallback is unreachable today (no label repeats;
-			// see the comment above $labels), so it cannot yet title an alert by
-			// disease — but if MINSAL ever changes that, this fallback would, and
-			// this comment is what says so before it happens rather than after.
-			$title = $this->text($label);
-			if (($labels[$title] ?? 0) > 1) {
-				$title = $rowTitles[$url] ?? $title;
-			}
-			if ($title === '') {
-				continue;
-			}
-
-			$item = [
-				'title' => $title,
-				'url' => $url,
-				// Upload year, not the oficio's year: measured 12 of 13 titles on the
-				// live page carry no year at all (was 47 of 75 on the previous host),
-				// so the path is the only field with full coverage either way. The UI
-				// therefore labels it plain "Año" and claims nothing more.
-				'year' => $when[1],
-				'month' => $when[1] . '-' . $when[2],
-			];
-
-			// Keyed by URL, because MINSAL links the same PDF from two rows of its own
-			// table. AlertsPane keys on the url, so a duplicate was a duplicate Vue key
-			// as well as a row printed twice. IspRepository has deduped by link since
-			// #47; this side never had to until the table shape made it possible.
-			$items[$url] = $item;
-		}
-
-		if ($rejected > 0) {
-			// No longer says which feed: there is one page left here, and naming it in
-			// every line was only ever worth the words while the informes shared the class.
-			$this->logger->warning(
-				'Dropped {rejected} non-https links from the MINSAL alerts page',
-				['rejected' => $rejected],
-			);
-		}
-
-		return $this->sort(array_values($items));
-	}
-
-	/**
-	 * A cheap, independent count of every `href="…pdf"`, anywhere in the raw
-	 * document — with no dependency on the richer anchor pattern in parse()
-	 * actually matching it. That pattern requires `<a[^>]+href="…"[^>]*>…</a>`,
-	 * and the whitespace defect this method was added for is proof that a real
-	 * anchor can fail that shape: `$rejected` above only counts URLs the regex
-	 * DID capture and then reject, so a link the regex never matched at all was
-	 * uncountable by construction, and the fuente under-reported by two out of
-	 * thirteen with nothing in the log to say so.
-	 *
-	 * Deliberately just a warning, and deliberately silent on which anchors were
-	 * lost: it exists so the NEXT shape of loss — not only the one just fixed —
-	 * shows up in the log on day one instead of staying invisible for months. It
-	 * must never fail the fetch or degrade a fuente that is otherwise healthy; a
-	 * shortfall this coarse is a prompt to go look, not proof that nothing was
-	 * read.
-	 */
-	private function warnOfMissedAnchors(string $html, int $matched): void {
-		$present = (int)preg_match_all('#href="\s*[^"]*\.pdf\s*"#i', $html);
-		if ($present > $matched) {
-			$this->logger->warning(
-				'MINSAL alerts page has {present} pdf link(s) in href attributes but only {matched} were read as anchors — an alert may be missing',
-				['present' => $present, 'matched' => $matched],
-			);
-		}
-	}
-
-	/**
-	 * MINSAL's own page order is not chronological: entries get appended and
-	 * edited without re-sorting, so rendering in document order shows a visibly
-	 * jumbled list to anyone who scrolls. Measured on the live page: 1 inversion
-	 * across 13 anchors (`1781616195625_OFI.pdf` sits after two older alerts in
-	 * the markup — see testTheFixtureStillContainsTheInversionThisSortExistsToFix);
-	 * the previous host's page carried 9 across 75.
-	 *
-	 * usort is stable in PHP 8, which is the point — within a month (5 distinct
-	 * months across 13 alerts today, was 26 across 75) MINSAL's own curation
-	 * survives, and that is the only ordering signal finer than a month we are
-	 * entitled to use.
-	 *
-	 * @param list<array<string, string>> $items
-	 *
-	 * @return list<array<string, string>>
-	 */
-	private function sort(array $items): array {
-		usort($items, static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
-
-		return $items;
-	}
-
-	/**
 	 * The page's HTML, or null on anything that stops us reading it.
 	 *
 	 * One fixed URL, no slug and nothing to narrow the response to: this used to
@@ -591,7 +366,7 @@ class MinsalRepository {
 	 * loop that once tried more than one slug went with the informes — the
 	 * year-templated slug was theirs, and this page has never carried a year in
 	 * its own address. A page is not a collection to filter down, either, so
-	 * there is no `_fields` left to ask for: the whole body is what parse() reads.
+	 * there is no `_fields` left to ask for: the whole body is what the parser reads.
 	 *
 	 * Every request names this app (UA) and classifies every failure the way it
 	 * classifies every answer (ADR-0015 §4): a 4xx/5xx status is the host SAYING
@@ -769,7 +544,7 @@ class MinsalRepository {
 
 	/**
 	 * What probe() compares instead of a publication date — see its docblock for
-	 * why. Keyed on URL alone, the same identity `parse()`'s own dedupe uses: a
+	 * why. Keyed on URL alone, the same identity PageParser::parse()'s dedupe uses: a
 	 * title or a row reordering would flag a change nobody could act on, and
 	 * MINSAL reassigns numeric ids on republish, so those cannot be the key either.
 	 *

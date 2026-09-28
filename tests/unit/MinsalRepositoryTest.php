@@ -8,6 +8,7 @@ use OCA\Epidemiologia\BackgroundJob\RevalidateJob;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\Parser\PageParser;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClient;
@@ -900,7 +901,11 @@ class MinsalRepositoryTest extends TestCase {
 			$this->rows = $alerts;
 		});
 
-		return new MinsalRepository($clients, $time, $this->logger(), $mapper, $cacheFactory, $jobs);
+		// One recorder for both: the parse's warnings land in $this->logged
+		// exactly as they did while parse() was this repository's own method.
+		$logger = $this->logger();
+
+		return new MinsalRepository($clients, $time, $logger, $mapper, $cacheFactory, $jobs, new PageParser($logger));
 	}
 
 	/**
