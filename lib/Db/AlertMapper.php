@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Db;
 
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\IDBConnection;
 use Throwable;
@@ -23,9 +24,14 @@ use Throwable;
  * (a zero-parse writes nothing); the transaction below is what keeps a
  * half-replaced set from ever being visible.
  *
- * ponytail: the branches here are replaceSet()'s rollback and scope and
- * readSet()'s ordering; their home test is the integration suite
- * (tests/integration/, L3-06) — the repository suites mock this class.
+ * A stream's items are UPSERTED one by one instead (ADR-0017 D6): a stream
+ * keeps every item it ever read, so nothing it stops listing is withdrawn,
+ * and there is no whole set to replace.
+ *
+ * ponytail: the branches here are replaceSet()'s rollback and scope,
+ * upsert()'s find-then-write and readSet()'s ordering; their home test is the
+ * integration suite (tests/integration/, L3-06) — the repository suites mock
+ * this class.
  * Within-month order is not preserved on this path for the MINSAL pages (no
  * sequence column, and they publish no day; the cache — the hot path — keeps
  * MINSAL's own curation); the table serves only after flushes and outages,
@@ -88,6 +94,53 @@ class AlertMapper extends QBMapper {
 		} catch (Throwable $e) {
 			$this->db->rollBack();
 			throw $e;
+		}
+	}
+
+	/**
+	 * One stream item, inserted, or replaced in place on (fuente, url): a
+	 * publisher that edits a title in place — the ISP does, adding affected
+	 * lots — is read as the same item, never a second row. The scope is
+	 * stamped here for replaceSet()'s reason.
+	 *
+	 * Find-then-write, not a native upsert: the QueryBuilder has none. No lock
+	 * guards the window (D6): two refreshes racing one new item lose one
+	 * insert to the (fuente, url) key, and the loser's store() logs it and
+	 * serves its reading anyway — the key is the backstop, ReportMapper's
+	 * doctrine.
+	 */
+	public function upsert(string $fuente, Alert $alert): void {
+		$alert->setFuente($fuente);
+
+		if ($this->find($fuente, $alert->getUrl()) === null) {
+			$this->insertRow($alert);
+
+			return;
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('title', $qb->createNamedParameter($alert->getTitle()))
+			->set('year', $qb->createNamedParameter($alert->getYear()))
+			->set('month', $qb->createNamedParameter($alert->getMonth()))
+			->set('day', $qb->createNamedParameter($alert->getDay()))
+			->set('tipo', $qb->createNamedParameter($alert->getTipo()))
+			->where($qb->expr()->eq('fuente', $qb->createNamedParameter($fuente)))
+			->andWhere($qb->expr()->eq('url', $qb->createNamedParameter($alert->getUrl())));
+		$qb->executeStatement();
+	}
+
+	/** One fuente's row for one document, or null — upsert()'s question. */
+	private function find(string $fuente, string $url): ?Alert {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq('fuente', $qb->createNamedParameter($fuente)))
+			->andWhere($qb->expr()->eq('url', $qb->createNamedParameter($url)));
+
+		try {
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException) {
+			return null;
 		}
 	}
 

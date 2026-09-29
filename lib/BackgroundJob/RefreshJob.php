@@ -86,10 +86,21 @@ class RefreshJob extends TimedJob {
 		}
 
 		// The deep pass (L3-08): the read path serves page 1 and stops, so the
-		// one-shot backfill and the document archiver run HERE — off the
-		// request path, where their worst case (WALK_PAGES of pages and
-		// ARCHIVE_BUDGET of documents, 15 s each) costs a nightly window
-		// nobody waits in.
-		$this->sources->converge();
+		// backfills and the document archiver run HERE — off the request
+		// path, where their worst case (the informe's WALK_PAGES of pages and
+		// ARCHIVE_BUDGET of documents, a stream's two older pages, 15 s each)
+		// costs a nightly window nobody waits in. Isolated per fuente like
+		// the loop above: one stream's walk that throws does not cost the
+		// informe its archiver.
+		foreach (Sources::ACCUMULATING as $source) {
+			try {
+				$this->sources->converge($source);
+			} catch (Throwable $e) {
+				$this->logger->warning('The deep pass of {source} threw instead of finishing', [
+					'source' => $source,
+					'exception' => $e,
+				]);
+			}
+		}
 	}
 }

@@ -16,7 +16,7 @@ use OC\DB\Exceptions\DbalException;
  * story (L3-06): a half-replaced set must never be visible, and only a real
  * database can roll one back. Since ADR-0017 the table is shared, so the scope
  * is the other half of it: one fuente's replacement must never touch another
- * fuente's rows.
+ * fuente's rows — and a stream's upsert() must rewrite its own row in place.
  */
 class AlertMapperTest extends IntegrationTestCase {
 	private AlertMapper $alerts;
@@ -123,6 +123,38 @@ class AlertMapperTest extends IntegrationTestCase {
 
 		self::assertNull($row->getDay());
 		self::assertNull($row->getTipo());
+	}
+
+	/**
+	 * A stream's item (ADR-0017 D6): read again, it is the same row, its
+	 * title as the publisher now words it — the ISP edits in place. Nothing
+	 * a stream stops listing is withdrawn, so upsert never deletes.
+	 */
+	public function testAStreamItemIsOneRowRewrittenInPlace(): void {
+		$this->alerts->upsert('isp_anamed', $this->alert('https://i/1', '2026-08', day: '2026-08-25'));
+		$this->alerts->upsert('isp_anamed', $this->alert('https://i/2', '2026-09', day: '2026-09-15'));
+
+		$edited = $this->alert('https://i/1', '2026-08', day: '2026-08-25');
+		$edited->setTitle('AVISO — lotes afectados actualizados');
+		$this->alerts->upsert('isp_anamed', $edited);
+
+		$rows = $this->alerts->readSet('isp_anamed');
+		self::assertSame(['https://i/2', 'https://i/1'], array_map(static fn (Alert $a): string => $a->getUrl(), $rows));
+		self::assertSame('AVISO — lotes afectados actualizados', $rows[1]->getTitle(), 'the second read replaced the row, never added one');
+		self::assertSame('2026-08-25', $rows[1]->getDay());
+	}
+
+	/** The scope, stream-side: the same url in another fuente is another row, untouched. */
+	public function testAnUpsertStaysInsideItsFuente(): void {
+		$this->alerts->replaceSet('isp_pharmacovigilance', [$this->alert('https://i/shared', '2026-08')]);
+
+		$this->alerts->upsert('isp_anamed', $this->alert('https://i/shared', '2026-09', fuente: 'isp_pharmacovigilance'));
+		$this->alerts->upsert('isp_anamed', $this->alert('https://i/shared', '2026-10'));
+
+		self::assertSame(['https://i/shared'], $this->urls('isp_anamed'), 'stamped with the fuente it was upserted under');
+		self::assertSame('2026-10', $this->alerts->readSet('isp_anamed')[0]->getMonth(), 'the second upsert rewrote its own row');
+		self::assertSame('2026-08', $this->alerts->readSet('isp_pharmacovigilance')[0]->getMonth(),
+			'the other sector\'s row for the same document is not this upsert\'s to rewrite');
 	}
 
 	/** @return list<string> */

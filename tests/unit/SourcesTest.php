@@ -109,31 +109,51 @@ class SourcesTest extends TestCase {
 	}
 
 	/**
-	 * The catalogue's door to the deep pass (L3-08) — the file's own walk
-	 * doctrine applied to the one method that takes no id: converge() is
-	 * direct (only REPORTS accumulates a back catalogue; see the method),
-	 * and after it runs every id in ALL still answers — the deep pass must
-	 * not disturb the read path's answers.
+	 * The catalogue's door to the deep pass (L3-08), walked like every other
+	 * door: each accumulating id reaches its own owner's converge() — the
+	 * informe's walk and archiver, or its stream's backfill (ADR-0017 D7).
+	 * ACCUMULATING is a subset of ALL, or the job would converge a fuente
+	 * nothing serves.
 	 */
-	public function testConvergeRunsAndLeavesEveryFuenteAnswering(): void {
-		$passes = 0;
-		$payload = ['items' => [], 'fetched_at' => null, 'degraded' => false];
-		$minsal = $this->createMock(AlertRepository::class);
-		$minsal->method('get')->willReturn($payload);
+	public function testConvergeWalksEveryAccumulatingFuenteToItsOwnDeepPass(): void {
 		$informes = $this->createMock(IspReportRepository::class);
-		$informes->method('get')->willReturn($payload);
-		$informes->method('converge')->willReturnCallback(function () use (&$passes): void {
-			$passes++;
+		$informes->method('converge')->willReturnCallback(function (): void {
+			$this->asked[] = 'converge ' . Sources::REPORTS;
 		});
 
-		$sources = new Sources($this->alertRepositories($minsal), $informes);
-		$sources->converge();
-
-		self::assertSame(1, $passes, 'the accumulating fuente\'s deep pass ran through the catalogue\'s door');
-		foreach (Sources::ALL as $id) {
-			self::assertArrayHasKey('items', $sources->get($id), $id);
-			self::assertArrayHasKey('degraded', $sources->get($id), $id);
+		$sources = new Sources($this->ledgered(), $informes);
+		foreach (Sources::ACCUMULATING as $id) {
+			$sources->converge($id);
 		}
+
+		self::assertSame([], array_diff(Sources::ACCUMULATING, Sources::ALL));
+		self::assertSame(
+			array_map(static fn (string $id): string => "converge $id", Sources::ACCUMULATING),
+			$this->asked,
+		);
+	}
+
+	/**
+	 * An in-force set replaces itself whole inside get(), so it has no deep
+	 * pass — and asking for one is a wiring mistake that must throw, not a
+	 * pass that quietly does nothing: an in-force id added to ACCUMULATING
+	 * breaks here.
+	 */
+	public function testAnInForceFuenteHasNoDeepPass(): void {
+		$sources = $this->sources();
+		$inForce = array_values(array_diff(Sources::ALL, Sources::ACCUMULATING));
+		$refused = [];
+
+		foreach ($inForce as $id) {
+			try {
+				$sources->converge($id);
+			} catch (\UnhandledMatchError) {
+				$refused[] = $id;
+			}
+		}
+
+		self::assertNotSame([], $inForce, 'a catalogue with no in-force fuente would pass this for free');
+		self::assertSame($inForce, $refused, 'no arm, no pass — the catalogue\'s loudness');
 	}
 
 	/**
@@ -145,8 +165,10 @@ class SourcesTest extends TestCase {
 		$l = $this->l10n();
 
 		self::assertStringContainsString('MINSAL', $sources->name(Sources::ALERTS, $l));
-		self::assertStringContainsString('ISP', $sources->name(Sources::REPORTS, $l));
-		self::assertStringNotContainsString('MINSAL', $sources->name(Sources::REPORTS, $l));
+		foreach ([Sources::REPORTS, Sources::ISP_ANAMED, Sources::ISP_PHARMACOVIGILANCE, Sources::ISP_COSMETICS] as $isp) {
+			self::assertStringContainsString('ISP', $sources->name($isp, $l), $isp);
+			self::assertStringNotContainsString('MINSAL', $sources->name($isp, $l), $isp);
+		}
 	}
 
 	public function testAllReturnsEverySourceInTheDeclaredOrder(): void {
@@ -274,6 +296,9 @@ class SourcesTest extends TestCase {
 				$this->asked[] = "search $id";
 
 				return [];
+			});
+			$repository->method('converge')->willReturnCallback(function () use ($id): void {
+				$this->asked[] = "converge $id";
 			});
 
 			return $repository;

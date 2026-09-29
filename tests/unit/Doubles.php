@@ -121,6 +121,16 @@ trait Doubles {
 				return true;
 			},
 		);
+		$config->method('getAppValueBool')->willReturnCallback(
+			fn (string $key, bool $default = false): bool => (bool)($this->config[$key] ?? $default),
+		);
+		$config->method('setAppValueBool')->willReturnCallback(
+			function (string $key, bool $value): bool {
+				$this->config[$key] = $value;
+
+				return true;
+			},
+		);
 		$config->method('getAppValueArray')->willReturnCallback(
 			fn (string $key, array $default = []): array => (array)($this->config[$key] ?? $default),
 		);

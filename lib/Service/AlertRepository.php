@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Service;
 use Normalizer;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClientService;
@@ -36,6 +37,13 @@ use Throwable;
  * last-good copy an app update's cache flush no longer takes with it
  * (ADR-0015 §2) — but nothing is mirrored: the documents are linked where
  * their publisher keeps them, so staff always open the version in force.
+ *
+ * Two storage rules, one per kind of fuente (ADR-0017 D6). An IN-FORCE page
+ * (degreyd's, epi's) lists what is in force today, so its set is replaced
+ * whole and a withdrawn alert vanishes with it. A STREAM (the ISP's
+ * categories) lists only its latest posts, so every item it ever listed is
+ * kept, and its older pages are walked once for the history the first read
+ * could not see (converge()). The Fuente's backfill is what tells them apart.
  */
 class AlertRepository {
 	/** The largest response we will read; request() carries the measurement. */
@@ -85,6 +93,7 @@ class AlertRepository {
 		private AlertMapper $alerts,
 		ICacheFactory $cacheFactory,
 		private IJobList $jobs,
+		private IAppConfig $config,
 	) {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		// One grain — the fuente's host — on the same cache it reads; the
@@ -193,7 +202,7 @@ class AlertRepository {
 		$html = $this->request();
 		$items = $html === null ? [] : $this->fuente->parser->parse($html, $this->fuente->subject);
 
-		return $items === [] ? $this->fail($html, $stored) : $this->store($items);
+		return $items === [] ? $this->fail($html, $stored) : $this->store($items, $stored);
 	}
 
 	/**
@@ -244,13 +253,18 @@ class AlertRepository {
 	/**
 	 * Turns a freshly parsed list into the cache entry both refresh() and
 	 * probe() write — including the digest probe() compares next time — and
-	 * the table's whole set, replaced (ADR-0015 §2).
+	 * the table's whole set, replaced (ADR-0015 §2). A stream keeps instead
+	 * (accumulate()).
 	 *
 	 * @param list<array<string, string>> $items
 	 *
 	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
 	 */
-	private function store(array $items): array {
+	private function store(array $items, ?array $stored): array {
+		if ($this->fuente->backfill !== []) {
+			return $this->accumulate($items, $stored);
+		}
+
 		$fresh = [
 			'items' => $items,
 			'digest' => self::digest($items),
@@ -264,18 +278,8 @@ class AlertRepository {
 		 * its own fault class (logged, retried on the next store()), never a
 		 * degrade: the fetch succeeded and the fresh copy serves regardless.
 		 */
-		$alerts = [];
-		foreach ($items as $item) {
-			$alert = new Alert();
-			$alert->setUrl($item['url']);
-			$alert->setTitle($item['title']);
-			$alert->setYear($item['year']);
-			$alert->setMonth($item['month']);
-			$alerts[] = $alert;
-		}
-
 		try {
-			$this->alerts->replaceSet($this->fuente->id, $alerts);
+			$this->alerts->replaceSet($this->fuente->id, array_map(self::alert(...), $items));
 		} catch (Throwable $e) {
 			$this->logger->warning('Could not persist the {name} set', [
 				'name' => $this->fuente->name,
@@ -284,6 +288,164 @@ class AlertRepository {
 		}
 
 		return $this->present($fresh, false);
+	}
+
+	/**
+	 * A stream's store (ADR-0017 D6): the reading is upserted into the
+	 * fuente's rows, and the entry served — and cached — is those rows read
+	 * back, so an item the publisher stopped listing stays served. Table
+	 * first, cache second, because the cache holds what the table answered.
+	 *
+	 * A storage failure keeps store()'s rule: logged, never a degrade — the
+	 * fetch succeeded — and the reading serves accumulated over the last copy
+	 * this fuente served, so a broken table never shrinks a stream to its
+	 * latest page. IspReportRepository::store() is the precedent.
+	 *
+	 * @param list<array<string, string>> $items
+	 *
+	 * @return array{items: list<array<string, string>>, fetched_at: ?int, degraded: bool}
+	 */
+	private function accumulate(array $items, ?array $stored): array {
+		try {
+			foreach ($items as $item) {
+				$this->alerts->upsert($this->fuente->id, self::alert($item));
+			}
+
+			$kept = array_map(self::item(...), $this->alerts->readSet($this->fuente->id));
+		} catch (Throwable $e) {
+			$this->logger->warning('Could not persist the {name} set', [
+				'name' => $this->fuente->name,
+				'exception' => $e,
+			]);
+
+			$kept = self::union($stored['items'] ?? [], $items);
+		}
+
+		$fresh = [
+			'items' => $kept,
+			'digest' => self::digest($items),
+			'fetched_at' => $this->time->getTime(),
+		];
+		$this->cache->set($this->key(), $fresh, self::KEEP_FOR);
+
+		return $this->present($fresh, false);
+	}
+
+	/**
+	 * A stream's one-shot backfill (ADR-0017 D7): its Fuente's older pages,
+	 * walked once per install for the history page 1 cannot carry — ten
+	 * posts is a few weeks of a busy ISP category — then never again. The
+	 * refresh job's door (Sources::converge()), off the request path.
+	 *
+	 * The flag lives in app config, not the cache, for the informe cursor's
+	 * reason (IspReportRepository::backfill()): a cache flush must not say
+	 * "walk again" about a table that still holds the history, and app config
+	 * dies exactly when the table does.
+	 *
+	 * Not before the fuente has a present: history upserted into a table that
+	 * holds no page 1 would be served as the durable copy, a list of old
+	 * alerts standing in for today's. Not while its host cools down or is
+	 * braked either — a walk is an ask like any other, and the host said wait.
+	 *
+	 * STRICTLY ADDITIVE: rows in, never out; the cache entry and the degraded
+	 * flag are untouched. Walked rows reach the pane on the next store(),
+	 * whose read-back is the table's one way out.
+	 */
+	public function converge(): void {
+		$flag = 'backfilled_' . $this->fuente->id;
+
+		if ($this->fuente->backfill === [] || $this->config->getAppValueBool($flag)) {
+			return;
+		}
+
+		if ($this->stored() === null
+			|| $this->cache->get($this->cooldownKey()) !== null
+			|| $this->freno->braked()) {
+			return;
+		}
+
+		foreach ($this->fuente->backfill as $url) {
+			$items = $this->page($url);
+
+			// Unreadable: the flag stays down, and tomorrow's pass asks again.
+			if ($items === null) {
+				return;
+			}
+
+			// Past the last page: a category with less history than the walk.
+			if ($items === []) {
+				break;
+			}
+
+			try {
+				foreach ($items as $item) {
+					$this->alerts->upsert($this->fuente->id, self::alert($item));
+				}
+			} catch (Throwable $e) {
+				$this->logger->warning('Could not persist the {name} set', [
+					'name' => $this->fuente->name,
+					'exception' => $e,
+				]);
+
+				return;
+			}
+		}
+
+		$this->config->setAppValueBool($flag, true);
+	}
+
+	/**
+	 * One older page, read by the Fuente's parser.
+	 *
+	 * Deliberately outside the freno, both ways, as the informe's deep pages
+	 * are (IspReportRepository::page()): a deep page's refusal must not brake
+	 * the cheap page-1 read, and a deep page's answer does not vouch for it.
+	 *
+	 * Logged at warning where the informe's page() logs at debug, on purpose:
+	 * the informe counts its stalls and warns on the third, and a stream has
+	 * no stall counter — a walk that never completes must say so in the log
+	 * an admin reads, and the daily cadence bounds it to one line a day.
+	 *
+	 * @return ?list<array<string, string>> null could not read it · [] past the last page
+	 */
+	private function page(string $url): ?array {
+		$client = $this->clients->newClient();
+
+		try {
+			$body = (string)$client->get($url, $this->options())->getBody();
+		} catch (Throwable $e) {
+			// WordPress answers 404 past its last page: exhaustion, not failure.
+			// Read from the response's status, never from the message's prose.
+			if (Freno::status($client, $e) === 404) {
+				return [];
+			}
+
+			$this->logger->warning('An older page of the {subject} could not be read', [
+				'subject' => $this->fuente->subject,
+				'url' => $url,
+				'exception' => $e,
+			]);
+
+			return null;
+		}
+
+		if (strlen($body) > self::MAX_BYTES) {
+			$this->logger->warning('An older page of the {subject} of {bytes} bytes, discarded', [
+				'subject' => $this->fuente->subject,
+				'bytes' => strlen($body),
+			]);
+
+			return null;
+		}
+
+		$items = $this->fuente->parser->parse($body, $this->fuente->subject);
+
+		/*
+		 * Empty means "could not read it", NOT "past the end": the 404 is
+		 * caught above, and a 200 parsing to nothing is a WAF or a soft-404
+		 * page — one such answer once retired the informe's walk for good.
+		 */
+		return $items === [] ? null : $items;
 	}
 
 	/**
@@ -328,7 +490,7 @@ class AlertRepository {
 			return true;
 		}
 
-		$this->store($items);
+		$this->store($items, $stored);
 
 		return true;
 	}
@@ -395,10 +557,7 @@ class AlertRepository {
 		$client = $this->clients->newClient();
 
 		try {
-			$response = $client->get($this->fuente->url, [
-				'timeout' => 15,
-				'headers' => ['User-Agent' => self::UA],
-			]);
+			$response = $client->get($this->fuente->url, $this->options());
 
 			/*
 			 * An answer — any answer — is the host not refusing. See
@@ -442,7 +601,7 @@ class AlertRepository {
 
 			// 'exception' is a key Nextcloud's log pipeline treats specially — Log.php
 			// checks isset($entry['exception']) and serialises the class, the trace and
-				// the previous chain. Passing getMessage() instead threw all of that away
+			// the previous chain. Passing getMessage() instead threw all of that away
 			// in exactly the case where the trace is what you need.
 			$this->logger->warning('Could not reach the {subject}', [
 				'subject' => $this->fuente->subject,
@@ -475,15 +634,7 @@ class AlertRepository {
 		}
 
 		try {
-			$items = array_map(
-				static fn (Alert $alert): array => [
-					'title' => $alert->getTitle(),
-					'url' => $alert->getUrl(),
-					'year' => $alert->getYear(),
-					'month' => $alert->getMonth(),
-				],
-				$this->alerts->readSet($this->fuente->id),
-			);
+			$items = array_map(self::item(...), $this->alerts->readSet($this->fuente->id));
 		} catch (Throwable $e) {
 			// The same fault class as the write side: logged, and the read falls
 			// back to a plain cold cache. Never routed through degrade().
@@ -505,6 +656,88 @@ class AlertRepository {
 		}
 
 		return ['items' => $items, 'fetched_at' => null];
+	}
+
+	/**
+	 * Every request's options: bounded, named (UA), and verified against the
+	 * Fuente's bundle when its host needs one — the ISP serves only its leaf,
+	 * so without the bundle every ISP request dies `cURL error 60` on a fresh
+	 * install. `verify => false` is forbidden here as everywhere.
+	 *
+	 * @return array{timeout: int, headers: array{User-Agent: string}, verify?: string}
+	 */
+	private function options(): array {
+		$options = [
+			'timeout' => 15,
+			'headers' => ['User-Agent' => self::UA],
+		];
+
+		if ($this->fuente->bundle !== null) {
+			$options['verify'] = $this->fuente->bundle->path();
+		}
+
+		return $options;
+	}
+
+	/**
+	 * One parsed item as a row. The fuente is the mapper's to stamp.
+	 *
+	 * @param array<string, string> $item
+	 */
+	private static function alert(array $item): Alert {
+		$alert = new Alert();
+		$alert->setUrl($item['url']);
+		$alert->setTitle($item['title']);
+		$alert->setYear($item['year']);
+		$alert->setMonth($item['month']);
+		$alert->setDay($item['date'] ?? null);
+
+		return $alert;
+	}
+
+	/**
+	 * One row as the wire carries it (ADR-0017 D11): title, url, year and
+	 * month for every fuente, and `date` where the publisher dates its items.
+	 * A key is omitted, never null — degreyd's rows read exactly as they did.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function item(Alert $alert): array {
+		$item = [
+			'title' => $alert->getTitle(),
+			'url' => $alert->getUrl(),
+			'year' => $alert->getYear(),
+			'month' => $alert->getMonth(),
+		];
+
+		if ($alert->getDay() !== null) {
+			$item['date'] = $alert->getDay();
+		}
+
+		return $item;
+	}
+
+	/**
+	 * The cache-side fallback when a stream's table cannot be written or read:
+	 * the fresh reading over the last copy, keyed by url — fresh second, so a
+	 * title edited in place wins — in readSet()'s order, month then day.
+	 *
+	 * @param list<array<string, string>> $stored
+	 * @param list<array<string, string>> $fresh
+	 *
+	 * @return list<array<string, string>>
+	 */
+	private static function union(array $stored, array $fresh): array {
+		$items = [];
+		foreach ([...$stored, ...$fresh] as $item) {
+			$items[$item['url']] = $item;
+		}
+
+		$items = array_values($items);
+		usort($items, static fn (array $a, array $b): int
+			=> [$b['month'], $b['date'] ?? ''] <=> [$a['month'], $a['date'] ?? '']);
+
+		return $items;
 	}
 
 	/**

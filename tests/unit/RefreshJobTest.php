@@ -19,9 +19,10 @@ use RuntimeException;
 /**
  * What the daily refresher does — and, as loudly, what it leaves alone.
  *
- * The job's whole surface is one loop over the catalogue through
- * Sources::get(), so the pins are on the ACTIONS that loop takes (which ids
- * it asked, in order — a ledger, never a call count, ADR-0007) and on the
+ * The job's whole surface is two loops over the catalogue — Sources::get()
+ * for every fuente, then Sources::converge() for the accumulating ones — so
+ * the pins are on the ACTIONS those loops take (which ids they asked, in
+ * order — a ledger, never a call count, ADR-0007) and on the
  * state it must not touch (ProbeRecord's counts, whose sole writer is
  * ProbeJob). The door matters as much as the loop: probe() asks THROUGH the
  * freno (#218beba) by design, so a refresher that rode it would re-ask a
@@ -38,15 +39,15 @@ class RefreshJobTest extends TestCase {
 	/** @var list<string> every Sources::get() ask, in order — the job's whole visible behaviour */
 	private array $fetched = [];
 
-	/** @var int calls to Sources::converge() — the deep pass's ledger (L3-08) */
-	private int $converged = 0;
+	/** @var list<string> every Sources::converge() ask, as "id after N reads", in order — the deep pass's ledger (L3-08) */
+	private array $converged = [];
 
 	/** @var list<string> every fuente whose get() threw, in order — the isolation ledger (L3-03) */
 	private array $threw = [];
 
 	protected function setUp(): void {
 		$this->fetched = [];
-		$this->converged = 0;
+		$this->converged = [];
 		$this->threw = [];
 		$this->config = [];
 	}
@@ -101,20 +102,43 @@ class RefreshJobTest extends TestCase {
 	}
 
 	/**
-	 * The deep pass (L3-08): converge() asked exactly once, after the get()
-	 * loop — the read path's page-1 bound is only honest if the deep work
-	 * has a home.
+	 * The deep pass (L3-08): converge() asked once per accumulating fuente,
+	 * in the catalogue's order, each after the whole get() loop — the read
+	 * path's page-1 bound is only honest if the deep work has a home.
 	 */
 	public function testTheRunEndsWithTheDeepPass(): void {
 		$this->runJob();
 
-		self::assertSame(1, $this->converged, 'converge() asked exactly once, after the loop');
+		$reads = count(Sources::ALL);
+		self::assertSame(
+			array_map(static fn (string $id): string => "$id after $reads reads", Sources::ACCUMULATING),
+			$this->converged,
+		);
+	}
+
+	/**
+	 * Per-source isolation, the deep pass's half: a converge() that throws is
+	 * logged and stepped over, so one stream's walk cannot cost the informe
+	 * its archiver, nor the next stream its history.
+	 */
+	public function testAThrowingDeepPassDoesNotStarveTheNext(): void {
+		$first = Sources::ACCUMULATING[0];
+
+		$this->runJob(deepThrowsFor: $first);
+
+		$reads = count(Sources::ALL);
+		self::assertSame(
+			array_map(static fn (string $id): string => "$id after $reads reads", array_slice(Sources::ACCUMULATING, 1)),
+			$this->converged,
+			'every other accumulating fuente still got its deep pass',
+		);
+		self::assertSame([$first], $this->threw);
 	}
 
 	// -----------------------------------------------------------------------
 
-	private function runJob(?string $throwFor = null): void {
-		$job = $this->job($throwFor);
+	private function runJob(?string $throwFor = null, ?string $deepThrowsFor = null): void {
+		$job = $this->job($throwFor, $deepThrowsFor);
 		(new ReflectionMethod($job, 'run'))->invoke($job, null);
 	}
 
@@ -124,9 +148,10 @@ class RefreshJobTest extends TestCase {
 	 * two doors differ in exactly one load-bearing way — probe() asks
 	 * through the freno (#218beba) — and a mutation that swapped them would
 	 * hammer a refusing host once a day, green on every other pin.
-	 * converge() is the deep pass's ledger (L3-08).
+	 * converge() is the deep pass's ledger (L3-08), and records how many
+	 * reads came before it.
 	 */
-	private function job(?string $throwFor = null): RefreshJob {
+	private function job(?string $throwFor = null, ?string $deepThrowsFor = null): RefreshJob {
 		$sources = $this->createMock(Sources::class);
 		$sources->method('get')->willReturnCallback(function (string $id) use ($throwFor): array {
 			if ($id === $throwFor) {
@@ -140,8 +165,12 @@ class RefreshJobTest extends TestCase {
 		$sources->method('probe')->willThrowException(
 			new RuntimeException('the refresher must ride get(), which consults the freno — not probe(), which asks through it'),
 		);
-		$sources->method('converge')->willReturnCallback(function (): void {
-			$this->converged++;
+		$sources->method('converge')->willReturnCallback(function (string $id) use ($deepThrowsFor): void {
+			if ($id === $deepThrowsFor) {
+				$this->threw[] = $id;
+				throw new RuntimeException('the deep pass threw instead of finishing');
+			}
+			$this->converged[] = $id . ' after ' . count($this->fetched) . ' reads';
 		});
 
 		$time = $this->createMock(ITimeFactory::class);

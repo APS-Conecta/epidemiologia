@@ -8,7 +8,9 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Service;
 
 use OCA\Epidemiologia\Db\AlertMapper;
+use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClientService;
@@ -55,6 +57,9 @@ class AlertRepositories {
 		private ICacheFactory $cacheFactory,
 		private IJobList $jobs,
 		private PageParser $pages,
+		private IAppConfig $config,
+		private CertificateBundle $bundle,
+		private FeedParser $feeds,
 	) {
 	}
 
@@ -67,6 +72,7 @@ class AlertRepositories {
 			$this->alerts,
 			$this->cacheFactory,
 			$this->jobs,
+			$this->config,
 		);
 	}
 
@@ -114,6 +120,61 @@ class AlertRepositories {
 				name: 'MINSAL epi alerts',
 				subject: 'MINSAL epi alerts page',
 				parser: $this->pages,
+			),
+			/*
+			 * The ISP's alert categories, one WordPress category feed each —
+			 * streams: a feed lists its ten latest posts, so what fell off it
+			 * is kept, and pages 2 and 3 are walked once for the history the
+			 * first read could not see (D7). One host for all three and the
+			 * informe (ISP_HOST): the first timeout of a pass holds the rest.
+			 * The bundle because www.ispch.gob.cl serves only its leaf.
+			 *
+			 * The same post filed under two categories is one row in each,
+			 * where the ISP filed it — ANAMED's ten share four with
+			 * Farmacovigilancia and two with Cosméticos (the owner's captures,
+			 * 2026-09-27).
+			 */
+			'isp_anamed' => new Fuente(
+				id: $id,
+				url: 'https://www.ispch.gob.cl/categorias-alertas/anamed/feed/',
+				host: self::ISP_HOST,
+				publisher: 'ISP',
+				name: 'ISP ANAMED alerts',
+				subject: 'ISP ANAMED alerts feed',
+				parser: $this->feeds,
+				backfill: [
+					'https://www.ispch.gob.cl/categorias-alertas/anamed/feed/?paged=2',
+					'https://www.ispch.gob.cl/categorias-alertas/anamed/feed/?paged=3',
+				],
+				bundle: $this->bundle,
+			),
+			'isp_pharmacovigilance' => new Fuente(
+				id: $id,
+				url: 'https://www.ispch.gob.cl/categorias-alertas/farmacovigilancia/feed/',
+				host: self::ISP_HOST,
+				publisher: 'ISP',
+				name: 'ISP pharmacovigilance alerts',
+				subject: 'ISP pharmacovigilance alerts feed',
+				parser: $this->feeds,
+				backfill: [
+					'https://www.ispch.gob.cl/categorias-alertas/farmacovigilancia/feed/?paged=2',
+					'https://www.ispch.gob.cl/categorias-alertas/farmacovigilancia/feed/?paged=3',
+				],
+				bundle: $this->bundle,
+			),
+			'isp_cosmetics' => new Fuente(
+				id: $id,
+				url: 'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/feed/',
+				host: self::ISP_HOST,
+				publisher: 'ISP',
+				name: 'ISP cosmetics alerts',
+				subject: 'ISP cosmetics alerts feed',
+				parser: $this->feeds,
+				backfill: [
+					'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/feed/?paged=2',
+					'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/feed/?paged=3',
+				],
+				bundle: $this->bundle,
 			),
 		};
 	}

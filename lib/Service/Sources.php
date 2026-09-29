@@ -20,8 +20,8 @@ use OCP\IL10N;
  *
  * It is a catalogue, NOT a base class. Its two owners are not merged and must not
  * be: AlertRepositories serves every alert fuente on one pipeline, an
- * AlertRepository per fuente (ADR-0017), each a page whose emptiness is always
- * a failure, and IspReportRepository is one feed that ACCUMULATES what it reads,
+ * AlertRepository per fuente (ADR-0017), and IspReportRepository is one feed read
+ * as a SERIES — one informe per semana, keyed by (year, se), each document kept —
  * because the ISP publishes only the current informe and the series' history
  * lives in the feed's pages. Those disagreements are the whole reason there are
  * two owners — see each one's docblock. This maps ids to owners; the owners keep
@@ -36,12 +36,18 @@ class Sources {
 	public const ALERTS = 'alerts';
 	public const EPI = 'epi_alerts';
 	public const REPORTS = 'reports';
+	public const ISP_ANAMED = 'isp_anamed';
+	public const ISP_PHARMACOVIGILANCE = 'isp_pharmacovigilance';
+	public const ISP_COSMETICS = 'isp_cosmetics';
 
 	/** Every source, in the order the app presents them. */
 	public const ALL = [
 		self::ALERTS,
 		self::EPI,
 		self::REPORTS,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
 	];
 
 	/**
@@ -52,6 +58,21 @@ class Sources {
 	private const SEARCHABLE = [
 		self::ALERTS,
 		self::EPI,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
+	];
+
+	/**
+	 * The sources that keep what they read and have a history deeper than
+	 * their first page — the refresh job's deep pass walks these (converge()).
+	 * An in-force set replaces itself whole inside get() and has none.
+	 */
+	public const ACCUMULATING = [
+		self::REPORTS,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
 	];
 
 	public function __construct(
@@ -88,6 +109,9 @@ class Sources {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->get(),
 			self::EPI => $this->alerts->repository(self::EPI)->get(),
 			self::REPORTS => $this->informes->get(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->get(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->get(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->get(),
 		};
 
 		// Every source says how many it holds and whether anything was left out.
@@ -104,6 +128,9 @@ class Sources {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->probe(),
 			self::EPI => $this->alerts->repository(self::EPI)->probe(),
 			self::REPORTS => $this->informes->probe(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->probe(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->probe(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->probe(),
 		};
 	}
 
@@ -117,20 +144,26 @@ class Sources {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->revalidate(),
 			self::EPI => $this->alerts->repository(self::EPI)->revalidate(),
 			self::REPORTS => $this->informes->revalidate(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->revalidate(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->revalidate(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->revalidate(),
 		};
 	}
 
 	/**
-	 * The accumulating fuente's deep pass — the one-shot backfill and the
-	 * document archiver (L3-08). The read path serves page 1 and stops; this
-	 * is the job's door to everything deeper. Only REPORTS accumulates a
-	 * back catalogue — an in-force set replaces itself whole inside get() —
-	 * so the call is direct rather than a match: a second fuente that starts
-	 * accumulating says so by gaining an arm here, the same loudness every
-	 * other method of this class carries.
+	 * One accumulating fuente's deep pass (L3-08): the informe's backfill walk
+	 * and document archiver, a stream's one-shot backfill (ADR-0017 D7). The
+	 * read path serves page 1 and stops; this is the job's door to everything
+	 * deeper. Arms for ACCUMULATING alone, and no default: an in-force id has
+	 * no history to walk, and asking for one throws rather than doing nothing.
 	 */
-	public function converge(): void {
-		$this->informes->converge();
+	public function converge(string $id): void {
+		match ($id) {
+			self::REPORTS => $this->informes->converge(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->converge(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->converge(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->converge(),
+		};
 	}
 
 	/**
@@ -144,6 +177,9 @@ class Sources {
 			self::ALERTS => $l->t('las alertas epidemiológicas vigentes del MINSAL'),
 			self::EPI => $l->t('las alertas del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('el informe semanal de Circulación de Virus Respiratorios del ISP'),
+			self::ISP_ANAMED => $l->t('las alertas de medicamentos (ANAMED) del ISP'),
+			self::ISP_PHARMACOVIGILANCE => $l->t('las alertas de farmacovigilancia del ISP'),
+			self::ISP_COSMETICS => $l->t('las alertas de vigilancia de cosméticos del ISP'),
 		};
 	}
 
@@ -158,6 +194,9 @@ class Sources {
 			self::ALERTS => $l->t('Alerta epidemiológica MINSAL'),
 			self::EPI => $l->t('Alerta del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('Informe del ISP'),
+			self::ISP_ANAMED => $l->t('Alerta de medicamentos (ANAMED) del ISP'),
+			self::ISP_PHARMACOVIGILANCE => $l->t('Alerta de farmacovigilancia del ISP'),
+			self::ISP_COSMETICS => $l->t('Alerta de vigilancia de cosméticos del ISP'),
 		};
 	}
 
@@ -174,6 +213,9 @@ class Sources {
 			$items = match ($id) {
 				self::ALERTS => $this->alerts->repository(self::ALERTS)->search($term),
 				self::EPI => $this->alerts->repository(self::EPI)->search($term),
+				self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->search($term),
+				self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->search($term),
+				self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->search($term),
 			};
 
 			foreach ($items as $item) {

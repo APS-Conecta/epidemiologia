@@ -31,7 +31,9 @@ interface Parser {
 	 * @param string $body    the response, already bounded by the caller's byte cap
 	 * @param string $subject the document, as the log names it — "MINSAL alerts page"
 	 *
-	 * @return list<array<string, string>> title, url (https only), year and month, newest first
+	 * @return list<array<string, string>> title, url (https only), year and month, newest first —
+	 *                                     and `date`, the publisher's own day (Y-m-d), from a
+	 *                                     publisher that dates each item (ADR-0017)
 	 */
 	public function parse(string $body, string $subject): array;
 }

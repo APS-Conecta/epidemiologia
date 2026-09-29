@@ -28,6 +28,15 @@ use OCA\Epidemiologia\Service\Parser\Parser;
  * - `subject`: the document it fetches, as the log names it — "The MINSAL
  *   alerts page could not be read". The parser's `$subject` too.
  * - `parser`: how that document reads.
+ * - `backfill`: the older pages a STREAM walks once (ADR-0017 D7). A stream
+ *   keeps every item it ever read, so its history is worth fetching; an
+ *   in-force set replaces itself whole and has none. So this is also the
+ *   one field that tells the two storage rules apart: a fuente with older
+ *   pages to walk accumulates, and one without replaces (D6).
+ * - `bundle`: what its host's certificate chain is verified against when
+ *   the instance's own anchors cannot build it — the ISP serves only its
+ *   leaf (CertificateBundle). Null: the instance's anchors, as for every
+ *   other host.
  *
  * Every string is spelled out per fuente rather than derived from another,
  * because degreyd's are pinned: its keys and its log sentences are what they
@@ -43,6 +52,9 @@ final readonly class Fuente {
 		public string $name,
 		public string $subject,
 		public Parser $parser,
+		/** @var list<string> */
+		public array $backfill = [],
+		public ?CertificateBundle $bundle = null,
 	) {
 	}
 }

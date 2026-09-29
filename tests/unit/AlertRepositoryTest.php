@@ -9,6 +9,8 @@ use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\AlertRepositories;
 use OCA\Epidemiologia\Service\AlertRepository;
+use OCA\Epidemiologia\Service\CertificateBundle;
+use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -1109,7 +1111,20 @@ class AlertRepositoryTest extends TestCase {
 		// exactly as they did while parse() was this repository's own method.
 		$logger = $this->logger();
 
-		return new AlertRepositories($clients, $time, $logger, $mapper, $cacheFactory, $jobs, new PageParser($logger));
+		// The ISP's collaborators too, because the factory takes them: this
+		// suite's fuentes never reach them (AlertStreamTest's do).
+		return new AlertRepositories(
+			$clients,
+			$time,
+			$logger,
+			$mapper,
+			$cacheFactory,
+			$jobs,
+			new PageParser($logger),
+			$this->appConfig(),
+			$this->createMock(CertificateBundle::class),
+			new FeedParser($logger),
+		);
 	}
 
 	/**
