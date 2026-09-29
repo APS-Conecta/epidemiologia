@@ -108,7 +108,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds carry `date`, the publisher's day; the MINSAL pages carry neither), per SourcesTest's name-every-key doctrine",
+                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds and OPS/OMS carry `date`, the publisher's day, and OPS/OMS `tipo` — alerta, actualizacion or otro; the MINSAL pages carry neither), per SourcesTest's name-every-key doctrine",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -172,6 +172,9 @@
                                                                             "type": "string"
                                                                         },
                                                                         "date": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "tipo": {
                                                                             "type": "string"
                                                                         }
                                                                     }
@@ -260,6 +263,9 @@
                                                                         },
                                                                         "date": {
                                                                             "type": "string"
+                                                                        },
+                                                                        "tipo": {
+                                                                            "type": "string"
                                                                         }
                                                                     }
                                                                 }
@@ -346,6 +352,9 @@
                                                                             "type": "string"
                                                                         },
                                                                         "date": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "tipo": {
                                                                             "type": "string"
                                                                         }
                                                                     }

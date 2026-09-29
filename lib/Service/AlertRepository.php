@@ -41,7 +41,7 @@ use Throwable;
  * Two storage rules, one per kind of fuente (ADR-0017 D6). An IN-FORCE page
  * (degreyd's, epi's) lists what is in force today, so its set is replaced
  * whole and a withdrawn alert vanishes with it. A STREAM (the ISP's
- * categories) lists only its latest posts, so every item it ever listed is
+ * categories, OPS/OMS's list) lists only its latest posts, so every item it ever listed is
  * kept, and its older pages are walked once for the history the first read
  * could not see (converge()). The Fuente's backfill is what tells them apart.
  */
@@ -691,14 +691,16 @@ class AlertRepository {
 		$alert->setYear($item['year']);
 		$alert->setMonth($item['month']);
 		$alert->setDay($item['date'] ?? null);
+		$alert->setTipo($item['tipo'] ?? null);
 
 		return $alert;
 	}
 
 	/**
 	 * One row as the wire carries it (ADR-0017 D11): title, url, year and
-	 * month for every fuente, and `date` where the publisher dates its items.
-	 * A key is omitted, never null — degreyd's rows read exactly as they did.
+	 * month for every fuente, `date` where the publisher dates its items and
+	 * `tipo` where it types them (OPS/OMS). A key is omitted, never null —
+	 * degreyd's rows read exactly as they did.
 	 *
 	 * @return array<string, string>
 	 */
@@ -712,6 +714,10 @@ class AlertRepository {
 
 		if ($alert->getDay() !== null) {
 			$item['date'] = $alert->getDay();
+		}
+
+		if ($alert->getTipo() !== null) {
+			$item['tipo'] = $alert->getTipo();
 		}
 
 		return $item;

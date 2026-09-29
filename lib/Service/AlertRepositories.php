@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Service;
 use OCA\Epidemiologia\Db\AlertMapper;
 use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
+use OCA\Epidemiologia\Service\Parser\PahoParser;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -60,6 +61,7 @@ class AlertRepositories {
 		private IAppConfig $config,
 		private CertificateBundle $bundle,
 		private FeedParser $feeds,
+		private PahoParser $paho,
 	) {
 	}
 
@@ -175,6 +177,32 @@ class AlertRepositories {
 					'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/feed/?paged=3',
 				],
 				bundle: $this->bundle,
+			),
+			/*
+			 * OPS/OMS's epidemiological alerts and updates — a stream, like the
+			 * ISP's feeds: the list shows its latest eighteen documents, so
+			 * what falls off it is kept, and pages 1 and 2 (Drupal counts from
+			 * 0) are walked once for the history (D7). Its own host, and no
+			 * bundle: www.paho.org serves a chain the instance's own anchors
+			 * verify (measured from this VPS, 2026-09-28).
+			 *
+			 * Past its last page Drupal answers an empty 200, not WordPress's
+			 * 404, which page() reads as unreadable rather than exhausted —
+			 * moot here: the list ran to 38 pages on 2026-09-28, and a stream's
+			 * history only grows.
+			 */
+			'paho_alerts' => new Fuente(
+				id: $id,
+				url: 'https://www.paho.org/es/alertas-actualizaciones-epidemiologicas',
+				host: 'paho',
+				publisher: 'PAHO',
+				name: 'PAHO alerts',
+				subject: 'PAHO alerts page',
+				parser: $this->paho,
+				backfill: [
+					'https://www.paho.org/es/alertas-actualizaciones-epidemiologicas?page=1',
+					'https://www.paho.org/es/alertas-actualizaciones-epidemiologicas?page=2',
+				],
 			),
 		};
 	}

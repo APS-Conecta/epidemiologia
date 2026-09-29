@@ -33,7 +33,9 @@ interface Parser {
 	 *
 	 * @return list<array<string, string>> title, url (https only), year and month, newest first —
 	 *                                     and `date`, the publisher's own day (Y-m-d), from a
-	 *                                     publisher that dates each item (ADR-0017)
+	 *                                     publisher that dates each item (ADR-0017); `tipo`,
+	 *                                     alerta, actualizacion or otro, from one that types
+	 *                                     them (OPS/OMS, D13)
 	 */
 	public function parse(string $body, string $subject): array;
 }

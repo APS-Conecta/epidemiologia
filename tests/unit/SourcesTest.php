@@ -169,6 +169,8 @@ class SourcesTest extends TestCase {
 			self::assertStringContainsString('ISP', $sources->name($isp, $l), $isp);
 			self::assertStringNotContainsString('MINSAL', $sources->name($isp, $l), $isp);
 		}
+		self::assertStringContainsString('OPS/OMS', $sources->name(Sources::PAHO, $l));
+		self::assertStringNotContainsString('MINSAL', $sources->name(Sources::PAHO, $l));
 	}
 
 	public function testAllReturnsEverySourceInTheDeclaredOrder(): void {

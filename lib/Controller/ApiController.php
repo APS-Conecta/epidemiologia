@@ -74,9 +74,9 @@ class ApiController extends OCSController {
 	 * @param ?string $source One of Sources::ALL. Omit for every source, as before.
 	 * @param ?string $category Retired with SANITARY_ALERTS (ADR-0016): no fuente can be narrowed, so any value is a 400
 	 * @param ?int $olderThan Retired with the narrowing: any value is a 400
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array{title: string, url: string, year: string, month: string, se?: string, date?: string}>, total?: int, has_more?: bool}>, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND, array<string, array{fetched_at: ?int, degraded: bool, items: list<array{title: string, url: string, year: string, month: string, se?: string, date?: string, tipo?: string}>, total?: int, has_more?: bool}>, array{}>
 	 *
-	 * 200: Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds carry `date`, the publisher's day; the MINSAL pages carry neither), per SourcesTest's name-every-key doctrine
+	 * 200: Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds and OPS/OMS carry `date`, the publisher's day, and OPS/OMS `tipo` — alerta, actualizacion or otro; the MINSAL pages carry neither), per SourcesTest's name-every-key doctrine
 	 * 400: Array-shaped garbage in a query parameter (`?source[]=x`), or a narrowing parameter (retired with SANITARY_ALERTS — refusing it loudly is how a still-paging consumer learns that)
 	 * 404: No such source
 	 */

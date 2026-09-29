@@ -12,6 +12,7 @@ use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
+use OCA\Epidemiologia\Service\Parser\PahoParser;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -1111,8 +1112,8 @@ class AlertRepositoryTest extends TestCase {
 		// exactly as they did while parse() was this repository's own method.
 		$logger = $this->logger();
 
-		// The ISP's collaborators too, because the factory takes them: this
-		// suite's fuentes never reach them (AlertStreamTest's do).
+		// The ISP's and OPS/OMS's collaborators too, because the factory
+		// takes them: this suite's fuentes never reach them (AlertStreamTest's do).
 		return new AlertRepositories(
 			$clients,
 			$time,
@@ -1124,6 +1125,7 @@ class AlertRepositoryTest extends TestCase {
 			$this->appConfig(),
 			$this->createMock(CertificateBundle::class),
 			new FeedParser($logger),
+			new PahoParser($logger),
 		);
 	}
 

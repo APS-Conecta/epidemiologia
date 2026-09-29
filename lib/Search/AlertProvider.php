@@ -62,9 +62,9 @@ class AlertProvider implements IProvider {
 				'',
 				$hit['item']['title'],
 				// The kind carries the institution, because a result has to stand
-				// alone in a list mixed with files and contacts. With the alertas
-				// sanitarias retired every hit is MINSAL's, and MINSAL publishes
-				// only the upload year — the date is whichever the source has.
+				// alone in a list mixed with files and contacts. The year is the
+				// one date every alert fuente has: the MINSAL pages publish only
+				// an upload month, the ISP and OPS/OMS a day (ADR-0017).
 				$this->sources->kind($hit['source'], $this->l)
 					. ' · ' . ($hit['item']['year'] ?? ''),
 				$hit['item']['url'],

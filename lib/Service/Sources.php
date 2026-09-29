@@ -39,6 +39,7 @@ class Sources {
 	public const ISP_ANAMED = 'isp_anamed';
 	public const ISP_PHARMACOVIGILANCE = 'isp_pharmacovigilance';
 	public const ISP_COSMETICS = 'isp_cosmetics';
+	public const PAHO = 'paho_alerts';
 
 	/** Every source, in the order the app presents them. */
 	public const ALL = [
@@ -48,6 +49,7 @@ class Sources {
 		self::ISP_ANAMED,
 		self::ISP_PHARMACOVIGILANCE,
 		self::ISP_COSMETICS,
+		self::PAHO,
 	];
 
 	/**
@@ -61,6 +63,7 @@ class Sources {
 		self::ISP_ANAMED,
 		self::ISP_PHARMACOVIGILANCE,
 		self::ISP_COSMETICS,
+		self::PAHO,
 	];
 
 	/**
@@ -73,6 +76,7 @@ class Sources {
 		self::ISP_ANAMED,
 		self::ISP_PHARMACOVIGILANCE,
 		self::ISP_COSMETICS,
+		self::PAHO,
 	];
 
 	public function __construct(
@@ -112,6 +116,7 @@ class Sources {
 			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->get(),
 			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->get(),
 			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->get(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->get(),
 		};
 
 		// Every source says how many it holds and whether anything was left out.
@@ -131,6 +136,7 @@ class Sources {
 			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->probe(),
 			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->probe(),
 			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->probe(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->probe(),
 		};
 	}
 
@@ -147,6 +153,7 @@ class Sources {
 			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->revalidate(),
 			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->revalidate(),
 			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->revalidate(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->revalidate(),
 		};
 	}
 
@@ -163,6 +170,7 @@ class Sources {
 			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->converge(),
 			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->converge(),
 			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->converge(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->converge(),
 		};
 	}
 
@@ -180,6 +188,7 @@ class Sources {
 			self::ISP_ANAMED => $l->t('las alertas de medicamentos (ANAMED) del ISP'),
 			self::ISP_PHARMACOVIGILANCE => $l->t('las alertas de farmacovigilancia del ISP'),
 			self::ISP_COSMETICS => $l->t('las alertas de vigilancia de cosméticos del ISP'),
+			self::PAHO => $l->t('las alertas y actualizaciones epidemiológicas de la OPS/OMS'),
 		};
 	}
 
@@ -197,6 +206,7 @@ class Sources {
 			self::ISP_ANAMED => $l->t('Alerta de medicamentos (ANAMED) del ISP'),
 			self::ISP_PHARMACOVIGILANCE => $l->t('Alerta de farmacovigilancia del ISP'),
 			self::ISP_COSMETICS => $l->t('Alerta de vigilancia de cosméticos del ISP'),
+			self::PAHO => $l->t('Alerta o actualización epidemiológica de la OPS/OMS'),
 		};
 	}
 
@@ -216,6 +226,7 @@ class Sources {
 				self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->search($term),
 				self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->search($term),
 				self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->search($term),
+				self::PAHO => $this->alerts->repository(self::PAHO)->search($term),
 			};
 
 			foreach ($items as $item) {

@@ -33,7 +33,7 @@ final class ApiContractTest extends TestCase {
 	private const RUTA = '/ocs/v2.php/apps/epidemiologia/api/v1/sources';
 
 	/** What the spec can name unambiguously: source keys minus the schema-keyword collision, plus item keys. */
-	private const NOMBRES = ['fetched_at', 'degraded', 'total', 'has_more', 'title', 'url', 'year', 'month', 'se', 'date'];
+	private const NOMBRES = ['fetched_at', 'degraded', 'total', 'has_more', 'title', 'url', 'year', 'month', 'se', 'date', 'tipo'];
 
 	/** What Sources::get() serves, read from the code. */
 	private const SIRVIDO = ['items', 'fetched_at', 'degraded', 'total', 'has_more'];

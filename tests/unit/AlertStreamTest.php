@@ -16,6 +16,7 @@ use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
+use OCA\Epidemiologia\Service\Parser\PahoParser;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -30,11 +31,11 @@ use Throwable;
 
 /**
  * The pipeline's stream half, read through the ISP's three alert categories
- * (ADR-0017 D6/D7). AlertRepositoryTest pins everything
+ * and OPS/OMS's list (ADR-0017 D6/D7). AlertRepositoryTest pins everything
  * the fuentes share through degreyd; this suite pins what a stream does
  * differently — it keeps every item it ever read, walks two older pages once
  * for its history, and answers to its host's one brake: the ISP's, shared
- * with the informe.
+ * with the informe, or OPS/OMS's own.
  *
  * Built through the real AlertRepositories, so each test also pins the
  * stream fuentes' configuration: the addresses (the dispatcher answers those
@@ -43,7 +44,8 @@ use Throwable;
  * captures stand in for ANAMED's older pages — its own ANAMED page of that
  * week as ?paged=2, and its retiro-de-mercado page as ?paged=3, which shares
  * six posts with the first: the overlap a page shift between two requests
- * produces, one row each all the same.
+ * produces, one row each all the same. OPS/OMS's two pages are the owner's
+ * captures of its first two (2026-09-28).
  */
 class AlertStreamTest extends TestCase {
 	use Doubles;
@@ -59,6 +61,8 @@ class AlertStreamTest extends TestCase {
 
 	private const COSMETICS = 'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/feed/';
 
+	private const PAHO = 'https://www.paho.org/es/alertas-actualizaciones-epidemiologicas';
+
 	/** What each address answers unless a test says otherwise in $answers. */
 	private const FIXTURES = [
 		self::ANAMED => 'isp-anamed.xml',
@@ -66,6 +70,8 @@ class AlertStreamTest extends TestCase {
 		self::COSMETICS => 'isp-vigilancia-de-cosmeticos.xml',
 		self::ANAMED . '?paged=2' => 'isp-anamed-2026-07.xml',
 		self::ANAMED . '?paged=3' => 'isp-retiro-2026-07.xml',
+		self::PAHO => 'paho-alertas-p0.html',
+		self::PAHO . '?page=1' => 'paho-alertas-p1.html',
 	];
 
 	private array $store = [];
@@ -343,6 +349,75 @@ class AlertStreamTest extends TestCase {
 		self::assertCount(3, $served['items'], 'and the last good copy still serves');
 	}
 
+	// --- OPS/OMS: a stream on a host of its own ----------------------------------
+
+	/**
+	 * OPS/OMS's list, read into its own sector, each document typed — and
+	 * the type survives the table: the served entry is the rows read back,
+	 * and after an app update's flush those rows serve the same wire again.
+	 * Its host verifies against the instance's own anchors, so no request
+	 * of its carries the ISP's bundle.
+	 */
+	public function testPahoIsReadWithItsTypeAndTheTableKeepsIt(): void {
+		$fresh = $this->repository(Sources::PAHO)->get();
+		$this->store = [];
+		$kept = $this->repository(Sources::PAHO, now: self::NOW + 60)->get();
+
+		self::assertFalse($fresh['degraded']);
+		self::assertCount(18, $fresh['items']);
+		self::assertSame([self::PAHO], $this->requested);
+		self::assertArrayNotHasKey('verify', $this->options[0], 'www.paho.org is verified by the instance\'s own anchors');
+		self::assertSame(['date' => '2026-08-26', 'tipo' => 'actualizacion'],
+			array_intersect_key($fresh['items'][0], ['date' => 0, 'tipo' => 0]));
+		self::assertSame($fresh['items'], $kept['items'], 'date and tipo back out of the table');
+		self::assertNull($kept['fetched_at']);
+	}
+
+	/**
+	 * Drupal counts its pages from 0, so OPS/OMS's history is ?page=1 and
+	 * ?page=2 — walked once like the ISP's, every document a row.
+	 */
+	public function testPahoWalksItsTwoOlderPagesOnce(): void {
+		$this->answers[self::PAHO . '?page=2'] = '<div class="views-field views-field-created"><time datetime="2025-03-14T10:00:00-04:00">14 Mar 2025</time></div>'
+			. '<div class="views-field views-field-title"><a href="/es/documentos/alerta-epidemiologica-fiebre-amarilla-14-marzo-2025" hreflang="es">Alerta Epidemiológica Fiebre amarilla - 14 de marzo del 2025</a></div>';
+		$this->repository(Sources::PAHO)->get();
+
+		$this->repository(Sources::PAHO, now: self::NOW + 60)->converge();
+
+		self::assertSame([self::PAHO, self::PAHO . '?page=1', self::PAHO . '?page=2'], $this->requested);
+		self::assertCount(37, $this->urls(Sources::PAHO), '18 + 18 + the one row page 2 answers');
+		self::assertTrue($this->config['backfilled_paho_alerts'] ?? null);
+	}
+
+	/**
+	 * OPS/OMS answers to a host of its own: the ISP's timeout does not hold
+	 * it, and its refusal brakes it alone, in its own sentence, while the
+	 * ISP is asked again once its cooldown lapses.
+	 */
+	public function testPahoAnswersToAHostOfItsOwn(): void {
+		$this->answers[self::ANAMED] = 0;
+		$this->repository()->get();
+
+		$paho = $this->repository(Sources::PAHO)->get();
+		self::assertFalse($paho['degraded'], 'the ISP\'s cooldown is not OPS/OMS\'s');
+
+		$this->answers[self::PAHO] = 403;
+		$this->repository(Sources::PAHO, now: self::NOW + 7200)->revalidate();
+		$isp = $this->repository(Sources::ISP_PHARMACOVIGILANCE, now: self::NOW + 7210)->get();
+
+		self::assertFalse($isp['degraded'], 'OPS/OMS\'s brake does not hold the ISP');
+		self::assertSame([self::ANAMED, self::PAHO, self::PAHO, self::PHARMACOVIGILANCE], $this->requested);
+		self::assertSame(
+			[
+				'Could not reach the ISP ANAMED alerts feed',
+				'The ISP ANAMED alerts feed could not be read',
+				'PAHO answered 403; under freno 1 time(s), waiting 7200s',
+				'The PAHO alerts page could not be read',
+			],
+			$this->warnings(),
+		);
+	}
+
 	// --- doubles ----------------------------------------------------------------
 
 	private function repository(
@@ -453,6 +528,7 @@ class AlertStreamTest extends TestCase {
 			$this->appConfig(),
 			$bundle,
 			new FeedParser($logger),
+			new PahoParser($logger),
 		);
 	}
 
