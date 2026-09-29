@@ -79,6 +79,31 @@ class NotifierTest extends TestCase {
 		$this->render(null, ['feed' => 'irag', 'days' => 2]);
 	}
 
+	/**
+	 * A host's outage rings once (ProbeJob), under its first failing fuente —
+	 * so the message has to name the others it held, or an admin reading "the
+	 * informe could not be read" would not know the three ISP alert feeds are
+	 * down with it. Each named by the catalogue, the way the subject is.
+	 */
+	public function testAHostBellNamesEveryFuenteItHeld(): void {
+		$this->render(null, [
+			'source' => Sources::REPORTS,
+			'days' => 2,
+			'with' => [Sources::ISP_ANAMED, Sources::ISP_COSMETICS, 'sanitary_alerts'],
+		]);
+
+		self::assertStringContainsString('En el mismo servidor tampoco se pudo leer:', $this->message);
+		self::assertStringContainsString('ANAMED', $this->message);
+		self::assertStringContainsString('cosméticos', $this->message);
+		self::assertStringNotContainsString('sanitary', $this->message, 'an id the catalogue no longer has is skipped, never fatal');
+	}
+
+	public function testABellForOneFuenteNamesNoOther(): void {
+		$this->render(Sources::PAHO);
+
+		self::assertStringNotContainsString('mismo servidor', $this->message);
+	}
+
 	public function testAnUnknownSourceIsRefused(): void {
 		$this->expectException(UnknownNotificationException::class);
 
@@ -86,6 +111,9 @@ class NotifierTest extends TestCase {
 	}
 
 	// -----------------------------------------------------------------------
+
+	/** The parsed message of the last render(). */
+	private string $message = '';
 
 	private function render(?string $source, ?array $parameters = null): string {
 		$parsed = '';
@@ -101,7 +129,14 @@ class NotifierTest extends TestCase {
 				return $notification;
 			},
 		);
-		foreach (['setParsedMessage', 'setIcon', 'setLink'] as $setter) {
+		$notification->method('setParsedMessage')->willReturnCallback(
+			function (string $text) use ($notification): INotification {
+				$this->message = $text;
+
+				return $notification;
+			},
+		);
+		foreach (['setIcon', 'setLink'] as $setter) {
 			$notification->method($setter)->willReturnSelf();
 		}
 

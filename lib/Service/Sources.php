@@ -127,8 +127,8 @@ class Sources {
 		return $source;
 	}
 
-	/** @return bool false when the source is unreachable, or changed into something we cannot parse */
-	public function probe(string $id): bool {
+	/** What the sondeo learned about the source — see Probe for the three answers. */
+	public function probe(string $id): Probe {
 		return match ($id) {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->probe(),
 			self::EPI => $this->alerts->repository(self::EPI)->probe(),
@@ -137,6 +137,24 @@ class Sources {
 			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->probe(),
 			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->probe(),
 			self::PAHO => $this->alerts->repository(self::PAHO)->probe(),
+		};
+	}
+
+	/**
+	 * The host a source is fetched from — the grain its brake, its cooldown and
+	 * the sondeo share (ADR-0017 D8). The informe's is the ISP's, which the ISP's
+	 * three alert feeds share; every alert fuente's is its factory's answer, so
+	 * no host is spelled twice.
+	 */
+	public function host(string $id): string {
+		return match ($id) {
+			self::ALERTS => $this->alerts->host(self::ALERTS),
+			self::EPI => $this->alerts->host(self::EPI),
+			self::REPORTS => AlertRepositories::ISP_HOST,
+			self::ISP_ANAMED => $this->alerts->host(self::ISP_ANAMED),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->host(self::ISP_PHARMACOVIGILANCE),
+			self::ISP_COSMETICS => $this->alerts->host(self::ISP_COSMETICS),
+			self::PAHO => $this->alerts->host(self::PAHO),
 		};
 	}
 

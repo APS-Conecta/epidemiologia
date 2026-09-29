@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\BackgroundJob;
 
 use OCA\Epidemiologia\AppInfo\AppId;
+use OCA\Epidemiologia\Service\Probe;
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Services\IAppConfig;
@@ -93,43 +94,83 @@ class ProbeJob extends TimedJob {
 		// Per-source isolation (L3-03): a probe that THROWS must neither starve the
 		// sibling fuente nor vanish this one's ProbeRecord — unrecorded, the day
 		// counts as neither a failure nor a success and the [2, 7, 30] schedule
-		// silently skips it. Thrown answers as false, the loop continues, and each
-		// fuente keeps its own judgement either way: the property this loop has
-		// always promised.
+		// silently skips it. Thrown answers as Unreadable — the fuente's own fault,
+		// holding nobody — the loop continues, and each fuente keeps its own count
+		// either way: the property this loop has always promised.
+		//
+		// The host grain (ADR-0017 D8), which this loop missed until 0.11.2: four
+		// fuentes share the ISP's host, and when a host gives no answer at all
+		// (Probe::Unreachable) its other fuentes are not asked in the same pass —
+		// each would pay the same 15-second timeout and learn nothing new (the
+		// lab, 2026-09-29: four in a row, a minute of cron). They are recorded as
+		// failing with it, so every count stays true. A host that answered, even
+		// with a refusal, holds nobody: each address gets its own ask, and the
+		// next answer is what lifts a brake (Freno::lift()).
+		$unreachable = [];
+		$failing = [];
 		foreach (Sources::ALL as $source) {
-			try {
-				$reachable = $this->sources->probe($source);
-			} catch (Throwable) {
-				$reachable = false;
+			$host = $this->sources->host($source);
+
+			if (isset($unreachable[$host])) {
+				$verdict = Probe::Unreachable;
+			} else {
+				try {
+					$verdict = $this->sources->probe($source);
+				} catch (Throwable) {
+					$verdict = Probe::Unreadable;
+				}
+
+				if ($verdict === Probe::Unreachable) {
+					$unreachable[$host] = true;
+				}
 			}
 
-			$this->judge($source, $reachable);
+			$failures = $this->judge($source, $verdict === Probe::Healthy);
+			if ($failures > 0) {
+				$failing[$host][$source] = $failures;
+			}
+		}
+
+		foreach ($failing as $fuentes) {
+			$this->ring($fuentes);
 		}
 	}
 
 	/**
-	 * One probe recorded, and the bell rung if this is a day for it.
+	 * One probe recorded, and the notification taken off the bell on recovery.
 	 *
 	 * The count lives in ProbeRecord, which returns it rather than making this read
-	 * back what it just wrote. What stays here is the only thing that is this job's
-	 * business: WHEN to shout, and taking the notification off the bell on recovery.
+	 * back what it just wrote; this hands it on, 0 for a healthy day. WHEN to shout
+	 * is ring()'s, once the pass knows which fuentes failed with which host.
 	 */
-	private function judge(string $source, bool $reachable): void {
+	private function judge(string $source, bool $reachable): int {
 		$before = $this->record->consecutive($source);
 		$failures = $this->record->record($source, $reachable);
 
-		if ($reachable) {
-			// Only when there was something to take down, or every healthy day would
-			// re-notify the notification manager about a notification nobody filed.
-			if ($before > 0) {
-				$this->notifications->markProcessed($this->match($source));
-			}
-
-			return;
+		// Only when there was something to take down, or every healthy day would
+		// re-notify the notification manager about a notification nobody filed.
+		if ($reachable && $before > 0) {
+			$this->notifications->markProcessed($this->match($source));
 		}
 
-		if (in_array($failures, self::NOTIFY_AT, true)) {
-			$this->tellAdmins($source, $failures);
+		return $reachable ? 0 : $failures;
+	}
+
+	/**
+	 * One bell per host and pass: under the first of its failing fuentes whose
+	 * count is a day for one, naming the others that failed with it. Four bells
+	 * for one unreachable ISP told an admin four times what one sentence says.
+	 * The fuentes keep their own counts; only the telling is shared.
+	 *
+	 * @param array<string, int> $failing consecutive failures by source, in ALL's order
+	 */
+	private function ring(array $failing): void {
+		foreach ($failing as $source => $days) {
+			if (in_array($days, self::NOTIFY_AT, true)) {
+				$this->tellAdmins($source, $days, array_values(array_diff(array_keys($failing), [$source])));
+
+				return;
+			}
 		}
 	}
 
@@ -139,14 +180,15 @@ class ProbeJob extends TimedJob {
 	 * What clinicians get instead is the "problemas técnicos" banner on the page,
 	 * which is the signal they can actually act on.
 	 */
-	private function tellAdmins(string $source, int $days): void {
+	/** @param list<string> $with the host's other failing fuentes, which this bell also names */
+	private function tellAdmins(string $source, int $days, array $with): void {
 		// Clear first, so the bell holds one row per source rather than one per alarm:
 		// on day 30 an admin should see one current notification, not three stale ones.
 		$this->notifications->markProcessed($this->match($source));
 
 		$notification = $this->match($source)
 			->setDateTime(new \DateTime('@' . $this->time->getTime()))
-			->setSubject('probe_failed', ['source' => $source, 'days' => $days]);
+			->setSubject('probe_failed', ['source' => $source, 'days' => $days] + ($with === [] ? [] : ['with' => $with]));
 
 		foreach ($this->admins() as $uid) {
 			$this->notifications->notify($notification->setUser($uid));

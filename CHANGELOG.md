@@ -10,6 +10,14 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.11.2] — 2026-09-29
+
+### Fixed
+
+- **A host that does not answer is asked once a day, not once per fuente.** The daily check paid one 15-second timeout for each of the ISP's four fuentes in a row; now the host's first silence stands for the other three in that pass, and each is still recorded as failing.
+- **One outage, one notification.** A host's failing fuentes ring one bell together, which names every fuente that failed with it — an unreachable ISP no longer notifies administrators four times.
+- **The informe's weeks fit a phone.** At 360px each week's row ran 5–15px past the pane; the row now wraps.
+
 ## [0.11.1] — 2026-09-29
 
 ### Fixed

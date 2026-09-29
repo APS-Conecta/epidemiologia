@@ -115,6 +115,15 @@ are byte for byte what they were; epi is `epi`, the OPS/OMS `paho`, and the ISP 
 (`AlertRepositories::ISP_HOST`), shared by the informe and the three feeds. A queued revalidation
 re-asks its host's gates before it fetches, so one timeout also stops the siblings' queued jobs.
 
+**Amended 2026-09-29 (0.11.2): the sondeo follows the host too.** It asks through the brake by
+design, so it had kept the fuente grain: on the lab, one unreachable ISP cost four 15-second timeouts
+in a row and would have rung four bells for one outage. `probe()` now answers one of three verdicts
+(`Probe`). When a host gives no answer at all, `ProbeJob` does not ask that host's other fuentes
+again in the same pass, and records them as failing with it. A host that answered, even with a
+refusal, holds nobody, because each address can answer differently and the next answer is what lifts
+a brake. Each fuente keeps its own failure count, and a host's failing fuentes ring **one** bell
+together, under the first of them, naming the rest.
+
 ### D9 — A cold fuente fetches synchronously once per cache lifetime
 
 The first read with nothing stored sets `cold-{id}` and fetches, as before. A later one, still with

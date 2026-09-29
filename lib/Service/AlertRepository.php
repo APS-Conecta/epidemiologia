@@ -85,6 +85,13 @@ class AlertRepository {
 
 	private Freno $freno;
 
+	/**
+	 * Whether the last request() got any answer from the host — a document or a
+	 * refusal. probe()'s question, and only its: the one fact that tells the
+	 * host's fault (no answer at all) from this fuente's (see Probe).
+	 */
+	private bool $answered = false;
+
 	public function __construct(
 		private Fuente $fuente,
 		private IClientService $clients,
@@ -472,27 +479,30 @@ class AlertRepository {
 	 * does both), so the sondeo is also the brake's road back: the first day
 	 * the host answers 200 again is the day the hourly reads resume.
 	 *
-	 * @return bool false when the publisher is unreachable, or changed into something
-	 *              we can no longer parse. Either way a human has to look.
+	 * @return Probe Healthy, or which fault it was: Unreachable when the host
+	 *               gave no answer at all, Unreadable when it answered and this
+	 *               fuente still cannot be read. Either way a human has to look;
+	 *               only the first is the host's, and ProbeJob holds the host's
+	 *               other fuentes to it for the rest of its pass (ADR-0017 D8).
 	 */
-	public function probe(): bool {
+	public function probe(): Probe {
 		$html = $this->request();
 		$items = $html === null ? [] : $this->fuente->parser->parse($html, $this->fuente->subject);
 
 		if ($items === []) {
 			$this->fail($html, $this->stored());
 
-			return false;
+			return $this->answered ? Probe::Unreadable : Probe::Unreachable;
 		}
 
 		$stored = $this->stored();
 		if ($stored !== null && ($stored['digest'] ?? null) === self::digest($items)) {
-			return true;
+			return Probe::Healthy;
 		}
 
 		$this->store($items, $stored);
 
-		return true;
+		return Probe::Healthy;
 	}
 
 	/**
@@ -555,9 +565,11 @@ class AlertRepository {
 	 */
 	private function request(): ?string {
 		$client = $this->clients->newClient();
+		$this->answered = false;
 
 		try {
 			$response = $client->get($this->fuente->url, $this->options());
+			$this->answered = true;
 
 			/*
 			 * An answer — any answer — is the host not refusing. See
@@ -587,6 +599,8 @@ class AlertRepository {
 			return $body;
 		} catch (Throwable $e) {
 			$status = Freno::status($client, $e);
+			// A status is an answer, a refusal included; none is the host's silence.
+			$this->answered = $status !== null;
 
 			if ($status !== null && $status >= 400) {
 				// The host said no. The brake's own warning names the refusal,

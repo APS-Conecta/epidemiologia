@@ -263,6 +263,13 @@ class IspReportRepository {
 
 	private Freno $freno;
 
+	/**
+	 * Whether the last request() got any answer from the host — a document or a
+	 * refusal. probe()'s question, and only its: the one fact that tells the
+	 * host's fault (no answer at all) from this fuente's (see Probe).
+	 */
+	private bool $answered = false;
+
 	private IMemcache $lock;
 
 	private IAppData $appData;
@@ -438,7 +445,7 @@ class IspReportRepository {
 	}
 
 	/**
-	 * Daily breakage detection. False means a human has to look.
+	 * Daily breakage detection. Anything but Healthy means a human has to look.
 	 *
 	 * Asks THROUGH the freshness window rather than around it, and through
 	 * the freno too, which is why it calls refresh() and not get(): a detector
@@ -453,8 +460,14 @@ class IspReportRepository {
 	 * the back-catalogue walk are converge()'s, on the refresh job. An
 	 * unopened install converges there, at ARCHIVE_BUDGET documents a day.
 	 */
-	public function probe(): bool {
-		return $this->refresh($this->stored())['degraded'] === false;
+	public function probe(): Probe {
+		if ($this->refresh($this->stored())['degraded'] === false) {
+			return Probe::Healthy;
+		}
+
+		// Only no answer at all is the host's fault — the verdict that holds the
+		// ISP's three alert feeds for the rest of the sondeo's pass (Probe).
+		return $this->answered ? Probe::Unreadable : Probe::Unreachable;
 	}
 
 	/**
@@ -961,6 +974,7 @@ class IspReportRepository {
 	 */
 	private function request(): ?string {
 		$client = $this->clients->newClient();
+		$this->answered = false;
 
 		try {
 			$response = $client->get(self::SOURCE, [
@@ -972,6 +986,7 @@ class IspReportRepository {
 				// itself and never throws.
 				'verify' => $this->bundle->path(),
 			]);
+			$this->answered = true;
 
 			/*
 			 * An answer — any answer — is the host not refusing. See
@@ -1000,6 +1015,8 @@ class IspReportRepository {
 			 * folds that rethrow into a null.
 			 */
 			$status = Freno::status($client, $e);
+			// A status is an answer, a refusal included; none is the host's silence.
+			$this->answered = $status !== null;
 
 			if ($status !== null && $status >= 400) {
 				// The host said no. The brake's own warning names the refusal,

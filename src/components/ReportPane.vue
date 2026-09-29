@@ -92,10 +92,16 @@ import { mes, FUENTES, SITIOS } from '../pure.js'
 	flex-direction: column;
 }
 
+/* Wraps: at 360px the pane is 262px and "Semana 37 · septiembre de 2026 · PDF"
+   with its gaps needs up to ~277px — scripts/layout.sh measured every row 5–15px
+   past the pane. Each part fits on its own, so a row that may wrap cannot
+   overflow at any width; the PDF link, pushed right by its auto margin, is what
+   drops to a second line. */
 .epi-week {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: calc(var(--default-grid-baseline) * 4);
+	gap: var(--default-grid-baseline) calc(var(--default-grid-baseline) * 4);
 	min-height: var(--default-clickable-area);
 	padding: calc(var(--default-grid-baseline) * 1.5) calc(var(--default-grid-baseline) * 2);
 	border-bottom: 1px solid var(--color-border);
