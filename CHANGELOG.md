@@ -10,6 +10,13 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-09-29
+
+### Fixed
+
+- **Inicio's tiles hold their text at every width.** On a desktop the board was held to the window's height, so with six tiles each card was squeezed shorter than its alert and the text ran on over the card below. Cards are now as tall as what they hold, and Inicio scrolls like every other pane when the board is taller than the window.
+- **A tile's alert is shown at the small size, with its date underneath.** The date beside it took a third of the tile, and the ISP's long all-caps titles broke in the middle of their words.
+
 ## [0.11.0] — 2026-09-28
 
 Five alert sectors join the one there was, all six on one pipeline — see [ADR-0017](docs/adr/0017-six-alert-sectors-one-pipeline.md), which supersedes [ADR-0016](docs/adr/0016-the-isp-has-one-job.md). Nothing leaves the OCS contract: it gains ids and optional item keys.

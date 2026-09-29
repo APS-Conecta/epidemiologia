@@ -18,7 +18,7 @@ MINSAL, el ISP y la OPS/OMS; en el almacenamiento propio de la app, el documento
 informe semanal, descargado una sola vez. Las alertas siguen siendo enlaces a los
 documentos en el sitio oficial de quien las publica.
     ]]></description>
-    <version>0.11.0</version>
+    <version>0.11.1</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>

@@ -1,7 +1,7 @@
 {
 	"name": "epidemiologia",
 	"description": "Alertas del MINSAL, del ISP y de la OPS/OMS, informe semanal de virus respiratorios del ISP y tablero nacional, dentro de Nextcloud",
-	"version": "0.11.0",
+	"version": "0.11.1",
 	"license": "AGPL-3.0-or-later",
 	"private": true,
 	"type": "module",

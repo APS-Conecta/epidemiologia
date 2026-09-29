@@ -305,26 +305,14 @@ function open(pane) {
 		calc(var(--default-clickable-area) + var(--default-grid-baseline) * 4);
 }
 
-/* Inicio fills the pane instead of scrolling it, so its grid can size to the
-   viewport. The other panes keep their own scroll. */
+/* Inicio takes the pane's whole width for its board of tiles. Not its height:
+   it used to be held to the viewport so the board never scrolled, and with six
+   tiles that squeezed cards shorter than their text, which then ran over the
+   card below (#20 measured the same below 1024px). It scrolls like every other
+   pane now — see InicioPane's .epi-inicio. */
 .epi:has(> .epi-inicio:not([style*="display: none"])) {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
 	max-width: none;
 	padding-bottom: calc(var(--default-grid-baseline) * 6);
-}
-
-/* ...but only above the mobile breakpoint. "Fills the pane" means a height fixed
-   to the viewport, and below 1024px InicioPane releases its cards to be sized by
-   their content instead of by the grid row. Keeping the cap as well gives cards
-   that are taller than the box holding them, so they draw on top of each other —
-   measured on the instance for #20. Released here rather than in InicioPane
-   because this rule is App.vue's, and a component cannot unset its parent. */
-@media (max-width: 1024px) {
-	.epi:has(> .epi-inicio:not([style*="display: none"])) {
-		height: auto;
-	}
 }
 
 /*

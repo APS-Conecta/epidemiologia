@@ -65,7 +65,11 @@ const skip = (m) => console.log(`    \x1b[33m--\x1b[0m    ${m}`)
  */
 const INSPECT = (paneIndex) => {
 	const panes = [...document.querySelectorAll('.epi > section')]
-	panes.forEach((p, i) => { p.style.display = i === paneIndex ? 'block' : 'none' })
+	// '' and not 'block': v-show hides with an inline display:none, and clearing it
+	// hands the pane back to its own stylesheet. Forcing block measured a layout
+	// nobody sees — Inicio is a grid, and as a block its cards were never squeezed,
+	// so check 2 passed at 1366px while the lab drew text 87px past its cards.
+	panes.forEach((p, i) => { p.style.display = i === paneIndex ? '' : 'none' })
 	const pane = panes[paneIndex]
 	const label = (pane.querySelector('h2, h1') || {}).textContent?.trim().slice(0, 24) ?? `pane ${paneIndex}`
 	const box = (e) => e.getBoundingClientRect()
@@ -90,6 +94,28 @@ const INSPECT = (paneIndex) => {
 		const [prev, cur] = [cards[i - 1], cards[i]]
 		if (Math.abs(cur.left - prev.left) < 2 && cur.top < prev.bottom - 1) {
 			overlap.push(`a card starts at y=${Math.round(cur.top)} while the one above still runs to y=${Math.round(prev.bottom)}`)
+		}
+	}
+
+	//    ...and nothing a card holds is drawn outside it. Two boxes can sit apart and
+	//    still overlap in effect: a card squeezed shorter than its content keeps its
+	//    border where the grid put it and lets its text run on over the card below.
+	//    Measured on the lab after 0.11.0 put six tiles on Inicio: at 1440×900 the
+	//    ISP titles ran hundreds of pixels past their cards, and this gate passed —
+	//    check 1 looks at widths and the loop above compares the boxes, not what is
+	//    drawn in them. One complaint per card; 1px boxes are visually-hidden text.
+	for (const card of pane.querySelectorAll('.epi-card')) {
+		const c = box(card)
+		for (const e of card.querySelectorAll('*')) {
+			const r = box(e)
+			if (r.width <= 1 || r.height <= 1) {
+				continue
+			}
+			const past = Math.max(r.bottom - c.bottom, r.right - c.right, c.left - r.left, c.top - r.top)
+			if (past > 1) {
+				overlap.push(`${describe(e)} "${(e.textContent || '').trim().slice(0, 24)}" is drawn ${Math.round(past)}px outside its card`)
+				break
+			}
 		}
 	}
 
@@ -227,7 +253,7 @@ const inspectMenus = async (page, paneIndex, empty) => {
 	const names = []
 	const menus = await page.evaluate((i) => {
 		const panes = [...document.querySelectorAll('.epi > section')]
-		panes.forEach((p, j) => { p.style.display = j === i ? 'block' : 'none' })
+		panes.forEach((p, j) => { p.style.display = j === i ? '' : 'none' })
 		return panes[i].querySelectorAll('.epi-bar .action-item button').length
 	}, paneIndex)
 

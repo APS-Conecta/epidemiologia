@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "epidemiologia",
-        "version": "0.11.0",
+        "version": "0.11.1",
         "description": "Alertas del MINSAL, del ISP y de la OPS/OMS, informe semanal de virus respiratorios del ISP y tablero nacional",
         "license": {
             "name": "AGPL-3.0-or-later"

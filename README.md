@@ -19,7 +19,7 @@ AGPL-3.0-or-later; data from MINSAL, the ISP de Chile and the OPS/OMS.
 
 ## Status
 
-**0.11.0, 2026-09-28.** Six alert sectors run on one pipeline — MINSAL's two in-force pages, three of the ISP's alert categories and the OPS/OMS's list — and the informe keeps its own series beside them, sharing the ISP host's brake ([ADR-0017](docs/adr/0017-six-alert-sectors-one-pipeline.md), which supersedes [ADR-0016](docs/adr/0016-the-isp-has-one-job.md)). Every fuente persists to the app's two tables and follows its publisher ([ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md), [ADR-0015](docs/adr/0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md)); each informe's document is kept once and served by `/informe/{year}/{semana}`; an hourly job keeps an unopened install within about two hours of its publishers. Ten views ship, Inicio as one tile per sector, and the OCS contract is settled at one route ([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` is tagged `v0.11.0`; `info.xml`, `package.json` and an instance's `installed_version` all read 0.11.0.
+**0.11.1, 2026-09-29.** Six alert sectors run on one pipeline — MINSAL's two in-force pages, three of the ISP's alert categories and the OPS/OMS's list — and the informe keeps its own series beside them, sharing the ISP host's brake ([ADR-0017](docs/adr/0017-six-alert-sectors-one-pipeline.md), which supersedes [ADR-0016](docs/adr/0016-the-isp-has-one-job.md)). Every fuente persists to the app's two tables and follows its publisher ([ADR-0014](docs/adr/0014-the-fuentes-follow-their-publishers.md), [ADR-0015](docs/adr/0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md)); each informe's document is kept once and served by `/informe/{year}/{semana}`; an hourly job keeps an unopened install within about two hours of its publishers. Ten views ship, Inicio as one tile per sector, and the OCS contract is settled at one route ([ADR-0006](docs/adr/0006-one-ocs-route-keyed-by-source.md)). `main` is tagged `v0.11.1`; `info.xml`, `package.json` and an instance's `installed_version` all read 0.11.1.
 
 **From a datacentre, four sectors have nothing to show, and say so.** `epi.minsal.cl` answers such a host with Cloudflare's 403 and the ISP does not answer it at all (measured 2026-09-27), so the Departamento de Epidemiología's and the ISP's three sectors show their warning and a link to their publisher's page, and the admin bell names each of them, and the informe, on days 2, 7 and 30. A clinic on a residential line reads all six.
 
@@ -27,7 +27,7 @@ Not done, and each for a reason: the OCS route carries no `#[CORS]`, which needs
 rather than a wildcard; nothing propagates the establishment to this app, so it reads
 `notify_groups` and its own probe counters and nothing else
 ([gestion ADR-0013](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0013-the-establishment-is-instance-configuration.md)); `scripts/smoke.sh` and
-`scripts/layout.sh` are run by hand. The nine tags `v0.3.0`…`v0.11.0` have **no GitHub release page**
+`scripts/layout.sh` are run by hand. The ten tags `v0.3.0`…`v0.11.1` have **no GitHub release page**
 and are not owed one: a clinic installs the tarball `gestion` vendors from a tag, and `gestion` bumps
 it at a milestone rather than at every tag — that decision and the one command that builds the
 tarball live in
