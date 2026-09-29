@@ -10,6 +10,34 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-09-28
+
+Five alert sectors join the one there was, all six on one pipeline — see [ADR-0017](docs/adr/0017-six-alert-sectors-one-pipeline.md), which supersedes [ADR-0016](docs/adr/0016-the-isp-has-one-job.md). Nothing leaves the OCS contract: it gains ids and optional item keys.
+
+### Added
+
+- **Five alert sectors**, each a pane, a navigation row and a tile on Inicio: *Departamento de Epidemiología* (MINSAL, `epi.minsal.cl`); *Medicamentos (ANAMED)*, *Farmacovigilancia* and *Vigilancia de cosméticos* (three of the ISP's alert categories); and *Alertas y actualizaciones*, under a new OPS/OMS caption.
+- **Their ids on the one OCS route and in the page's state**: `epi_alerts`, `isp_anamed`, `isp_pharmacovigilance`, `isp_cosmetics`, `paho_alerts`.
+- **`date`** on the items of the ISP's three sectors and the OPS/OMS's — the publisher's day — and **`tipo`** on the OPS/OMS's: `alerta`, `actualizacion` or `otro`. Both are absent, never null, where a fuente has no such fact.
+- **A Tipo menu on *Alertas y actualizaciones*** — Alerta · Actualización · Otra publicación, each counted.
+- **Unified search covers all six alert sectors**, each hit naming its publisher.
+- **The ISP's and the OPS/OMS's sectors keep everything they have shown**, and walk two older pages once, so a post that scrolls off its publisher's first page stays in the pane.
+- **An hourly job keeps an install nobody opens current**: what a publisher posts reaches Inicio within about two hours.
+
+### Changed
+
+- **Inicio is one tile per alert sector**, in navigation order — its latest item whole, its date, its publisher and its own degraded state, with a button into its pane — then the informe's card.
+- **A host that refuses or times out holds every fuente it serves.** One brake and one cooldown per host: the ISP's informe and its three alert feeds wait together instead of each paying its own 15 s, and a queued refresh re-asks the host before it fetches.
+- **A fuente with nothing stored costs one synchronous attempt per cache lifetime**; after that its sector answers at once, degraded, and refreshes behind the response.
+- **The nightly job no longer reads the fuentes**: it walks the back catalogues and keeps the informes' documents, and the hourly job keeps everything fresh.
+- **The navigation footer credits MINSAL, the Instituto de Salud Pública and the OPS/OMS.**
+- **The upgrade rewrites `epidemiologia_alert`'s primary key** to (fuente, url) and adds a publication day, a tipo and titles up to 1000 characters. Nextcloud has no down-migration: dump the database first.
+
+### Fixed
+
+- **A degraded pane with nothing to show no longer says *Sin alertas*** beside its warning — a list nobody could read was rendered as reassurance.
+- **0.10.0 has its tag.** The README said `v0.10.0` existed and it did not; it now marks the commit that shipped 0.10.0, so `gestion` can build that tarball the way its `VENDOR` says.
+
 ## [0.10.0] — 2026-09-20
 
 **Breaking:** `sanitary_alerts` is removed from the published OCS contract and every narrowing parameter answers **400** — an incompatible change raises the minor, hence 0.10.0. See [ADR-0016](docs/adr/0016-the-isp-has-one-job.md).

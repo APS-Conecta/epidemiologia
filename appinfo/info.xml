@@ -3,20 +3,22 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>epidemiologia</id>
     <name>Epidemiología</name>
-    <summary>Alertas del MINSAL, informe semanal de virus respiratorios del ISP y tablero nacional</summary>
+    <summary>Alertas del MINSAL, del ISP y de la OPS/OMS, informe semanal de virus respiratorios del ISP y tablero nacional</summary>
     <description><![CDATA[
-Muestra dentro de la intranet la información epidemiológica que publican el MINSAL y el
-ISP. Del MINSAL: las alertas epidemiológicas vigentes, el tablero nacional de vigilancia
-ETI e IRAG y el acceso a EPIVIGILA. Del ISP: el informe semanal de circulación de virus
-respiratorios, por semana epidemiológica.
+Muestra dentro de la intranet la información epidemiológica que publican el MINSAL, el
+ISP y la OPS/OMS. Del MINSAL: las alertas epidemiológicas vigentes y las del Departamento
+de Epidemiología, el tablero nacional de vigilancia ETI e IRAG y el acceso a EPIVIGILA.
+Del ISP: el informe semanal de circulación de virus respiratorios, por semana
+epidemiológica, y sus alertas de medicamentos (ANAMED), farmacovigilancia y vigilancia de
+cosméticos. De la OPS/OMS: sus alertas y actualizaciones epidemiológicas.
 
 Lee y enlaza información pública. De ella guarda solo lo necesario para servirla, nunca
-datos de pacientes: en la base de datos de la instancia, los metadatos que el MINSAL y el
-ISP publican; en el almacenamiento propio de la app, el documento de cada informe semanal,
-descargado una sola vez. Las alertas del MINSAL siguen siendo enlaces a los PDF en su
-sitio oficial.
+datos de pacientes: en la base de datos de la instancia, los metadatos que publican el
+MINSAL, el ISP y la OPS/OMS; en el almacenamiento propio de la app, el documento de cada
+informe semanal, descargado una sola vez. Las alertas siguen siendo enlaces a los
+documentos en el sitio oficial de quien las publica.
     ]]></description>
-    <version>0.10.0</version>
+    <version>0.11.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>
