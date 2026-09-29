@@ -10,7 +10,7 @@
 //
 // Usage: EPI_TOKEN=<token> node scripts/layout.mjs <base-url> <user>
 import { chromium } from 'playwright'
-import { PANE_IDS } from '../src/panes.js'
+import { PANES, PANE_IDS } from '../src/panes.js'
 
 // The token comes through the ENVIRONMENT, not argv. A command line is readable from
 // /proc/*/cmdline by any local user for as long as the run lasts, and this one holds a
@@ -219,10 +219,12 @@ const INSPECT = (paneIndex) => {
  * @param {number} paneIndex - Which `.epi > section` to open.
  * @param {boolean} unanswerable - Whether this pane's fuente is degraded AND carries
  *   zero items, the one state that makes the missing-options complaint unanswerable.
- * @return {Promise<string[]>} One complaint per option that shows no count.
+ * @return {Promise<{complaints: string[], names: string[]}>} One complaint per option
+ *   that shows no count, and the radio names its menus render (check 10's input).
  */
 const inspectMenus = async (page, paneIndex, unanswerable) => {
 	const complaints = []
+	const names = []
 	const menus = await page.evaluate((i) => {
 		const panes = [...document.querySelectorAll('.epi > section')]
 		panes.forEach((p, j) => { p.style.display = j === i ? 'block' : 'none' })
@@ -244,10 +246,14 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 		}, { i: paneIndex, m })
 		await page.waitForFunction(() => !!document.querySelector('.v-popper__popper'), null, { timeout: 5000 })
 
-		const options = await page.evaluate(() => {
+		const { options, radios } = await page.evaluate(() => {
 			const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
-			return [...popper.querySelectorAll('.action-radio__text')].map((e) => e.textContent.trim())
+			return {
+				options: [...popper.querySelectorAll('.action-radio__text')].map((e) => e.textContent.trim()),
+				radios: [...popper.querySelectorAll('input[type="radio"]')].map((e) => e.name),
+			}
 		})
+		names.push(...new Set(radios))
 
 		// The first row is "Todos los años" / "Todos los tipos": no filter, so
 		// nothing to count. Every row after it names a subset and states its size.
@@ -264,7 +270,7 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 		}
 		// The pane carries no items, so tally() builds no options and the menu
 		// legitimately holds nothing but its "todo" row. Degraded alone does not imply
-		// this — MinsalRepository::present() keeps serving the last GOOD copy while
+		// this — AlertRepository::present() keeps serving the last GOOD copy while
 		// degraded, so a fuente that degrades after having items still has items to
 		// count. `degraded` only names WHY a genuinely empty one is empty; the caller
 		// computes `unanswerable` from BOTH degraded and a zero item count. Going red
@@ -335,14 +341,14 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 			.catch(() => {})
 	}
 
-	return complaints
+	return { complaints, names }
 }
 
 /**
  * Is this pane's fuente in the one state that makes the missing-options complaint
  * unanswerable — degraded AND serving zero items?
  *
- * Degraded alone does not mean empty: MinsalRepository::present($stored, true) (the
+ * Degraded alone does not mean empty: AlertRepository::present($stored, true) (the
  * degrade() path, present() at :452) keeps serving `$stored['items'] ?? []` — the last
  * GOOD copy — so a fuente that degrades after having items still has items, and its
  * menus should build year/month options same as ever. The fact that makes tally()
@@ -439,24 +445,63 @@ for (const { w, h } of VIEWPORTS) {
 	// itself, so nothing needs a clean load. The checks keep their numbers; 8
 	// is the retirement's own footprint.)
 
-	// The one pane that carries a toolbar, named beside the fuente that fills its
-	// menus. The second tuple — the ISP pane's — retired with its fuente
-	// (ADR-0016); ReportPane never carried a FilterBar, so the alertas pane is
-	// the whole list. AlertsPane keeps DOM index 1 — the section that stood
-	// after it is gone, and nothing before it moved.
-	for (const [paneIndex, name, fuente] of [[1, 'Alertas vigentes', 'alerts']]) {
+	// Every pane that carries a toolbar is an alert sector, named here by its registry
+	// id beside the fuente that fills its menus — derived from the registry (src/panes.js),
+	// so a sector is checked the day it is added and no tuple is left to update. The DOM
+	// index is the registry index: App.vue mounts one section per entry, in order.
+	// ReportPane never carried a FilterBar, so the sectors are the whole list.
+	const radioOwners = new Map()
+	for (const { id, source: fuente } of PANES.filter((p) => p.source)) {
+		const paneIndex = PANE_IDS.indexOf(id)
 		const unanswerable = await isUnanswerable(page, fuente)
-		const complaints = await inspectMenus(page, paneIndex, unanswerable)
+		const { complaints, names } = await inspectMenus(page, paneIndex, unanswerable)
 		if (unanswerable) {
-			skip(`${name.padEnd(26)} the fuente ${fuente} is degraded: not checking the counts in its filter menus`)
+			skip(`${id.padEnd(26)} the fuente ${fuente} is degraded: not checking the counts in its filter menus`)
 		}
 		// Not an `else`: the complaints that survive an unanswerable fuente — a pane
 		// with no menus at all, an `undefined` label — are still failures. And no pass
 		// is printed beside the skip, because a check nobody made is not a check that held.
 		if (complaints.length > 0) {
-			complaints.forEach((c) => fail(`${name} — count missing`, [c]))
+			complaints.forEach((c) => fail(`${id} — count missing`, [c]))
 		} else if (!unanswerable) {
-			pass(`${name.padEnd(26)} counts in the filter menus`)
+			pass(`${id.padEnd(26)} counts in the filter menus`)
+		}
+
+		/*
+		 * 10. one radio group per menu, per pane.
+		 *
+		 * Every sector is one AlertsPane and all six are mounted at once (v-show), while
+		 * a native radio's `name` is document-wide: a name two panes render is ONE group
+		 * spanning both, and choosing a year on one unticks the other's. The names carry
+		 * the pane id; this is the place they are seen rendered. Read off every menu the
+		 * loop above opened — a degraded pane's menus still render their "todo" radio —
+		 * and two menus of one pane sharing a name is the same fault (FilterMenu's prop).
+		 */
+		const shared = names.filter((name, i) => radioOwners.has(name) || names.indexOf(name) !== i)
+		if (shared.length > 0) {
+			fail(`${id} — a radio group shared across menus`, shared.map((n) => (radioOwners.has(n)
+				? `"${n}" is also ${radioOwners.get(n)}'s`
+				: `"${n}" names two of this pane's menus`)))
+		} else if (names.length > 0) {
+			pass(`${id.padEnd(26)} radio groups of its own (${names.join(', ')})`)
+		}
+		names.forEach((name) => radioOwners.set(name, radioOwners.get(name) ?? id))
+
+		/*
+		 * 11. a fuente nobody could read is never shown as a fuente with nothing.
+		 *
+		 * Degraded with zero items, the pane owes its reader the warning and nothing
+		 * else: an "Sin alertas" beside it is the publisher-said-zero claim L3-14 exists
+		 * to refuse. From a datacentre four sectors are in exactly this state (a
+		 * Cloudflare 403, an ISP timeout), so this runs against live data rather than a
+		 * hypothetical. A fuente that answered, or serves a last copy, cannot be in it.
+		 */
+		if (!unanswerable) {
+			skip(`${id.padEnd(26)} the fuente ${fuente} answered or serves its last copy: no unread, empty state to check`)
+		} else if (await page.evaluate((i) => !!document.querySelectorAll('.epi > section')[i].querySelector('.empty-content'), paneIndex)) {
+			fail(`${id} — a fuente nobody could read is shown as empty`, ['the pane renders an empty-content block beside the degraded notice'])
+		} else {
+			pass(`${id.padEnd(26)} unread, and not shown as empty`)
 		}
 	}
 }

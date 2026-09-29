@@ -10,8 +10,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as stateExports from '../../src/state.js'
-import { alerts, reports } from '../../src/state.js'
-import { degradedText, emptyText, fecha, mes, monthOptions, tally, yearOptions } from '../../src/pure.js'
+import { alerts, reports, source } from '../../src/state.js'
+import { degradedText, emptyText, fecha, mes, monthOptions, tally, tipoOptions, yearOptions, FUENTES } from '../../src/pure.js'
+import { PANES } from '../../src/panes.js'
 
 /**
  * Shaped like what the alert panes actually held: MINSAL carries year/month, the
@@ -135,6 +136,58 @@ describe('degradedText / emptyText', () => {
 		expect(degradedText('MINSAL')).toBe('No hemos podido contactar con MINSAL, así que esta lista puede estar incompleta.')
 		expect(emptyText('El ISP')).toBe('El ISP no trae alertas en este momento.')
 	})
+
+	// FUENTES names publishers for mid-sentence use — "el ISP", "la OPS/OMS" — and
+	// emptyText opens its sentence with the name. Every sector pane passes it one.
+	it('opens its sentence with a capital whatever article the name carries', () => {
+		expect(emptyText(FUENTES.minsal.name)).toBe('MINSAL no trae alertas en este momento.')
+		expect(emptyText(FUENTES.isp.name)).toBe('El ISP no trae alertas en este momento.')
+		expect(emptyText(FUENTES.ops.name)).toBe('La OPS/OMS no trae alertas en este momento.')
+	})
+
+	it('keeps the article lower-case mid-sentence', () => {
+		expect(degradedText(FUENTES.ops.name)).toBe('No hemos podido contactar con la OPS/OMS, así que esta lista puede estar incompleta.')
+	})
+})
+
+describe('FUENTES.count', () => {
+	// The toolbar's count, in each publisher's noun: MINSAL's lists are in force,
+	// the ISP's are alertas, and the OPS/OMS list is more than alertas.
+	it('counts in each publisher\'s own noun, singular and plural', () => {
+		expect(FUENTES.minsal.count(13)).toBe('13 alertas vigentes')
+		expect(FUENTES.minsal.count(1)).toBe('1 alerta vigente')
+		expect(FUENTES.isp.count(10)).toBe('10 alertas')
+		expect(FUENTES.ops.count(54)).toBe('54 publicaciones')
+		expect(FUENTES.ops.count(1)).toBe('1 publicación')
+	})
+})
+
+describe('tipoOptions', () => {
+	// Shaped like paho_alerts' items, and deliberately NOT in the menu's order — an
+	// options builder that did no ordering must not pass on a fixture that arrived sorted.
+	const PAHO = [
+		{ title: 'Nota informativa: vacunación', tipo: 'otro' },
+		{ title: 'Actualización epidemiológica Sarampión', tipo: 'actualizacion' },
+		{ title: 'Alerta epidemiológica Fiebre amarilla', tipo: 'alerta' },
+		{ title: 'Actualización epidemiológica Dengue', tipo: 'actualizacion' },
+	]
+
+	it('offers the kinds the list carries, in a fixed order, counted and labelled', () => {
+		expect(tipoOptions(PAHO)).toEqual([
+			{ id: 'alerta', count: 1, label: 'Alerta' },
+			{ id: 'actualizacion', count: 2, label: 'Actualización' },
+			{ id: 'otro', count: 1, label: 'Otra publicación' },
+		])
+	})
+
+	// The pane draws the menu only when this is non-empty: five sectors carry no tipo.
+	it('offers nothing for a list whose items carry no tipo', () => {
+		expect(tipoOptions(MINSAL)).toEqual([])
+	})
+
+	it('never offers a kind the list does not carry', () => {
+		expect(tipoOptions(PAHO.slice(1, 2)).map((o) => o.id)).toEqual(['actualizacion'])
+	})
 })
 
 describe('the state half (L3-17)', () => {
@@ -146,12 +199,20 @@ describe('the state half (L3-17)', () => {
 		expect(reports).toEqual({ items: [], fetched_at: null, degraded: true })
 	})
 
+	// source() is that rule for any id: every sector the registry names, and one it does not.
+	it('reads any id the page does not carry as degraded', () => {
+		for (const { id, source: key } of PANES.filter((p) => p.source)) {
+			expect(source(key), id).toEqual({ items: [], fetched_at: null, degraded: true })
+		}
+		expect(source('no_such_id')).toEqual({ items: [], fetched_at: null, degraded: true })
+	})
+
 	// The split, completed (L7-01): the shim is gone, so a pure import can
 	// no longer drag the loadState machinery with it. The import sites
 	// resolve to pure.js directly — what this pins is the ABSENCE of the
 	// re-export, which is the property the split existed to deliver.
 	it('no longer re-exports the pure half', () => {
-		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'FUENTES']) {
+		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'tipoOptions', 'FUENTES', 'SITIOS']) {
 			expect(stateExports).not.toHaveProperty(name)
 		}
 	})

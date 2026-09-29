@@ -12,7 +12,15 @@ import { t } from '@nextcloud/l10n'
  *
  * The group is the navigation's, and it groups by publisher (ADR-0008):
  * 'top' renders before the captions, 'minsal' under the MINSAL caption,
- * 'isp' under the ISP caption.
+ * 'isp' under the ISP caption, 'ops' under the OPS/OMS caption. A sector
+ * pane names its publisher by the same key — FUENTES[group], in src/pure.js
+ * — so a new group needs an entry there too (attribution.test.js).
+ *
+ * `source` marks an alert sector: the backend id (Service/Sources.php) whose
+ * list the pane shows. Each of the six is one instance of AlertsPane, told
+ * apart by its registry id, and their order here is the order they appear
+ * in. The informe reads a fuente too, `reports`, but it is no alert sector —
+ * ReportPane reads it by name — so it carries none.
  *
  * The names themselves follow two rules, both visible in what they dropped:
  *
@@ -25,24 +33,35 @@ import { t } from '@nextcloud/l10n'
  *   for it is Circulación de Virus Respiratorios, and ETI e IRAG was the dead MINSAL
  *   page's name, not this one's (see Sources::name(REPORTS)).
  *
- * No pane name spells a publisher out in words any more: the one that did
- * retired with its pane (ADR-0016). The informe carries its publisher the way
- * it always has — by wearing the ISP's own title for it instead of MINSAL's —
- * and the institution is still said, once, by the caption above the row in
- * App.vue's navigation; see ADR-0008.
+ * No pane name spells an institution out: the caption above the row in App.vue's
+ * navigation says it, once (ADR-0008). Two names carry a unit of one instead, and
+ * both by the second rule. "Departamento de Epidemiología" is what tells its row
+ * from Alertas vigentes — both are MINSAL alert lists, read from two different
+ * pages (Sources::name(EPI)). "ANAMED" is the ISP's own name for the category its
+ * pane reads, the slug in that feed's address.
  */
 export const PANES = [
 	{ id: 'inicio', group: 'top', icon: 'home' },
-	{ id: 'alertas', group: 'minsal', icon: 'alert' },
+	{ id: 'alertas', group: 'minsal', icon: 'alert', source: 'alerts' },
+	{ id: 'epi', group: 'minsal', icon: 'virus', source: 'epi_alerts' },
 	{ id: 'tablero', group: 'minsal', icon: 'chart-box' },
 	{ id: 'epivigila', group: 'minsal', icon: 'shield-account' },
 	{ id: 'informe', group: 'isp', icon: 'chart-bell-curve' },
+	{ id: 'anamed', group: 'isp', icon: 'pill', source: 'isp_anamed' },
+	{ id: 'farmacovigilancia', group: 'isp', icon: 'clipboard-pulse', source: 'isp_pharmacovigilance' },
+	{ id: 'cosmeticos', group: 'isp', icon: 'lipstick', source: 'isp_cosmetics' },
+	{ id: 'ops', group: 'ops', icon: 'earth', source: 'paho_alerts' },
 ]
 
 const PANE_NAMES = {
 	inicio: () => t('epidemiologia', 'Inicio'),
 	alertas: () => t('epidemiologia', 'Alertas vigentes'),
+	epi: () => t('epidemiologia', 'Departamento de Epidemiología'),
 	informe: () => t('epidemiologia', 'Circulación de Virus Respiratorios'),
+	anamed: () => t('epidemiologia', 'Medicamentos (ANAMED)'),
+	farmacovigilancia: () => t('epidemiologia', 'Farmacovigilancia'),
+	cosmeticos: () => t('epidemiologia', 'Vigilancia de cosméticos'),
+	ops: () => t('epidemiologia', 'Alertas y actualizaciones'),
 	tablero: () => t('epidemiologia', 'Tablero ETI e IRAG'),
 	epivigila: () => t('epidemiologia', 'EPIVIGILA'),
 }

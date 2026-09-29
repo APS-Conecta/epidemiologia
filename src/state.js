@@ -23,7 +23,8 @@ const DEGRADED_EMPTY = { items: [], fetched_at: null, degraded: true }
  * One key, not one per source. Each loadState key is a contract with
  * PageController that has to be spelled identically in two languages, so two
  * of them were two chances to typo a source into silence. PHP enumerates the
- * sources in Service/Sources.php; this file only names the ones it renders.
+ * sources in Service/Sources.php; the registry (src/panes.js) names the ones
+ * a sector pane renders, and panes.test.js holds its spelling to PHP's.
  *
  * Always pass a fallback: loadState() throws when the key is absent, and an
  * absent key is exactly what a forgotten rebuild or a renamed provider produces.
@@ -31,8 +32,22 @@ const DEGRADED_EMPTY = { items: [], fetched_at: null, degraded: true }
  */
 const sources = loadState(APP, 'sources', {})
 
-export const alerts = sources.alerts === undefined ? DEGRADED_EMPTY : sources.alerts
-export const reports = sources.reports === undefined ? DEGRADED_EMPTY : sources.reports
+/**
+ * One fuente's answer, by the id Service/Sources.php spells: what the page
+ * carries under that key, or the degraded shape when it carries none.
+ *
+ * @param {string} id - The backend id, e.g. 'paho_alerts'.
+ * @return {object} `{ items, fetched_at, degraded, … }`.
+ */
+export function source(id) {
+	return sources[id] === undefined ? DEGRADED_EMPTY : sources[id]
+}
+
+/** degreyd's list, read by name for Inicio's alertas card until the hero board replaces it. */
+export const alerts = source('alerts')
+
+/** The one fuente read by name: the informe, which is no alert sector (ReportPane, Inicio's last card). */
+export const reports = source('reports')
 
 /** Not a source: a constant URL with nothing to fetch, parse, cache or degrade. */
 export const tablero = loadState(APP, 'tablero', '')
