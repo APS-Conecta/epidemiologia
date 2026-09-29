@@ -207,21 +207,26 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 </script>
 
 <style scoped>
-/* The pane still fills the height it is given so nothing scrolls on a desktop,
-   but its rows are sized by their CONTENT and packed to the top.
-   
-   They used to stretch: the cards took 1fr and grew to fill whatever was left.
-   That was right when a card held six rows and needed the room. With one whole
-   alert per card (PER_CARD) it left ~120px of void between the text and the
-   button — and empty space inside a bordered card reads as something that failed
-   to load, where the same space below the content reads as nothing more to show. */
+/* Every card is as tall as what it holds, at every width, and the pane scrolls
+   like every other pane when that is taller than the screen.
+
+   Inicio used to be held to the viewport's height on a desktop, with its cards
+   allowed below their content (min-height: 0) so the board never scrolled. That
+   held for two cards. With six tiles it cannot: the grid squeezed each card
+   shorter than its text, the border stayed where the grid put it, and the text
+   ran on over the card below — measured on the lab at 1440×900 and 1100×900
+   after 0.11.0, hundreds of pixels on the ISP's long titles. Below 1024px the
+   cap had already been released for the same reason (#20); now nothing sets it,
+   so no title of any length can leave its card. scripts/layout.sh fails if one
+   ever does again.
+
+   Rows are packed to the top rather than stretched: empty space inside a bordered
+   card reads as something that failed to load, where the same space below the
+   content reads as nothing more to show. */
 .epi-inicio {
 	display: grid;
-	grid-template-rows: auto auto auto;
 	align-content: start;
 	gap: calc(var(--default-grid-baseline) * 4);
-	height: 100%;
-	min-height: 0;
 }
 
 .epi-inicio__sources {
@@ -240,14 +245,12 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 	grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
 	min-width: 0;
 	gap: calc(var(--default-grid-baseline) * 3);
-	min-height: 0;
 }
 
 .epi-card {
 	display: flex;
 	flex-direction: column;
 	gap: calc(var(--default-grid-baseline) * 2);
-	min-height: 0;
 	padding: calc(var(--default-grid-baseline) * 3);
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-container);
@@ -365,7 +368,6 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 
 .epi-card__empty {
 	flex: 1 1 auto;
-	min-height: 0;
 }
 
 .epi-card__more {
@@ -373,10 +375,15 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 	align-self: flex-start;
 }
 
+/* The date sits under the title at every width. Beside it, "23 de septiembre de
+   2026" took ~150px of a ~330px tile, and the ISP's all-caps titles broke inside
+   their words (FARMACOVIGILAN / CIA) in the column that was left. Stacked, the
+   title gets the tile's full width back — the rule a phone already had (#20). */
 .epi-row {
 	display: flex;
+	flex-direction: column;
 	align-items: flex-start;
-	gap: calc(var(--default-grid-baseline) * 2);
+	gap: calc(var(--default-grid-baseline) * 0.5);
 	min-height: var(--default-clickable-area);
 	padding: 0 calc(var(--default-grid-baseline) * 1.5);
 	border-radius: var(--border-radius-element);
@@ -386,9 +393,14 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 	background: var(--color-background-hover);
 }
 
+/* A tile is a summary: its latest title whole, at the small size, and the pane
+   it opens at full size. At the body size the ISP's 170-character titles made
+   their tiles twice as tall as their neighbours. */
 .epi-row a {
 	flex: 1;
 	min-width: 0;
+	font-size: var(--font-size-small);
+	line-height: 1.4;
 	color: var(--color-main-text);
 	text-decoration: none;
 	/* MINSAL titles carry 52-character tokens with no break opportunity in them
@@ -461,30 +473,4 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 	text-overflow: ellipsis;
 }
 
-/* Below the mobile breakpoint the grid becomes one column and the pane scrolls.
-   That is fine: what must not scroll is the desktop in the box. */
-@media (max-width: 1024px) {
-	.epi-inicio {
-		height: auto;
-		grid-template-rows: none;
-	}
-
-	/* The card can still be squeezed by the flex column above it, and min-height:0
-	   lets it shrink past its content — which is how the phone once showed a card
-	   header and its "Ver las 75 alertas" link with no alert in between (#20). The
-	   list no longer needs the same release: it stopped carrying min-height:0 and
-	   overflow:hidden when the card became content-sized. */
-	.epi-card {
-		min-height: auto;
-	}
-
-	/* The date moves under the title rather than beside it. At 360px the row is
-	   ~280px and the date was taking 90 of them, so a single alert ran to 13 lines
-	   and filled the whole screen. Stacked, the title gets the full width back. */
-	.epi-row {
-		flex-direction: column;
-		gap: calc(var(--default-grid-baseline) * 0.5);
-	}
-
-}
 </style>
