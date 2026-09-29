@@ -108,7 +108,8 @@ class AlertRepository {
 		 * retries. PageController::index() fetches synchronously while someone waits,
 		 * so against a host that drops packets rather than refusing them this is a
 		 * gateway timeout instead of the degraded banner. The cooldown is kept per
-		 * host (cooldownKey()), so a sibling's outage holds this read too (ADR-0017).
+		 * host (cooldownKey()), so a sibling's outage holds this read too — the
+		 * informe answers to the ISP host's the same way (ADR-0017).
 		 */
 		if ($this->cache->get($this->cooldownKey()) !== null) {
 			return $this->present($stored, true);
@@ -131,27 +132,54 @@ class AlertRepository {
 		 * a healthy-but-slow publisher. A stale serve is NOT the degraded
 		 * state: fetched_at carries the honest date and the banner appears
 		 * only when a revalidation actually fails (the cooldown it arms
-		 * makes the NEXT read degraded). The marker dedups the dispatch,
-		 * and its TTL self-heals a job that never runs.
+		 * makes the NEXT read degraded).
 		 */
 		if ($stored !== null) {
-			if ($this->cache->get($this->revalidatingKey()) === null) {
-				$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
-				// The class name as a string, deliberately: importing the
-				// job would close AlertRepository → RevalidateJob → Sources
-				// → AlertRepositories → AlertRepository, the cycle shape
-				// Phase 1 spent itself killing. The suite pins the string
-				// against RevalidateJob::class, so a rename answers as a
-				// failing test, not as a silently dead dispatch.
-				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => $this->fuente->id]);
-			}
+			$this->dispatch();
 
 			return $this->present($stored, false);
 		}
 
-		// Cold install: nothing stored, so there is no copy to serve and
-		// today's bounded synchronous fetch stays — once per install.
-		return $this->refresh($stored);
+		/*
+		 * Cold: nothing stored, so there is no copy to serve. The first cold
+		 * read fetches synchronously, as a fresh install always has — once per
+		 * cache lifetime, which is the marker's lifetime (an app update moves
+		 * the namespace, ADR-0012, and the next cold read is a first one again).
+		 * A later cold read — the first fetch failed and its cooldown lapsed
+		 * with nothing stored — moves the fetch behind the response and says
+		 * degraded (ADR-0017 D9): a never-stored fuente behind a blocked host
+		 * would otherwise hold a render for one bounded timeout every five
+		 * minutes, for as long as the host stays blocked.
+		 */
+		if ($this->cache->get($this->coldKey()) === null) {
+			$this->cache->set($this->coldKey(), 1, self::KEEP_FOR);
+
+			return $this->refresh($stored);
+		}
+
+		$this->dispatch();
+
+		return $this->present(null, true);
+	}
+
+	/**
+	 * One revalidation behind the response — the stale serve's and the later
+	 * cold read's. The marker dedups the dispatch, and its TTL self-heals a
+	 * job that never runs.
+	 */
+	private function dispatch(): void {
+		if ($this->cache->get($this->revalidatingKey()) !== null) {
+			return;
+		}
+
+		$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
+		// The class name as a string, deliberately: importing the
+		// job would close AlertRepository → RevalidateJob → Sources
+		// → AlertRepositories → AlertRepository, the cycle shape
+		// Phase 1 spent itself killing. The suite pins the string
+		// against RevalidateJob::class, so a rename answers as a
+		// failing test, not as a silently dead dispatch.
+		$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => $this->fuente->id]);
 	}
 
 	/**
@@ -518,6 +546,11 @@ class AlertRepository {
 		return 'revalidating-' . $this->fuente->id;
 	}
 
+	/** Set by the first cold read (get()); distinct from every other key, or it would be read as data. */
+	private function coldKey(): string {
+		return 'cold-' . $this->fuente->id;
+	}
+
 	/**
 	 * The revalidation a stale serve dispatched: the background half of
 	 * get()'s serve-then-refresh. Runs the same refresh()/store() the
@@ -525,9 +558,20 @@ class AlertRepository {
 	 * marker in a finally so a failed revalidation re-arms on the next
 	 * reader past the cooldown rather than suppressing dispatches until
 	 * the marker's TTL.
+	 *
+	 * The host's gates are asked again here, because a queued job passed
+	 * get()'s before a sibling met the outage (ADR-0017 D8): the hourly
+	 * pass dispatches one revalidation per stale fuente, and the first to
+	 * time out arms its host's cooldown — the rest must then ask nothing,
+	 * or one blocked host costs one timeout per fuente it serves. The
+	 * probe stays the one ask that goes through the brake.
 	 */
 	public function revalidate(): void {
 		try {
+			if ($this->cache->get($this->cooldownKey()) !== null || $this->freno->braked()) {
+				return;
+			}
+
 			$this->refresh($this->stored());
 		} finally {
 			$this->cache->remove($this->revalidatingKey());

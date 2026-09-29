@@ -91,7 +91,11 @@ class RefreshJobTest extends TestCase {
 
 		$this->runJob(throwFor: Sources::ALERTS);
 
-		self::assertSame([Sources::REPORTS], $this->fetched, 'the sibling fuente still got its pass');
+		self::assertSame(
+			array_values(array_diff(Sources::ALL, [Sources::ALERTS])),
+			$this->fetched,
+			'every sibling fuente still got its pass',
+		);
 		self::assertSame([Sources::ALERTS], $this->threw, 'the thrower was stepped over, not buried');
 		self::assertSame(0, $record->consecutive(Sources::ALERTS), 'the throw was not counted — a get() that throws is not an outage verdict, and ProbeRecord is ProbeJob\'s alone');
 	}

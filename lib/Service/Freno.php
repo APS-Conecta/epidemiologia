@@ -19,13 +19,15 @@ use Throwable;
  * single-impl rationale died with IspRepository, and this is one home for
  * the concept both siblings carried as a copy).
  *
- * One instance per request-grain — CONTEXT.md: "its grain is what is
- * requested", one MINSAL page, one ISP feed — constructed by the repository
- * that owns the grain, on the same cache it reads. The deliberately
- * different call-site rules (a deep page's or a document's refusal never
- * arms the read's brake — the cheap feed read must not pay for the deep
- * request's troubles) stay at their call sites; what this class makes
- * visible is that the curve itself was always one curve.
+ * One key per host (ADR-0017 D8): every fuente a host serves answers to one
+ * brake, so each repository builds its own instance on the host's key —
+ * `freno-{host}` — on the same cache it reads, and one refusal holds them
+ * all: the informe and the ISP alert feeds share www.ispch.gob.cl's, and a
+ * host that serves one fuente — degreyd's, epi's — brakes it alone. The
+ * deliberately different call-site rules (a deep page's or a document's
+ * refusal never arms the read's brake — the cheap feed read must not pay
+ * for the deep request's troubles) stay at their call sites; what this
+ * class makes visible is that the curve itself was always one curve.
  */
 class Freno {
 	public function __construct(

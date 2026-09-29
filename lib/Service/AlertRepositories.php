@@ -34,6 +34,16 @@ use Psr\Log\LoggerInterface;
  * once: the Fuente carries the one it was asked for.
  */
 class AlertRepositories {
+	/**
+	 * The ISP's host, as a brake-and-cooldown grain (ADR-0017 D8): every fuente
+	 * on www.ispch.gob.cl answers to one freno and one cooldown — the informe
+	 * (IspReportRepository) and the ISP alert feeds alike — so the first
+	 * timeout of a pass holds them all instead of each paying its own 15 s.
+	 * One home, because the key is only shared while both sides spell it
+	 * the same.
+	 */
+	public const ISP_HOST = 'isp';
+
 	/** @var array<string, AlertRepository> */
 	private array $built = [];
 
@@ -84,6 +94,25 @@ class AlertRepositories {
 				publisher: 'MINSAL',
 				name: 'MINSAL alerts',
 				subject: 'MINSAL alerts page',
+				parser: $this->pages,
+			),
+			/*
+			 * epi.minsal.cl's in-force page, read by the same PageParser as
+			 * degreyd's — the address is the only difference (its international
+			 * table's repeated "Descargar Documento" is what rowTitles() is for).
+			 * Not a copy of degreyd's list: 77 alerts against degreyd's 13, filed
+			 * where the Departamento de Epidemiología files them. Its own host,
+			 * because it is one: Cloudflare in front of it answers 403 to a
+			 * datacentre and 200 to a home connection, so its brake must never
+			 * hold degreyd's reads, nor degreyd's outage hold its.
+			 */
+			'epi_alerts' => new Fuente(
+				id: $id,
+				url: 'https://epi.minsal.cl/alertas-epidemiologicas-vigentes/',
+				host: 'epi',
+				publisher: 'MINSAL epi',
+				name: 'MINSAL epi alerts',
+				subject: 'MINSAL epi alerts page',
 				parser: $this->pages,
 			),
 		};

@@ -61,7 +61,7 @@ use Throwable;
  * exactly one implementation, and the no-single-impl rule stands (ADR-0010's
  * reopen clause closes again).
  *
- * It differs from MinsalRepository — whose lifecycle it otherwise mirrors,
+ * It differs from AlertRepository — whose lifecycle it otherwise mirrors,
  * table fallback and refusal-brake included — in exactly one rule, the one
  * that has always made these two siblings rather than one class: an informe's
  * zero items is always a failure, never a result. It shares with both of them
@@ -156,7 +156,7 @@ class IspReportRepository {
 	 */
 	private const CATALOGUE_ID = 'reports';
 
-	/** See MinsalRepository::MARKER_FOR — the same self-healing window. */
+	/** See AlertRepository::MARKER_FOR — the same self-healing window. */
 	private const MARKER_FOR = 300;
 
 	/**
@@ -282,10 +282,11 @@ class IspReportRepository {
 		$this->cache = $cacheFactory->createDistributed('epidemiologia');
 		$this->lock = $cacheFactory->createLocking('epidemiologia');
 		$this->appData = $appDataFactory->get(AppId::APP_ID);
-		// One grain — this feed — on the same cache it reads; the subject
-		// keeps the brake's log sentence byte-identical to the copy this
-		// replaces (L3-02).
-		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-isp-informes', 'The ISP informes feed');
+		// One grain — the ISP's host, not this feed (ADR-0017 D8) — on the
+		// same cache it reads: the ISP alert feeds brake under the same key,
+		// so one refusal holds every fuente on www.ispch.gob.cl, and the
+		// sentence names the host's publisher, as each of theirs does.
+		$this->freno = new Freno($this->cache, $this->time, $this->logger, 'freno-' . AlertRepositories::ISP_HOST, 'ISP');
 	}
 
 	/**
@@ -302,7 +303,8 @@ class IspReportRepository {
 		 * A failed refresh writes nothing, so the entry stays expired and every read
 		 * would retry. PageController::index() fetches synchronously while someone
 		 * waits, so against a host that drops packets rather than refusing them this
-		 * is a gateway timeout instead of the degraded banner.
+		 * is a gateway timeout instead of the degraded banner. Kept per host
+		 * (cooldownKey()): an ISP alert feed's timeout holds this read too.
 		 */
 		if ($this->cache->get($this->cooldownKey()) !== null) {
 			return $this->present($stored, true);
@@ -325,27 +327,50 @@ class IspReportRepository {
 		 * a healthy-but-slow publisher. A stale serve is NOT the degraded
 		 * state: fetched_at carries the honest date and the banner appears
 		 * only when a revalidation actually fails (the cooldown it arms
-		 * makes the NEXT read degraded). The marker dedups the dispatch,
-		 * and its TTL self-heals a job that never runs.
+		 * makes the NEXT read degraded).
 		 */
 		if ($stored !== null) {
-			if ($this->cache->get($this->revalidatingKey()) === null) {
-				$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
-				// The class name as a string, deliberately: importing the
-				// job would close IspReportRepository → RevalidateJob →
-				// Sources → IspReportRepository, the cycle shape Phase 1
-				// spent itself killing. The suite pins the string against
-				// RevalidateJob::class, so a rename answers as a failing
-				// test, not as a silently dead dispatch.
-				$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => self::CATALOGUE_ID]);
-			}
+			$this->dispatch();
 
 			return $this->present($stored, false);
 		}
 
-		// Cold reader: today's lock dance + refresh, extracted so the
-		// revalidator runs the identical path.
-		return $this->refreshLocked($stored);
+		/*
+		 * Cold reader: today's lock dance + refresh, extracted so the
+		 * revalidator runs the identical path — the first time. A later cold
+		 * read, with the first fetch failed and its cooldown lapsed, moves the
+		 * fetch behind the response and says degraded: the pipeline's rule,
+		 * for the same reason (AlertRepository::get(), ADR-0017 D9).
+		 */
+		if ($this->cache->get($this->coldKey()) === null) {
+			$this->cache->set($this->coldKey(), 1, self::KEEP_FOR);
+
+			return $this->refreshLocked($stored);
+		}
+
+		$this->dispatch();
+
+		return $this->present(null, true);
+	}
+
+	/**
+	 * One revalidation behind the response — the stale serve's and the later
+	 * cold read's. The marker dedups the dispatch, and its TTL self-heals a
+	 * job that never runs.
+	 */
+	private function dispatch(): void {
+		if ($this->cache->get($this->revalidatingKey()) !== null) {
+			return;
+		}
+
+		$this->cache->set($this->revalidatingKey(), 1, self::MARKER_FOR);
+		// The class name as a string, deliberately: importing the
+		// job would close IspReportRepository → RevalidateJob →
+		// Sources → IspReportRepository, the cycle shape Phase 1
+		// spent itself killing. The suite pins the string against
+		// RevalidateJob::class, so a rename answers as a failing
+		// test, not as a silently dead dispatch.
+		$this->jobs->add('OCA\\Epidemiologia\\BackgroundJob\\RevalidateJob', ['source' => self::CATALOGUE_ID]);
 	}
 
 	/**
@@ -355,9 +380,17 @@ class IspReportRepository {
 	 * in a finally so a failed revalidation re-arms on the next reader
 	 * past the cooldown rather than suppressing dispatches until the
 	 * marker's TTL.
+	 *
+	 * The host's gates are asked again first, as the pipeline's are
+	 * (AlertRepository::revalidate(), ADR-0017 D8): a job queued before an
+	 * ISP alert feed met the outage must not meet it a second time.
 	 */
 	public function revalidate(): void {
 		try {
+			if ($this->cache->get($this->cooldownKey()) !== null || $this->freno->braked()) {
+				return;
+			}
+
 			$this->refreshLocked($this->stored());
 		} finally {
 			$this->cache->remove($this->revalidatingKey());
@@ -439,7 +472,7 @@ class IspReportRepository {
 	/**
 	 * The zero-items path — and for an informe, zero items is ALWAYS a
 	 * failure, never a result: the rule that makes this class a sibling of
-	 * MinsalRepository rather than a second feed inside it. Caching an empty
+	 * AlertRepository rather than a second feed inside it. Caching an empty
 	 * parse would replace the series with an empty list, which a clinician
 	 * reads as "no hay informes" — so: leave the last good copy alone, cache
 	 * and table both, and say we are degraded.
@@ -1197,14 +1230,22 @@ class IspReportRepository {
 		return 'isp-informes';
 	}
 
-	/** Distinct from key(), or the cooldown flag would be read as the series. */
+	/**
+	 * Distinct from key(), or the cooldown flag would be read as the series.
+	 * The ISP host's, not this feed's — the freno's grain (ADR-0017 D8).
+	 */
 	private function cooldownKey(): string {
-		return 'cooldown-isp-informes';
+		return 'cooldown-' . AlertRepositories::ISP_HOST;
 	}
 
 	/** Distinct from key()/cooldownKey(), or the dispatch marker would be read as data. */
 	private function revalidatingKey(): string {
 		return 'revalidating-isp-informes';
+	}
+
+	/** Set by the first cold read (get()); distinct from every other key, or it would be read as data. */
+	private function coldKey(): string {
+		return 'cold-isp-informes';
 	}
 
 	private function lockKey(): string {

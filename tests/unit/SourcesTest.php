@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\AlertRepositories;
 use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
 use OCA\Epidemiologia\Service\Sources;
@@ -21,6 +22,13 @@ use PHPUnit\Framework\TestCase;
  */
 class SourcesTest extends TestCase {
 	use Doubles;
+
+	/** @var list<string> every door the ledgered() pipelines were asked through, as "door id", in order */
+	private array $asked = [];
+
+	protected function setUp(): void {
+		$this->asked = [];
+	}
 
 	public function testEveryIdResolvesToAPayload(): void {
 		$sources = $this->sources();
@@ -56,22 +64,48 @@ class SourcesTest extends TestCase {
 	 * invisible lesson; see the class docblock).
 	 */
 	public function testEveryIdCanBeRevalidated(): void {
-		$revalidated = [];
-		$minsal = $this->createMock(AlertRepository::class);
-		$minsal->method('revalidate')->willReturnCallback(function () use (&$revalidated): void {
-			$revalidated[] = Sources::ALERTS;
-		});
 		$informes = $this->createMock(IspReportRepository::class);
-		$informes->method('revalidate')->willReturnCallback(function () use (&$revalidated): void {
-			$revalidated[] = Sources::REPORTS;
+		$informes->method('revalidate')->willReturnCallback(function (): void {
+			$this->asked[] = 'revalidate ' . Sources::REPORTS;
 		});
 
-		$sources = new Sources($this->alertRepositories($minsal), $informes);
+		$sources = new Sources($this->ledgered(), $informes);
 		foreach (Sources::ALL as $id) {
 			$sources->revalidate($id);
 		}
 
-		self::assertSame(Sources::ALL, $revalidated, 'revalidate walks the catalogue like every other door');
+		self::assertSame(
+			array_map(static fn (string $id): string => "revalidate $id", Sources::ALL),
+			$this->asked,
+			'revalidate walks the catalogue like every other door, each id to its own pipeline',
+		);
+	}
+
+	/**
+	 * Each alert door reaches the pipeline of the id it was asked for. The
+	 * shared double answers every id with one repository, so it cannot see a
+	 * copied arm: `self::EPI => $this->alerts->repository(self::ALERTS)`
+	 * serves degreyd's alerts under epi's name and passes every walk above.
+	 * With two alert fuentes on one factory (ADR-0017), that arm is one
+	 * paste away in each of the four methods that take an id.
+	 */
+	public function testEachAlertIdReachesItsOwnPipeline(): void {
+		$sources = new Sources($this->ledgered(), $this->createMock(IspReportRepository::class));
+		$alerts = array_values(array_diff(Sources::ALL, [Sources::REPORTS]));
+
+		foreach ($alerts as $id) {
+			$sources->get($id);
+			$sources->probe($id);
+		}
+		$sources->search('sarampión');
+
+		self::assertSame(
+			[
+				...array_merge(...array_map(static fn (string $id): array => ["get $id", "probe $id"], $alerts)),
+				...array_map(static fn (string $id): string => "search $id", $alerts),
+			],
+			$this->asked,
+		);
 	}
 
 	/**
@@ -122,16 +156,18 @@ class SourcesTest extends TestCase {
 	/**
 	 * A hit has to carry where it came from, or the caller cannot label it — and
 	 * CONTEXT.md keeps alerta sanitaria and alerta vigente as different objects
-	 * that are never merged. With the alertas sanitarias retired (ADR-0016) there
-	 * is one searchable fuente; the property has to hold anyway, because the label
-	 * is what lets a caller say which institution published what a reader found.
+	 * that are never merged. Every alert fuente is searched (ADR-0017), the
+	 * double answers the same hit for each, and each hit carries the id it came
+	 * from: the label is what lets a caller say which institution published
+	 * what a reader found.
 	 */
 	public function testSearchCarriesTheSourceWithEachHit(): void {
 		$hits = $this->sources()->search('sarampión');
 
 		self::assertSame(
-			[Sources::ALERTS],
+			array_values(array_diff(Sources::ALL, [Sources::REPORTS])),
 			array_column($hits, 'source'),
+			'every alert fuente is searched, in the catalogue\'s order',
 		);
 		self::assertSame('Una alerta del MINSAL', $hits[0]['item']['title']);
 	}
@@ -209,5 +245,40 @@ class SourcesTest extends TestCase {
 		$informes->method('probe')->willReturn(true);
 
 		return new Sources($this->alertRepositories($minsal), $informes);
+	}
+
+	/**
+	 * A factory double that hands each id a pipeline of its own, and ledgers
+	 * every door asked through it as "door id" in $this->asked — the double
+	 * that can tell one fuente's pipeline from another's, which the shared
+	 * alertRepositories() cannot.
+	 */
+	private function ledgered(): AlertRepositories {
+		$factory = $this->createMock(AlertRepositories::class);
+		$factory->method('repository')->willReturnCallback(function (string $id): AlertRepository {
+			$repository = $this->createMock(AlertRepository::class);
+			$repository->method('get')->willReturnCallback(function () use ($id): array {
+				$this->asked[] = "get $id";
+
+				return ['items' => [], 'fetched_at' => null, 'degraded' => false];
+			});
+			$repository->method('probe')->willReturnCallback(function () use ($id): bool {
+				$this->asked[] = "probe $id";
+
+				return true;
+			});
+			$repository->method('revalidate')->willReturnCallback(function () use ($id): void {
+				$this->asked[] = "revalidate $id";
+			});
+			$repository->method('search')->willReturnCallback(function () use ($id): array {
+				$this->asked[] = "search $id";
+
+				return [];
+			});
+
+			return $repository;
+		});
+
+		return $factory;
 	}
 }

@@ -42,7 +42,8 @@ use Throwable;
  * MinsalRepositoryTest while degreyd had a class of its own; the pipeline is
  * built here the way Sources asks for it — through AlertRepositories — so every
  * test below also pins degreyd's configuration: its address (fixture() answers
- * degreyd.minsal.cl alone), its keys and its sentences.
+ * degreyd.minsal.cl, and epi.minsal.cl only for epi's own tests), its keys and
+ * its sentences.
  */
 class AlertRepositoryTest extends TestCase {
 	use Doubles;
@@ -572,6 +573,77 @@ class AlertRepositoryTest extends TestCase {
 		self::assertSame([], $this->jobs, 'no dispatch without a copy to serve');
 	}
 
+	/**
+	 * Sync once, then behind the response (ADR-0017 D9). The first cold read
+	 * still fetches while someone waits — a fresh install has nothing else to
+	 * show. Once that fetch failed and its cooldown lapsed with nothing
+	 * stored, the next cold read asks nothing: it dispatches the revalidation
+	 * and says degraded, so a blocked host costs a render one bounded wait per
+	 * cache lifetime instead of one every five minutes. The revalidation it
+	 * dispatched is what fills the fuente.
+	 */
+	public function testASecondColdReadMovesTheFetchBehindTheResponse(): void {
+		$first = $this->repository(offline: true)->get();
+		self::assertTrue($first['degraded']);
+		self::assertCount(1, $this->requested, 'precondition: the first cold read fetched while someone waited');
+
+		$second = $this->repository(offline: true, now: self::NOW + 301)->get();
+		$third = $this->repository(offline: true, now: self::NOW + 302)->get();
+
+		self::assertCount(1, $this->requested, 'past the cooldown, a cold read asks nothing while someone waits');
+		self::assertSame(['items' => [], 'fetched_at' => null, 'degraded' => true], $second, 'nothing to serve is degraded, never an empty healthy list');
+		self::assertSame($second, $third);
+		self::assertSame(
+			[[RevalidateJob::class, ['source' => Sources::ALERTS]]],
+			$this->jobs,
+			'one dispatch behind the response, deduped by the marker',
+		);
+
+		$this->repository(now: self::NOW + 303)->revalidate();
+		$filled = $this->repository(now: self::NOW + 304)->get();
+
+		self::assertFalse($filled['degraded'], 'the revalidation it dispatched filled the fuente');
+		self::assertCount(13, $filled['items']);
+	}
+
+	/**
+	 * The revalidator asks the host's gates again (ADR-0017 D8). The hourly
+	 * pass queues one revalidation per stale fuente, and the first of them to
+	 * meet an outage arms its host's cooldown — seeded here as any fuente on
+	 * the host writes it, after this job was queued. The job behind it asks
+	 * nothing, and still frees its marker for the reader past the cooldown.
+	 */
+	public function testAQueuedRevalidationMakesNoRequestWhileTheHostCoolsDown(): void {
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 7200)->get();
+		self::assertCount(1, $this->jobs, 'precondition: the stale read queued its revalidation');
+
+		$this->cache(self::NOW + 7200)->set('cooldown-alerts', 1, 300);
+		$this->repository(now: self::NOW + 7210)->revalidate();
+
+		self::assertCount(1, $this->requested, 'a revalidation queued behind a cooling host asks nothing');
+		self::assertArrayNotHasKey('revalidating-' . Sources::ALERTS, $this->store, 'and the skip still frees the marker');
+	}
+
+	/**
+	 * The brake's half of the same guard: past the cooldown a refusal leaves
+	 * and inside its brake, a queued revalidation asks nothing and escalates
+	 * nothing — the probe stays the one ask that goes through the brake.
+	 */
+	public function testAQueuedRevalidationMakesNoRequestWhileTheHostIsBraked(): void {
+		$this->repository()->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->revalidate();
+
+		$this->repository(refused: 403, now: self::NOW + 7501)->revalidate();
+
+		self::assertCount(2, $this->requested, 'a braked host is not asked by a queued revalidation');
+		self::assertCount(
+			1,
+			array_filter($this->warnings(), static fn (string $w): bool => str_contains($w, 'answered 403')),
+			'nothing asked, nothing escalated',
+		);
+	}
+
 	// --- search --------------------------------------------------------------
 
 	public function testFoldsAccentsSoSarampionFindsSarampion(): void {
@@ -850,6 +922,50 @@ class AlertRepositoryTest extends TestCase {
 		self::assertSame(15, $this->options[0]['timeout'] ?? null, 'the read stays bounded — a gate that blocks silently is not a gate (#130)');
 	}
 
+	// --- epi: a second page on a host of its own (ADR-0017) -----------------
+
+	/**
+	 * epi.minsal.cl is read by the same parser from its own address, into its
+	 * own cache entry and its own table scope — and its host is its own:
+	 * degreyd's outage, left behind as degreyd's cooldown, does not hold it.
+	 */
+	public function testEpiReadsItsOwnPageUnderItsOwnHost(): void {
+		$this->repository(offline: true)->get();
+		$this->requested = [];
+		$this->scopes = [];
+
+		$epi = $this->repositories()->repository(Sources::EPI)->get();
+
+		self::assertFalse($epi['degraded'], 'degreyd\'s host being down is not epi\'s');
+		self::assertCount(77, $epi['items']);
+		self::assertSame(['https://epi.minsal.cl/alertas-epidemiologicas-vigentes/'], $this->requested);
+		self::assertSame(['epi_alerts', 'epi_alerts'], $this->scopes, 'read and replaced under its own fuente');
+		self::assertArrayHasKey('feed-epi_alerts', $this->store);
+	}
+
+	/**
+	 * The other direction, in epi's own sentences: Cloudflare's 403 to a
+	 * datacentre brakes epi's host, names epi in the log, and leaves
+	 * degreyd's reads asking.
+	 */
+	public function testARefusalFromEpiBrakesEpiAloneAndSaysSo(): void {
+		$this->repositories(refused: 403)->repository(Sources::EPI)->get();
+
+		self::assertSame(
+			[
+				'MINSAL epi answered 403; under freno 1 time(s), waiting 7200s',
+				'The MINSAL epi alerts page could not be read',
+			],
+			$this->warnings(),
+		);
+		self::assertArrayHasKey('freno-epi', $this->store);
+
+		$degreyd = $this->repository()->get();
+
+		self::assertFalse($degreyd['degraded'], 'epi\'s brake does not hold degreyd');
+		self::assertCount(2, $this->requested);
+	}
+
 	// --- the factory -------------------------------------------------------
 
 	/**
@@ -1044,9 +1160,9 @@ class AlertRepositoryTest extends TestCase {
 	}
 
 	/**
-	 * The one real captured response this suite is tested against. MINSAL serves
-	 * this fuente from exactly one fixed URL now, so there is no slug or category
-	 * left to dispatch on the way IspRepositoryTest still has to.
+	 * The real captured responses this suite is tested against: degreyd's page,
+	 * and epi's for epi's own tests. Each fuente reads exactly one fixed URL, so
+	 * the host is all there is to dispatch on.
 	 *
 	 * An unmatched url is recorded and asserted in tearDown, NOT thrown here.
 	 * Throwing looks right and is useless: this runs inside the client's get(),
@@ -1059,6 +1175,10 @@ class AlertRepositoryTest extends TestCase {
 	 * Pass `body:` for a request that is meant to have no fixture.
 	 */
 	private function fixture(string $url): string {
+		if (str_contains($url, 'epi.minsal.cl')) {
+			return (string)file_get_contents(__DIR__ . '/fixtures/epi-alertas-vigentes.html');
+		}
+
 		if (!str_contains($url, 'degreyd.minsal.cl')) {
 			$this->unmatched[] = $url;
 

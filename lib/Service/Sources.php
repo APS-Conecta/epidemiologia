@@ -34,17 +34,25 @@ use OCP\IL10N;
  */
 class Sources {
 	public const ALERTS = 'alerts';
+	public const EPI = 'epi_alerts';
 	public const REPORTS = 'reports';
 
 	/** Every source, in the order the app presents them. */
-	public const ALL = [self::ALERTS, self::REPORTS];
+	public const ALL = [
+		self::ALERTS,
+		self::EPI,
+		self::REPORTS,
+	];
 
 	/**
 	 * The sources that carry alerts somebody would search for by subject. An
 	 * informe is a weekly PDF identified by its semana epidemiológica, so matching
 	 * "sarampión" against its title finds nothing a reader wanted.
 	 */
-	private const SEARCHABLE = [self::ALERTS];
+	private const SEARCHABLE = [
+		self::ALERTS,
+		self::EPI,
+	];
 
 	public function __construct(
 		private AlertRepositories $alerts,
@@ -78,6 +86,7 @@ class Sources {
 		// front of a clinician.
 		$source = match ($id) {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->get(),
+			self::EPI => $this->alerts->repository(self::EPI)->get(),
 			self::REPORTS => $this->informes->get(),
 		};
 
@@ -93,6 +102,7 @@ class Sources {
 	public function probe(string $id): bool {
 		return match ($id) {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->probe(),
+			self::EPI => $this->alerts->repository(self::EPI)->probe(),
 			self::REPORTS => $this->informes->probe(),
 		};
 	}
@@ -105,6 +115,7 @@ class Sources {
 	public function revalidate(string $id): void {
 		match ($id) {
 			self::ALERTS => $this->alerts->repository(self::ALERTS)->revalidate(),
+			self::EPI => $this->alerts->repository(self::EPI)->revalidate(),
 			self::REPORTS => $this->informes->revalidate(),
 		};
 	}
@@ -131,6 +142,7 @@ class Sources {
 	public function name(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('las alertas epidemiológicas vigentes del MINSAL'),
+			self::EPI => $l->t('las alertas del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('el informe semanal de Circulación de Virus Respiratorios del ISP'),
 		};
 	}
@@ -144,6 +156,7 @@ class Sources {
 	public function kind(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('Alerta epidemiológica MINSAL'),
+			self::EPI => $l->t('Alerta del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('Informe del ISP'),
 		};
 	}
@@ -160,6 +173,7 @@ class Sources {
 		foreach (self::SEARCHABLE as $id) {
 			$items = match ($id) {
 				self::ALERTS => $this->alerts->repository(self::ALERTS)->search($term),
+				self::EPI => $this->alerts->repository(self::EPI)->search($term),
 			};
 
 			foreach ($items as $item) {

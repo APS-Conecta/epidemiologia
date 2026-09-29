@@ -129,7 +129,14 @@ class AlertProviderTest extends TestCase {
 
 		$result = $this->provider(new Sources($this->alertRepositories($minsal), $informes))->search($this->user(), $this->query('sarampión'));
 
-		self::assertCount(1, $result->jsonSerialize()['entries']);
+		// The one double answers for every alert fuente, so its one hit comes
+		// back once per searchable fuente — and every alert fuente is one
+		// (SourcesTest::testSearchCarriesTheSourceWithEachHit).
+		self::assertCount(
+			count(array_diff(Sources::ALL, [Sources::REPORTS])),
+			$result->jsonSerialize()['entries'],
+			'the cache-only search answered for every alert fuente, with every network door armed to throw',
+		);
 	}
 
 	// -----------------------------------------------------------------------
