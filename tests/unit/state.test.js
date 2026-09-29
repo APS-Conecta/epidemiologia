@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as stateExports from '../../src/state.js'
-import { alerts, reports, source } from '../../src/state.js'
+import { reports, source } from '../../src/state.js'
 import { degradedText, emptyText, fecha, mes, monthOptions, tally, tipoOptions, yearOptions, FUENTES } from '../../src/pure.js'
 import { PANES } from '../../src/panes.js'
 
@@ -195,7 +195,6 @@ describe('the state half (L3-17)', () => {
 	// fallback {} — which makes THIS suite the missing-key path (L3-14):
 	// an undefined key reads as degraded, never as a publisher saying zero.
 	it('reads a missing fuente as degraded, not as empty', () => {
-		expect(alerts).toEqual({ items: [], fetched_at: null, degraded: true })
 		expect(reports).toEqual({ items: [], fetched_at: null, degraded: true })
 	})
 

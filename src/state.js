@@ -43,9 +43,6 @@ export function source(id) {
 	return sources[id] === undefined ? DEGRADED_EMPTY : sources[id]
 }
 
-/** degreyd's list, read by name for Inicio's alertas card until the hero board replaces it. */
-export const alerts = source('alerts')
-
 /** The one fuente read by name: the informe, which is no alert sector (ReportPane, Inicio's last card). */
 export const reports = source('reports')
 

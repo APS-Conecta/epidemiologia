@@ -71,4 +71,19 @@ describe('attribution', () => {
 		expect(SITIOS.reports).toBe('https://www.ispch.gob.cl/virusrespiratorios/')
 		expect(new Set(Object.values(SITIOS)).size).toBe(Object.keys(SITIOS).length)
 	})
+
+	// Inicio's tiles sit under no navigation caption, so each names its publisher
+	// itself — with the caption's own string, from the one place both read it.
+	// Two copies of "ISP" is how the navigation and the board would come to
+	// disagree about who publishes a sector.
+	it('names each publisher the same way over its rows and over its tiles', () => {
+		expect(SECTORS.map(({ group }) => FUENTES[group].caption)).toEqual(['MINSAL', 'MINSAL', 'ISP', 'ISP', 'ISP', 'OPS/OMS'])
+		for (const group of new Set(SECTORS.map((p) => p.group))) {
+			expect(src('App.vue'), group).toContain(`:name="FUENTES.${group}.caption"`)
+		}
+		expect(src('App.vue')).not.toMatch(/NcAppNavigationCaption :name="t\(/)
+		expect(src('components/InicioPane.vue')).toContain('publisher: fuente.caption')
+		expect(src('components/InicioPane.vue')).toContain('const fuente = FUENTES[pane.group]')
+		expect(src('components/InicioPane.vue')).not.toContain('FUENTES.minsal')
+	})
 })

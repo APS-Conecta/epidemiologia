@@ -23,7 +23,10 @@ export { fold }
  * docblock is the sentence-level rationale.
  *
  * Keyed by the registry's group (src/panes.js), which groups by publisher, so a
- * sector pane finds its publisher as FUENTES[group]. `count` is the publisher's
+ * sector pane finds its publisher as FUENTES[group]. `caption` is the publisher
+ * standing alone, with no article: the navigation's caption over its rows, and
+ * the label over its tiles on Inicio — one string, so the two cannot drift.
+ * `count` is the publisher's
  * noun for what its lists hold, as the toolbar counts them: MINSAL's two lists
  * are in-force sets, so "vigentes" carries a fact; the ISP's are alertas; the
  * OPS/OMS list mixes alertas, actualizaciones and other publications, so it
@@ -32,14 +35,17 @@ export { fold }
 export const FUENTES = {
 	minsal: {
 		name: 'MINSAL',
+		caption: 'MINSAL',
 		count: (k) => n('epidemiologia', '%n alerta vigente', '%n alertas vigentes', k),
 	},
 	isp: {
 		name: t('epidemiologia', 'el ISP'),
+		caption: t('epidemiologia', 'ISP'),
 		count: (k) => n('epidemiologia', '%n alerta', '%n alertas', k),
 	},
 	ops: {
 		name: t('epidemiologia', 'la OPS/OMS'),
+		caption: t('epidemiologia', 'OPS/OMS'),
 		count: (k) => n('epidemiologia', '%n publicación', '%n publicaciones', k),
 	},
 }

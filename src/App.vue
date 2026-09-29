@@ -38,7 +38,7 @@
 			<!-- The registry's 'minsal' group, rendered under one caption because
 			     the rows share a publisher (ADR-0008) — see src/panes.js. -->
 			<NcAppNavigationList :aria-labelledby="'epi-nav-minsal'">
-				<NcAppNavigationCaption :name="t('epidemiologia', 'MINSAL')" heading-id="epi-nav-minsal" />
+				<NcAppNavigationCaption :name="FUENTES.minsal.caption" heading-id="epi-nav-minsal" />
 				<NcAppNavigationItem v-for="pane in minsal"
 					:key="pane.id"
 					:name="pane.name"
@@ -63,7 +63,7 @@
 			     comment cannot notice, and the last number written here (538px in
 			     682px at 360×740, 2026-08-05) measured a different set of rows. -->
 			<NcAppNavigationList :aria-labelledby="'epi-nav-isp'">
-				<NcAppNavigationCaption :name="t('epidemiologia', 'ISP')" heading-id="epi-nav-isp" />
+				<NcAppNavigationCaption :name="FUENTES.isp.caption" heading-id="epi-nav-isp" />
 				<NcAppNavigationItem v-for="pane in isp"
 					:key="pane.id"
 					:name="pane.name"
@@ -79,7 +79,7 @@
 			     two above (ADR-0008) and written out the same way. Its one row names
 			     what the list holds; the caption names whose it is. -->
 			<NcAppNavigationList :aria-labelledby="'epi-nav-ops'">
-				<NcAppNavigationCaption :name="t('epidemiologia', 'OPS/OMS')" heading-id="epi-nav-ops" />
+				<NcAppNavigationCaption :name="FUENTES.ops.caption" heading-id="epi-nav-ops" />
 				<NcAppNavigationItem v-for="pane in ops"
 					:key="pane.id"
 					:name="pane.name"
@@ -176,6 +176,7 @@ import Pill from 'vue-material-design-icons/Pill.vue'
 import ShieldAccount from 'vue-material-design-icons/ShieldAccount.vue'
 import Virus from 'vue-material-design-icons/Virus.vue'
 import { PANES, paneName } from './panes.js'
+import { FUENTES } from './pure.js'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import InicioPane from './components/InicioPane.vue'
 import AlertsPane from './components/AlertsPane.vue'
