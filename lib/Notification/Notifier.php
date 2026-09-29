@@ -70,13 +70,29 @@ class Notifier implements INotifier {
 			? $l->n('Lleva %n día sin poder leerse.', 'Lleva %n días sin poder leerse.', $days)
 			: '';
 
+		// A host's outage rings once (ProbeJob::ring()), under its first failing
+		// fuente — so the bell names the others that failed with it, each the way
+		// the catalogue names it, or "the informe could not be read" would hide
+		// three ISP alert feeds down beside it. An id the catalogue no longer has
+		// is skipped rather than refused: the row outlives renames, and the rest
+		// of it still says something true.
+		$with = array_values(array_filter(
+			array_map(strval(...), (array)($params['with'] ?? [])),
+			static fn (string $id): bool => in_array($id, Sources::ALL, true),
+		));
+		$also = $with === []
+			? ''
+			: $l->t('En el mismo servidor tampoco se pudo leer: %s.', [
+				implode('; ', array_map(fn (string $id): string => $this->sources->name($id, $l), $with)),
+			]);
+
 		return $notification
 			->setParsedSubject($l->t('Epidemiología: no se pudo leer %s', [$what]))
 			->setParsedMessage(trim($since . ' ' . $l->t(
 				'La fuente cambió o no respondió, así que la lista mostrada puede estar '
 				. 'incompleta. Se sigue mostrando la última copia buena. Revisa el registro de la '
 				. 'instancia para ver qué falló.'
-			)))
+			) . ' ' . $also))
 			// setIcon() rejects relative URLs. app-dark.svg is the unfilled variant —
 			// the notification tray is a light surface, unlike the app menu.
 			->setIcon($this->urls->getAbsoluteURL(

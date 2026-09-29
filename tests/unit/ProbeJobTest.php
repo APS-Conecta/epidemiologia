@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\BackgroundJob\ProbeJob;
+use OCA\Epidemiologia\Service\Probe;
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -30,6 +31,24 @@ class ProbeJobTest extends TestCase {
 
 	private const NOW = 1785585600;
 
+	/**
+	 * The hosts the double answers with — the real map, pinned against the
+	 * factory by AlertRepositoryTest::testTheIspsFuentesShareOneHostAndEveryOtherHostIsItsOwn:
+	 * the informe and the ISP's three alert feeds on one host, everyone else alone.
+	 */
+	private const HOSTS = [
+		Sources::REPORTS => 'isp',
+		Sources::ISP_ANAMED => 'isp',
+		Sources::ISP_PHARMACOVIGILANCE => 'isp',
+		Sources::ISP_COSMETICS => 'isp',
+	];
+
+	/** @var list<string> ids the job asked Sources::probe() for, in order */
+	private array $probed = [];
+
+	/** @var list<array<string, mixed>> the parameters of every bell rung, in order */
+	private array $bells = [];
+
 	/** @var list<string> uids notified, in order, one entry per notify() */
 	private array $notified = [];
 
@@ -40,6 +59,8 @@ class ProbeJobTest extends TestCase {
 		$this->config = [];
 		$this->notified = [];
 		$this->cleared = 0;
+		$this->probed = [];
+		$this->bells = [];
 	}
 
 	public function testAHealthyProbeTellsNobody(): void {
@@ -62,15 +83,15 @@ class ProbeJobTest extends TestCase {
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
 		$this->runDays(2, healthy: false);
 
-		// every fuente in the catalogue x one admin
-		self::assertSame(array_fill(0, count(Sources::ALL), 'admin'), $this->notified);
+		// one bell per host whose fuentes failed x one admin — not one per fuente
+		self::assertSame(array_fill(0, $this->hosts(), 'admin'), $this->notified);
 	}
 
 	public function testAThirtyDayOutageProducesThreeAlarmsAndNotThirty(): void {
 		$this->runDays(30, healthy: false);
 
-		// days 2, 7 and 30, for each source — not thirty per source
-		self::assertCount(3 * count(Sources::ALL), $this->notified);
+		// days 2, 7 and 30, for each host — not thirty per host
+		self::assertCount(3 * $this->hosts(), $this->notified);
 		self::assertSame(30, $this->probeRecord()->consecutive('alerts'));
 	}
 
@@ -84,9 +105,9 @@ class ProbeJobTest extends TestCase {
 	public function testEveryAlarmClearsTheOldOneFirst(): void {
 		$this->runDays(7, healthy: false);
 
-		// Two alarms per source (days 2 and 7), each preceded by a markProcessed, so
-		// the bell holds one row per source rather than one per alarm.
-		self::assertSame(2 * count(Sources::ALL), $this->cleared);
+		// Two alarms per host (days 2 and 7), each preceded by a markProcessed, so
+		// the bell holds one row per host rather than one per alarm.
+		self::assertSame(2 * $this->hosts(), $this->cleared);
 	}
 
 	public function testRecoveryResetsTheStateAndTakesTheNotificationOffTheBell(): void {
@@ -136,7 +157,7 @@ class ProbeJobTest extends TestCase {
 		$this->config['notify_groups'] = ['informatica'];
 		$this->runDays(2, healthy: false);
 
-		self::assertSame(array_fill(0, count(Sources::ALL), 'tecnico'), $this->notified);
+		self::assertSame(array_fill(0, $this->hosts(), 'tecnico'), $this->notified);
 	}
 
 	/**
@@ -153,34 +174,105 @@ class ProbeJobTest extends TestCase {
 		self::assertSame(0, $this->probeRecord()->consecutive(Sources::REPORTS));
 	}
 
+	/**
+	 * The host grain (ADR-0017 D8), applied to the sondeo. REPORTS is the ISP's
+	 * first fuente in ALL; when its host gives no answer at all, the ISP's three
+	 * alert feeds are not asked in the same pass — each would pay the same
+	 * 15-second timeout and learn nothing the first did not (the lab,
+	 * 2026-09-29: four in a row, a minute of cron) — and are recorded as
+	 * failing with it, so each fuente's count stays true.
+	 */
+	public function testAHostThatGivesNoAnswerIsAskedOncePerPass(): void {
+		$this->runDays(1, healthy: true, verdicts: [Sources::REPORTS => Probe::Unreachable]);
+
+		$held = [Sources::ISP_ANAMED, Sources::ISP_PHARMACOVIGILANCE, Sources::ISP_COSMETICS];
+		self::assertSame(array_values(array_diff(Sources::ALL, $held)), $this->probed,
+			'the ISP asked once, every other host asked as before');
+		foreach ([Sources::REPORTS, ...$held] as $id) {
+			self::assertSame(1, $this->probeRecord()->consecutive($id), "$id is recorded as failing with its host");
+		}
+		self::assertSame(0, $this->probeRecord()->consecutive(Sources::PAHO), 'a host that answered is judged on its own');
+	}
+
+	/**
+	 * The other failures hold nobody. A fuente its host answered for — a
+	 * restructured page, a refusal — is that address's business, and a probe
+	 * that threw is the fuente's own fault (L3-03): its siblings get their asks.
+	 */
+	public function testOnlyAHostWithNoAnswerHoldsItsSiblings(): void {
+		$this->runDays(1, healthy: true, throwFor: Sources::REPORTS, verdicts: [Sources::ISP_ANAMED => Probe::Unreadable]);
+
+		self::assertSame(Sources::ALL, $this->probed, 'every fuente asked');
+		self::assertSame(1, $this->probeRecord()->consecutive(Sources::REPORTS));
+		self::assertSame(1, $this->probeRecord()->consecutive(Sources::ISP_ANAMED));
+		self::assertSame(0, $this->probeRecord()->consecutive(Sources::ISP_PHARMACOVIGILANCE));
+	}
+
+	/**
+	 * One outage, one bell: a host's failing fuentes ring together on their
+	 * day, under the first of them, naming the rest. Four bells for one
+	 * unreachable ISP told an admin four times what one sentence says.
+	 */
+	public function testAHostOutageRingsOneBellNamingTheFuentesItHeld(): void {
+		$this->runDays(2, healthy: true, verdicts: [Sources::REPORTS => Probe::Unreachable]);
+
+		self::assertSame(['admin'], $this->notified);
+		self::assertSame([[
+			'source' => Sources::REPORTS,
+			'days' => 2,
+			'with' => [Sources::ISP_ANAMED, Sources::ISP_PHARMACOVIGILANCE, Sources::ISP_COSMETICS],
+		]], $this->bells);
+	}
+
 	// -----------------------------------------------------------------------
 
-	private function runDays(int $days, bool $healthy, ?string $throwFor = null): void {
+	/** How many hosts the catalogue spans — one bell each when all fail. */
+	private function hosts(): int {
+		return count(array_unique(array_map(static fn (string $id): string => self::HOSTS[$id] ?? $id, Sources::ALL)));
+	}
+
+	/** @param array<string, Probe> $verdicts per-id answers; the rest follow $healthy */
+	private function runDays(int $days, bool $healthy, ?string $throwFor = null, array $verdicts = []): void {
 		for ($day = 0; $day < $days; $day++) {
-			$job = $this->job($healthy, self::NOW + $day * 86400, $throwFor);
+			$job = $this->job($healthy, self::NOW + $day * 86400, $throwFor, $verdicts);
 			(new ReflectionMethod($job, 'run'))->invoke($job, null);
 		}
 	}
 
-	private function job(bool $healthy, int $now, ?string $throwFor = null): ProbeJob {
+	/** @param array<string, Probe> $verdicts */
+	private function job(bool $healthy, int $now, ?string $throwFor = null, array $verdicts = []): ProbeJob {
 		$sources = $this->createMock(Sources::class);
 		$sources->method('probe')->willReturnCallback(
-			function (string $id) use ($healthy, $throwFor): bool {
+			function (string $id) use ($healthy, $throwFor, $verdicts): Probe {
+				$this->probed[] = $id;
 				if ($id === $throwFor) {
 					throw new RuntimeException('the probe threw instead of answering');
 				}
 
-				return $healthy;
+				// A failing fuente answers Unreadable unless told otherwise: the host
+				// answered, so nobody is held — each keeps its own ask and count.
+				return $verdicts[$id] ?? ($healthy ? Probe::Healthy : Probe::Unreadable);
 			},
 		);
+		$sources->method('host')->willReturnCallback(static fn (string $id): string => self::HOSTS[$id] ?? $id);
 
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn($now);
 
 		$notification = $this->createMock(INotification::class);
-		foreach (['setApp', 'setSubject', 'setObject', 'setDateTime', 'setUser'] as $setter) {
+		foreach (['setApp', 'setObject', 'setDateTime', 'setUser'] as $setter) {
 			$notification->method($setter)->willReturnSelf();
 		}
+		// A bell's parameters are what it says; match() sets the subject without any.
+		$notification->method('setSubject')->willReturnCallback(
+			function (string $subject, array $parameters = []) use ($notification): INotification {
+				if ($parameters !== []) {
+					$this->bells[] = $parameters;
+				}
+
+				return $notification;
+			},
+		);
 		$notification->method('getUser')->willReturnCallback(fn (): string => $this->lastUid);
 
 		$notifications = $this->createMock(IManager::class);

@@ -30,9 +30,10 @@ and then only `Sources` below applies to it on the backend.
 - [ ] `Sources::get()`'s match arm — default-less on purpose; an id in `ALL`
       without an arm throws `UnhandledMatchError`, and `SourcesTest` walks
       `ALL` so the failure lands in the suite, not in front of a clinician.
-- [ ] `Sources::probe()`, `revalidate()`, `name()`, `kind()` arms — same
-      rule. `name()` is mid-sentence Spanish with the institution in the
-      phrase.
+- [ ] `Sources::probe()`, `revalidate()`, `name()`, `kind()`, `host()` arms —
+      same rule. `name()` is mid-sentence Spanish with the institution in the
+      phrase; `host()` asks `AlertRepositories::host()` for an alert fuente,
+      so a host is spelled once, in its `Fuente`.
 - [ ] `SEARCHABLE`, only if the fuente carries alerts somebody would search
       by subject — and then `search()`'s match arm too.
 - [ ] `ACCUMULATING` and `converge()`'s arm, only for a fuente that keeps

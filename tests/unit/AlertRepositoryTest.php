@@ -13,6 +13,7 @@ use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\Parser\FeedParser;
 use OCA\Epidemiologia\Service\Parser\PageParser;
 use OCA\Epidemiologia\Service\Parser\PahoParser;
+use OCA\Epidemiologia\Service\Probe;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -709,7 +710,7 @@ class AlertRepositoryTest extends TestCase {
 		$repository->get();
 		$before = count($this->requested);
 
-		self::assertTrue($repository->probe());
+		self::assertSame(Probe::Healthy, $repository->probe());
 		self::assertCount($before + 1, $this->requested, 'an unchanged feed costs exactly one probe');
 	}
 
@@ -742,7 +743,7 @@ class AlertRepositoryTest extends TestCase {
 		$before = count($this->requested);
 
 		$changed = $this->repository($second, reuseCache: true);
-		self::assertTrue($changed->probe());
+		self::assertSame(Probe::Healthy, $changed->probe());
 
 		$urls = implode(' ', array_column($changed->get()['items'], 'url'));
 		self::assertStringContainsString('/2026/08/', $urls, 'the digest must have caught the change and refreshed the cache');
@@ -753,11 +754,13 @@ class AlertRepositoryTest extends TestCase {
 	public function testTheProbeReportsFailureWhenMinsalStopsParsing(): void {
 		$repository = $this->repository(body: '<p>nada</p>');
 
-		self::assertFalse($repository->probe());
+		// The host answered: the page is this fuente's fault, not the host's.
+		self::assertSame(Probe::Unreadable, $repository->probe());
 	}
 
 	public function testTheProbeReportsFailureWhenMinsalIsUnreachable(): void {
-		self::assertFalse($this->repository(offline: true)->probe());
+		// No answer at all: the host's fault, which is what holds its siblings (ProbeJob).
+		self::assertSame(Probe::Unreachable, $this->repository(offline: true)->probe());
 	}
 
 	// --- the durable set: ADR-0015 §2 ----------------------------------------
@@ -789,7 +792,7 @@ class AlertRepositoryTest extends TestCase {
 		$repository = $this->repository(reuseCache: false);
 		$this->requested = [];
 
-		self::assertTrue($repository->probe());
+		self::assertSame(Probe::Healthy, $repository->probe());
 
 		// D8: the fabricated entry carries no digest, so the probe cannot
 		// "match" its way out of re-storing — the cache entry is back, from the
@@ -895,7 +898,9 @@ class AlertRepositoryTest extends TestCase {
 		// ask exactly as on the hourly path.
 		$probe = $this->repository(refused: 403, now: self::NOW + 7260);
 
-		self::assertFalse($probe->probe());
+		// A refusal is an answer: Unreadable, never Unreachable — the host's other
+		// addresses still get their own asks, and the next answer lifts the brake.
+		self::assertSame(Probe::Unreadable, $probe->probe());
 		self::assertCount(1, $this->requested, 'the probe asked through the brake');
 		self::assertSame(2, $this->store['freno-alerts']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
 	}
@@ -906,7 +911,7 @@ class AlertRepositoryTest extends TestCase {
 		self::assertArrayHasKey('freno-alerts', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
-		self::assertTrue($this->repository(now: self::NOW + 7260)->probe());
+		self::assertSame(Probe::Healthy, $this->repository(now: self::NOW + 7260)->probe());
 		self::assertArrayNotHasKey('freno-alerts', $this->store, 'an answer removes the key outright — recovery is one step');
 
 		// Past the cooldown the refusal left (+7500), the read resumes asking.
@@ -987,6 +992,29 @@ class AlertRepositoryTest extends TestCase {
 		foreach ($ids as $id) {
 			self::assertSame($repositories->repository($id), $repositories->repository($id), $id);
 		}
+	}
+
+	/**
+	 * The host map the sondeo groups by (ADR-0017 D8): the ISP's three alert
+	 * feeds on the ISP's host — which the informe shares, Sources::host() — and
+	 * every other alert fuente alone on its own. ProbeJobTest's double answers
+	 * with this map; this is where the map is the factory's, not a copy's.
+	 */
+	public function testTheIspsFuentesShareOneHostAndEveryOtherHostIsItsOwn(): void {
+		$repositories = $this->repositories();
+		$hosts = [];
+		foreach (array_diff(Sources::ALL, [Sources::REPORTS]) as $id) {
+			$hosts[$id] = $repositories->host($id);
+		}
+
+		self::assertSame([
+			Sources::ALERTS => 'alerts',
+			Sources::EPI => 'epi',
+			Sources::ISP_ANAMED => AlertRepositories::ISP_HOST,
+			Sources::ISP_PHARMACOVIGILANCE => AlertRepositories::ISP_HOST,
+			Sources::ISP_COSMETICS => AlertRepositories::ISP_HOST,
+			Sources::PAHO => 'paho',
+		], $hosts);
 	}
 
 	// --- doubles -------------------------------------------------------------

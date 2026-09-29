@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Tests\Unit;
 use OCA\Epidemiologia\Service\AlertRepositories;
 use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
+use OCA\Epidemiologia\Service\Probe;
 use OCA\Epidemiologia\Service\Sources;
 use PHPUnit\Framework\TestCase;
 
@@ -54,7 +55,7 @@ class SourcesTest extends TestCase {
 		$sources = $this->sources();
 
 		foreach (Sources::ALL as $id) {
-			self::assertTrue($sources->probe($id), $id);
+			self::assertSame(Probe::Healthy, $sources->probe($id), $id);
 		}
 	}
 
@@ -89,6 +90,25 @@ class SourcesTest extends TestCase {
 	 * With two alert fuentes on one factory (ADR-0017), that arm is one
 	 * paste away in each of the four methods that take an id.
 	 */
+	/**
+	 * The host the sondeo groups by (ADR-0017 D8): the informe is on the ISP's,
+	 * and every alert fuente's is its factory's answer — the map itself is pinned
+	 * in AlertRepositoryTest. Walked over ALL, so an id without an arm throws here.
+	 */
+	public function testEveryIdHasAHostAndTheInformeSharesTheIsps(): void {
+		$factory = $this->createMock(AlertRepositories::class);
+		$factory->method('host')->willReturnCallback(static fn (string $id): string => "host of $id");
+		$sources = new Sources($factory, $this->createMock(IspReportRepository::class));
+
+		foreach (Sources::ALL as $id) {
+			self::assertSame(
+				$id === Sources::REPORTS ? AlertRepositories::ISP_HOST : "host of $id",
+				$sources->host($id),
+				$id,
+			);
+		}
+	}
+
 	public function testEachAlertIdReachesItsOwnPipeline(): void {
 		$sources = new Sources($this->ledgered(), $this->createMock(IspReportRepository::class));
 		$alerts = array_values(array_diff(Sources::ALL, [Sources::REPORTS]));
@@ -258,7 +278,7 @@ class SourcesTest extends TestCase {
 
 		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('get')->willReturn($payload);
-		$minsal->method('probe')->willReturn(true);
+		$minsal->method('probe')->willReturn(Probe::Healthy);
 		$minsal->method('search')->willReturn([['title' => 'Una alerta del MINSAL', 'url' => 'https://x/a.pdf']]);
 
 		// No search arm: the informes are not searchable, and the repository that owns
@@ -266,7 +286,7 @@ class SourcesTest extends TestCase {
 		// testSearchLeavesTheInformesOut asserts.
 		$informes = $this->createMock(IspReportRepository::class);
 		$informes->method('get')->willReturn($payload);
-		$informes->method('probe')->willReturn(true);
+		$informes->method('probe')->willReturn(Probe::Healthy);
 
 		return new Sources($this->alertRepositories($minsal), $informes);
 	}
@@ -286,10 +306,10 @@ class SourcesTest extends TestCase {
 
 				return ['items' => [], 'fetched_at' => null, 'degraded' => false];
 			});
-			$repository->method('probe')->willReturnCallback(function () use ($id): bool {
+			$repository->method('probe')->willReturnCallback(function () use ($id): Probe {
 				$this->asked[] = "probe $id";
 
-				return true;
+				return Probe::Healthy;
 			});
 			$repository->method('revalidate')->willReturnCallback(function () use ($id): void {
 				$this->asked[] = "revalidate $id";

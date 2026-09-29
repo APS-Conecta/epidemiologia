@@ -78,6 +78,14 @@ class AlertRepositories {
 		);
 	}
 
+	/**
+	 * The host a fuente answers to — the grain of its freno and cooldown, and of
+	 * the sondeo (ADR-0017 D8). Sources asks here rather than spelling hosts twice.
+	 */
+	public function host(string $id): string {
+		return $this->fuente($id)->host;
+	}
+
 	private function fuente(string $id): Fuente {
 		return match ($id) {
 			/*

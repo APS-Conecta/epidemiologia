@@ -13,6 +13,7 @@ use OCA\Epidemiologia\Db\ReportMapper;
 use OCA\Epidemiologia\Service\AlertRepositories;
 use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\IspReportRepository;
+use OCA\Epidemiologia\Service\Probe;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClient;
@@ -445,16 +446,17 @@ class IspReportRepositoryTest extends TestCase {
 		$repository->get();
 		$this->requested = [];
 
-		self::assertTrue($repository->probe());
+		self::assertSame(Probe::Healthy, $repository->probe());
 		self::assertCount(1, $this->requested, 'a detector that asks nothing detects nothing');
 	}
 
 	public function testTheProbeReportsFailureWhenTheFeedStopsParsing(): void {
-		self::assertFalse($this->repository(body: '<html><body>en mantención</body></html>')->probe());
+		self::assertSame(Probe::Unreadable, $this->repository(body: '<html><body>en mantención</body></html>')->probe());
 	}
 
 	public function testTheProbeReportsFailureWhenTheIspIsUnreachable(): void {
-		self::assertFalse($this->repository(body: $this->rss([self::WEEK]), offline: true)->probe());
+		// No answer: the verdict that holds the ISP's three alert feeds in the same pass.
+		self::assertSame(Probe::Unreachable, $this->repository(body: $this->rss([self::WEEK]), offline: true)->probe());
 	}
 
 	// --- the brake: an answer is not a challenge -------------------------------
@@ -499,7 +501,7 @@ class IspReportRepositoryTest extends TestCase {
 
 		$probe = $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 7260, refused: 403);
 
-		self::assertFalse($probe->probe());
+		self::assertSame(Probe::Unreadable, $probe->probe(), 'a refusal is an answer');
 		self::assertCount(1, $this->requested, 'the probe asked through the brake');
 		self::assertSame(2, $this->store['freno-isp']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
 	}
@@ -510,7 +512,7 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertArrayHasKey('freno-isp', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
-		self::assertTrue($this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 7260)->probe());
+		self::assertSame(Probe::Healthy, $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 7260)->probe());
 		self::assertArrayNotHasKey('freno-isp', $this->store, 'an answer removes the key outright — recovery is one step');
 
 		/*
@@ -541,7 +543,7 @@ class IspReportRepositoryTest extends TestCase {
 
 		$waf = $this->repository(body: '<html><body>Attention Required</body></html>', reuseCache: true, now: self::NOW + 7260);
 
-		self::assertFalse($waf->probe());
+		self::assertSame(Probe::Unreadable, $waf->probe());
 		self::assertArrayNotHasKey('freno-isp', $this->store, 'the 200 lifted the brake even though the parse failed');
 		self::assertNotNull($this->store['cooldown-isp']['v'] ?? null, 'the WAF page lands in the cooldown');
 	}
