@@ -33,6 +33,7 @@ sitio oficial.
     <background-jobs>
         <job>OCA\Epidemiologia\BackgroundJob\ProbeJob</job>
         <job>OCA\Epidemiologia\BackgroundJob\RefreshJob</job>
+        <job>OCA\Epidemiologia\BackgroundJob\WarmJob</job>
     </background-jobs>
     <navigations>
         <navigation>

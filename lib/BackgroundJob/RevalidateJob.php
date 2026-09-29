@@ -19,7 +19,7 @@ use OCP\BackgroundJob\QueuedJob;
  * One-off by construction — dispatched from the read path with the fuente's
  * id, never registered in info.xml (IJobList one-offs are not), and
  * QueuedJob removes itself from the list on start. Runs the same mint point
- * the nightly refresher would: revalidate() goes through refresh()/store(),
+ * an inline refresh would: revalidate() goes through refresh()/store(),
  * so the cache entry written and the table upserted are the read path's
  * own — no second code path for the same work to disagree with.
  *
