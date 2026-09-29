@@ -9,6 +9,7 @@ same thing, the one named here as its authority wins and the other should be lin
 | [`../CONTEXT.md`](../CONTEXT.md) | reference | **The vocabulary.** Fuente, sondeo, and what this context deliberately has no word for |
 | [`../AGENTS.md`](../AGENTS.md) | reference | The language split, and the repo rules an AI agent must follow |
 | [`adr/`](adr/) | explanation | Each decision and the reasoning that was live when it was taken |
+| [`fuentes-checklist.md`](fuentes-checklist.md) | how-to | Every place a new fuente or alert sector is added, and the gates that fail when one is missed |
 | [`agents/README.md`](agents/README.md) | reference | Where the domain docs, the tracker and the triage labels are, for this repo |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | history | What changed, one line per change, per version |
 | [`../THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) | reference | Every third-party component the bundle carries, and under which licence |
@@ -34,7 +35,7 @@ would exist only to contradict it. What cannot be inherited, and so stays here, 
 
 ## A note on the ADR numbers
 
-Fifteen ADRs, `0002`–`0016`, no gaps. **The numbering starts at 0002**: `0001` handed REM to a
+Sixteen ADRs, `0002`–`0017`, no gaps. **The numbering starts at 0002**: `0001` handed REM to a
 sibling app that was later retired, and it was deleted rather than superseded (#121) — the number is
 spent and nothing will be written at it. Numbers are never reused and never renumbered, so a gap
 *between* two of these would be a permanent one rather than a deletion. Every ADR carries a dated

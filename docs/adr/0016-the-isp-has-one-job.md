@@ -1,9 +1,11 @@
 # The ISP has one job: the informes. MINSAL owns the alertas
 
-**Status: accepted, 2026-09-19.** Decided by the owner in the same review that produced
-[ADR-0015](0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md), and recording the
-consequence of it here rather than there, because this is a *source ownership* decision in
-[ADR-0014](0014-the-fuentes-follow-their-publishers.md)'s line, not a persistence one.
+**Status: superseded, 2026-09-28, by [ADR-0017](0017-six-alert-sectors-one-pipeline.md)** — the ISP's
+alertas are read again, three of its categories on the pipeline every alert fuente shares, and the
+informe stays the ISP's one series, as below. Accepted 2026-09-19: decided by the owner in the same
+review that produced [ADR-0015](0015-the-fuentes-persist-and-the-fetcher-introduces-itself.md), and
+recording the consequence of it here rather than there, because this is a *source ownership* decision
+in [ADR-0014](0014-the-fuentes-follow-their-publishers.md)'s line, not a persistence one.
 
 ## The map, before and after
 

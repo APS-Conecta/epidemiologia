@@ -1,7 +1,8 @@
 <!--
-	The landing pane: what the sources last published, visible without scrolling.
+	The landing pane: what each alert sector last published, one tile per sector,
+	and the informe's latest weeks below them.
 
-	Two things about it are decisions, not implementation details:
+	Three things about it are decisions, not implementation details:
 
 	1. It is NOT personalised. "Latest" is a property of the source, not of the
 	   reader, so there is no per-user state and nothing to seed on first run.
@@ -15,59 +16,73 @@
 	   carries the degraded sentence too (L3-16) but no freshness badge: its
 	   weeks are the series the table holds, and the pane it opens is where
 	   that fuente's freshness renders.
+
+	3. The tiles are the registry's sectors, in its order — the navigation's
+	   order (src/panes.js). Not grouped under publisher headings, which would
+	   repeat the navigation's captions as a second layout; not newest first,
+	   which would reshuffle the board every time a publisher posts and leave a
+	   reader hunting for the tile they read yesterday. Each tile names its
+	   publisher above its own name instead, because on this pane no caption
+	   sits over it to say whose it is.
 -->
 <template>
 	<section class="epi-inicio">
 		<PaneHeader :title="paneName('inicio')" />
 
 		<!--
-			auto-fit rather than a fixed column count: one source fills the row, two
-			split it, and a third wraps. Adding a source is adding an entry to
-			`sources`, which is what makes this pane scale without a redesign.
+			auto-fit rather than a fixed column count: the six tiles fill as many
+			columns as the width allows and wrap into as many rows as that leaves.
+			Adding a sector is adding a registry entry (src/panes.js), which is
+			what makes this pane scale without a redesign.
 		-->
 		<div class="epi-inicio__sources">
-			<article v-for="source in sources"
-				:key="source.id"
+			<article v-for="tile in tiles"
+				:key="tile.id"
 				class="epi-card"
-				:class="{ 'epi-card--degraded': source.feed.degraded }">
+				:class="{ 'epi-card--degraded': tile.feed.degraded }">
 				<div class="epi-card__head">
-					<h2 class="epi-card__title">{{ source.name }}</h2>
+					<div class="epi-card__name">
+						<p class="epi-card__eyebrow">{{ tile.publisher }}</p>
+						<h2 class="epi-card__title">{{ tile.name }}</h2>
+					</div>
 					<!-- Only when there is something to report. With neither a degraded flag
 					     nor a fetched_at, this rendered a bare 6px green dot and no text:
 					     colour asserting health nothing had measured, and silence to a
 					     screen reader. -->
-					<span v-if="source.feed.degraded || source.feed.fetched_at"
+					<span v-if="tile.feed.degraded || tile.feed.fetched_at"
 						class="epi-fresh"
-						:class="{ 'epi-fresh--stale': source.feed.degraded }">
+						:class="{ 'epi-fresh--stale': tile.feed.degraded }">
 						<span class="epi-fresh__dot" />
-						<template v-if="source.feed.degraded">{{ t('epidemiologia', 'sin contacto') }}</template>
-						<Procedencia v-else-if="source.feed.fetched_at" :fetched-at="source.feed.fetched_at" />
+						<template v-if="tile.feed.degraded">{{ t('epidemiologia', 'sin contacto') }}</template>
+						<Procedencia v-else-if="tile.feed.fetched_at" :fetched-at="tile.feed.fetched_at" />
 					</span>
 				</div>
 
-				<p v-if="source.feed.degraded" class="epi-card__warn">
-					{{ source.degradedText }}
+				<p v-if="tile.feed.degraded" class="epi-card__warn">
+					{{ tile.degradedText }}
 				</p>
 
 				<!-- Zero items with no degraded flag is a real answer, not a fault.
-				     A set with no alertas vigentes in it is MINSAL's to publish,
+				     A set with no alertas vigentes in it is the publisher's to publish,
 				     and an empty answer must not look like the warning above, or the
-				     warning stops meaning anything. -->
-				<NcEmptyContent v-if="!source.feed.items.length && !source.feed.degraded"
+				     warning stops meaning anything. Zero items WITH the flag is neither,
+				     and the warning is all the tile says. -->
+				<NcEmptyContent v-if="!tile.feed.items.length && !tile.feed.degraded"
 					class="epi-card__empty"
 					:name="t('epidemiologia', 'Sin alertas')"
-					:description="source.emptyText">
+					:description="tile.emptyText">
 					<template #icon>
 						<CheckCircle :size="20" />
 					</template>
 				</NcEmptyContent>
 
-				<ul v-else class="epi-card__list">
-					<li v-for="item in source.feed.items.slice(0, PER_CARD)" :key="item.url" class="epi-row">
-						<!-- No truncation. Both fuentes put the useful half at the END of the
-						     title, so an ellipsis removes exactly what a reader needed — the
-						     same reasoning #35 recorded for the ISP pane. Showing one whole
-						     title beats showing six prefixes. -->
+				<ul v-else-if="tile.feed.items.length" class="epi-card__list">
+					<li v-for="item in tile.feed.items.slice(0, PER_CARD)" :key="item.url" class="epi-row">
+						<!-- No truncation. The publishers put the useful half at the END of
+						     the title, so an ellipsis removes exactly what a reader needed —
+						     the same reasoning #35 recorded for the ISP pane. Showing one
+						     whole title beats showing six prefixes. The day where the
+						     publisher gives one, the month where it does not (MINSAL). -->
 						<a :href="item.url"
 							target="_blank"
 							rel="noopener noreferrer">{{ item.title }}</a>
@@ -75,8 +90,8 @@
 					</li>
 				</ul>
 
-				<NcButton variant="tertiary" class="epi-card__more" @click="$emit('open', source.pane)">
-					{{ source.moreText }}
+				<NcButton variant="tertiary" class="epi-card__more" @click="$emit('open', tile.id)">
+					{{ tile.moreText }}
 				</NcButton>
 			</article>
 		</div>
@@ -134,15 +149,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
-import { t, n } from '@nextcloud/l10n'
+import { t } from '@nextcloud/l10n'
 import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import PaneHeader from './PaneHeader.vue'
 import Procedencia from './Procedencia.vue'
-import { paneName } from '../panes.js'
-import { alerts, reports } from '../state.js'
+import { PANES, paneName } from '../panes.js'
+import { reports, source } from '../state.js'
 import { degradedText, emptyText, fecha, mes, FUENTES } from '../pure.js'
 
 defineEmits(['open'])
@@ -155,30 +169,41 @@ defineEmits(['open'])
  * de…" — the same prefix repeated, with the disease name cut off every time.
  *
  * The trade is count for completeness, decided 2026-08-03: what an oficio
- * instructs a clinic to do is not something to show a prefix of. The other 74
- * are one click away, in a pane that now also shows them in full.
+ * instructs a clinic to do is not something to show a prefix of. The rest are
+ * one click away, in a pane that shows them in full. "Latest" is the first
+ * item: every fuente's list arrives newest first, sorted by the server.
  */
 const PER_CARD = 1
 const PER_CARD_WEEKS = 3
 
 /**
- * One entry per alertas fuente, so the next fuente joins by adding an entry —
- * which is the whole point of the auto-fit row above. The ISP's alertas card
- * was the second entry until its fuente retired (ADR-0016); the informe stays
- * out of this list on purpose, as it always was: it is not an alertas fuente,
- * and its card below shows the series' weeks, not a latest row.
+ * One tile per alert sector: the registry's entries that carry a `source`, in
+ * its order, each named as the navigation names it and its publisher as
+ * FUENTES does. The informe stays out on purpose, as it always was: it is not
+ * an alert sector, and its card below shows the series' weeks, not a latest row.
+ *
+ * A plain array rather than a computed: everything in it is read once from the
+ * initial state, which never changes on this page.
  */
-const sources = computed(() => [
-	{
-		id: 'minsal-alertas',
-		name: paneName('alertas'),
-		feed: alerts,
-		pane: 'alertas',
-		moreText: n('epidemiologia', 'Ver %n alerta', 'Ver las %n alertas', alerts.items.length),
-		emptyText: emptyText(FUENTES.minsal.name),
-		degradedText: degradedText(FUENTES.minsal.name),
-	},
-])
+const tiles = PANES.filter((pane) => pane.source).map((pane) => {
+	const feed = source(pane.source)
+	const fuente = FUENTES[pane.group]
+
+	return {
+		id: pane.id,
+		name: paneName(pane.id),
+		publisher: fuente.caption,
+		feed,
+		// The count in the publisher's own noun ("Ver 13 alertas vigentes", "Ver 54
+		// publicaciones"). A tile with nothing to count still opens its pane: that is
+		// where a degraded fuente's notice sends the reader to the publisher's site.
+		moreText: feed.items.length
+			? t('epidemiologia', 'Ver {cuantas}', { cuantas: fuente.count(feed.items.length) })
+			: t('epidemiologia', 'Ver la sección'),
+		emptyText: emptyText(fuente.name),
+		degradedText: degradedText(fuente.name),
+	}
+})
 </script>
 
 <style scoped>
@@ -245,6 +270,24 @@ const sources = computed(() => [
 	justify-content: space-between;
 	flex-wrap: wrap;
 	gap: calc(var(--default-grid-baseline) * 2);
+}
+
+/* The name and the publisher above it, as one flex item of the head: the
+   freshness badge beside them aligns with the first line, the publisher's. */
+.epi-card__name {
+	min-width: 0;
+}
+
+/* The publisher, above the name. "Farmacovigilancia" alone does not say whose it
+   is, and on this pane no navigation caption sits over the tile to say it. The
+   same small, spaced, grey label as a week's "Semana" below, so the two read as
+   one kind of thing — a label, never a second title. */
+.epi-card__eyebrow {
+	margin: 0;
+	font-size: var(--font-size-small);
+	letter-spacing: 0.06em;
+	color: var(--color-text-maxcontrast);
+	font-weight: var(--font-weight-heading);
 }
 
 /* Measured on core's own Dashboard, the closest thing to this pane in Nextcloud:

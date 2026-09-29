@@ -8,8 +8,8 @@ declare(strict_types=1);
 namespace OCA\Epidemiologia\Tests\Unit;
 
 use OCA\Epidemiologia\Search\AlertProvider;
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCP\IUser;
 use OCP\Search\ISearchQuery;
@@ -114,7 +114,7 @@ class AlertProviderTest extends TestCase {
 	 * cache-only search.
 	 */
 	public function testTheProviderNeverFetches(): void {
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
 		// Every way in that can reach the network. `refresh()` is no longer among them:
 		// it is private, so `get()` and `probe()` are the whole surface a provider could
@@ -127,19 +127,26 @@ class AlertProviderTest extends TestCase {
 			$repository->method('probe')->willThrowException(new RuntimeException('a search provider must not fetch'));
 		}
 
-		$result = $this->provider(new Sources($minsal, $informes))->search($this->user(), $this->query('sarampión'));
+		$result = $this->provider(new Sources($this->alertRepositories($minsal), $informes))->search($this->user(), $this->query('sarampión'));
 
-		self::assertCount(1, $result->jsonSerialize()['entries']);
+		// The one double answers for every alert fuente, so its one hit comes
+		// back once per searchable fuente — and every alert fuente is one
+		// (SourcesTest::testSearchCarriesTheSourceWithEachHit).
+		self::assertCount(
+			count(array_diff(Sources::ALL, [Sources::REPORTS])),
+			$result->jsonSerialize()['entries'],
+			'the cache-only search answered for every alert fuente, with every network door armed to throw',
+		);
 	}
 
 	// -----------------------------------------------------------------------
 
 	/** @return list<array<string, mixed>> the rendered entries */
 	private function search(string $term, int $limit = 20): array {
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('search')->willReturnCallback($this->matching($this->minsalHits));
 
-		$result = $this->provider(new Sources($minsal, $this->createMock(IspReportRepository::class)))
+		$result = $this->provider(new Sources($this->alertRepositories($minsal), $this->createMock(IspReportRepository::class)))
 			->search($this->user(), $this->query($term, $limit));
 
 		// SearchResult hands back SearchResultEntry objects; each serialises itself.

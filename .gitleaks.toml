@@ -1,0 +1,26 @@
+# gitleaks configuration — read by `gitleaks detect` when repo-docs' `secrets` rule
+# finds gitleaks on PATH (CI does not install it; the rule then falls back to its
+# own file checks).
+#
+# Audited 2026-09-29, both findings: generic-api-key in the two OPS/OMS captures,
+# tests/unit/fixtures/paho-alertas-p0.html and -p1.html (PahoParserTest's fixtures,
+# committed byte for byte — their sha256 is a success criterion, so they are not
+# edited). The match is `"key":"…"` inside the page's drupalSettings JSON:
+# `"antibot":{"forms":{"search-block-form":{…,"key":"…"}}}`, the Drupal Antibot
+# module's per-render form key for the site's search box. www.paho.org serves it to
+# every anonymous visitor; it is not a credential, and never one of ours.
+#
+# Allowed by that shape, on the line that carries it: a key under any other name,
+# in these files or anywhere else, still fails the gate. Not a path allowlist,
+# which would wave through anything in the two files; not a .gitleaksignore
+# fingerprint, which pins the commit and re-flags after a squash-merge. Not the
+# newer `[[allowlists]]` with `condition = "AND"` either (path AND shape): the
+# gitleaks on this box, 8.21.2, ignores that table without a word — measured.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Drupal Antibot's public form key, as www.paho.org serves it"
+regexTarget = "line"
+regexes = ['''"antibot":\{"forms":\{"search-block-form":\{"id":"search-block-form","key":"''']

@@ -37,14 +37,13 @@ occ() { docker exec -u www-data "$CONTAINER" php occ "$@"; }
 # narrower. App passwords are alphanumeric, so nothing here needs quoting beyond this.
 #
 # --max-time is not tuning, it is the difference between a gate that fails and a gate
-# that hangs. /sources reads MINSAL's one page and the ISP's informes feed — and the
-# first read after an install is that reader's one-shot backfill: page 1 plus
-# WALK_PAGES at 15 s each plus the archiver's document budget, every fetch bounded
-# at 15 s, which is 1110 s of network in the worst case. 1440 is
-# IspReportRepository::LOCK_FOR: the window that class already reserves for one
-# refresh, holding a quarter above its own worst case for the interleaved upserts.
-# Anything under ~1110 s would kill a slow but succeeding walk and report it as a
-# defect of ours.
+# that hangs. /sources reads seven fuentes, and a cold read costs each of them at most
+# one fetch bounded at 15 s — the informe's back-catalogue walk and its archiver run on
+# RefreshJob's nightly pass since L3-08, never inside a read — so 105 s is the worst
+# case, and a host that timed out holds its siblings off for its cooldown. 1440 is
+# IspReportRepository::LOCK_FOR, the longest one refresh may hold its lock: kept as
+# the ceiling because anything near 105 s would kill a slow but succeeding read and
+# report it as a defect of ours.
 web() {
 	printf 'user = "%s:%s"\n' "$USER_ID" "$TOKEN" \
 		| docker exec -i -u www-data "$CONTAINER" curl -sS --max-time 1440 -K - "$@" 2>/dev/null
@@ -101,7 +100,7 @@ fi
 
 sources="$(web -H "$OCSH" "$OCS/sources?format=json")"
 
-# Three of the assertions below can only be made when MINSAL and the ISP answered.
+# Three of the assertions below can only be made when every publisher answered.
 # The envelope says when they did not — degraded:true, served with the last good copy
 # — and a release gate that failed there would be calling a foreign publisher's outage
 # a regression of ours. It names what it could not check instead.
@@ -124,9 +123,10 @@ else
 	fail "/ocs/…/api/v1/sources returned no items at all"
 fi
 
-# Every source keyed by its own id. A missing key means Sources::ALL and the
-# payload have drifted apart, which is the failure the registry exists to stop.
-for source in alerts reports; do
+# Every source keyed by its own id — the seven of Sources::ALL, in its order. A
+# missing key means Sources::ALL and the payload have drifted apart, which is the
+# failure the registry exists to stop; the frontend would read it as degraded.
+for source in alerts epi_alerts reports isp_anamed isp_pharmacovigilance isp_cosmetics paho_alerts; do
 	expect "$sources" "\"$source\"" \
 		"source $source is in the response" \
 		"source $source is NOT in the response"

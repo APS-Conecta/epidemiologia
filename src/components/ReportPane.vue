@@ -19,7 +19,7 @@
 	<section>
 		<PaneHeader :title="paneName('informe')" />
 
-		<DegradedNotice v-if="reports.degraded" :source="FUENTES.isp.name" :url="FUENTES.isp.url" />
+		<DegradedNotice v-if="reports.degraded" :source="FUENTES.isp.name" :url="SITIOS.reports" />
 
 		<template v-if="reports.items.length">
 			<p class="epi-count">
@@ -74,7 +74,7 @@ import Procedencia from './Procedencia.vue'
 import { paneName } from '../panes.js'
 import DegradedNotice from './DegradedNotice.vue'
 import { reports } from '../state.js'
-import { mes, FUENTES } from '../pure.js'
+import { mes, FUENTES, SITIOS } from '../pure.js'
 </script>
 
 <style scoped>

@@ -7,6 +7,8 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\AlertRepositories;
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\ICache;
@@ -119,6 +121,16 @@ trait Doubles {
 				return true;
 			},
 		);
+		$config->method('getAppValueBool')->willReturnCallback(
+			fn (string $key, bool $default = false): bool => (bool)($this->config[$key] ?? $default),
+		);
+		$config->method('setAppValueBool')->willReturnCallback(
+			function (string $key, bool $value): bool {
+				$this->config[$key] = $value;
+
+				return true;
+			},
+		);
 		$config->method('getAppValueArray')->willReturnCallback(
 			fn (string $key, array $default = []): array => (array)($this->config[$key] ?? $default),
 		);
@@ -138,6 +150,19 @@ trait Doubles {
 	private function appDataFactory(FakeAppData $data): IAppDataFactory {
 		$factory = $this->createMock(IAppDataFactory::class);
 		$factory->method('get')->willReturn($data);
+
+		return $factory;
+	}
+
+	/**
+	 * The factory double Sources is built with since ADR-0017: every alert id
+	 * resolves to $repository. Passed in, not minted here, for
+	 * appDataFactory()'s reason — what the repository double answers is the
+	 * test's to say; this is only the door Sources reaches it through.
+	 */
+	private function alertRepositories(AlertRepository $repository): AlertRepositories {
+		$factory = $this->createMock(AlertRepositories::class);
+		$factory->method('repository')->willReturn($repository);
 
 		return $factory;
 	}

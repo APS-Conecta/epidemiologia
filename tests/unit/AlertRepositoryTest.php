@@ -7,7 +7,13 @@ namespace OCA\Epidemiologia\Tests\Unit;
 use OCA\Epidemiologia\BackgroundJob\RevalidateJob;
 use OCA\Epidemiologia\Db\Alert;
 use OCA\Epidemiologia\Db\AlertMapper;
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\AlertRepositories;
+use OCA\Epidemiologia\Service\AlertRepository;
+use OCA\Epidemiologia\Service\CertificateBundle;
+use OCA\Epidemiologia\Service\Parser\FeedParser;
+use OCA\Epidemiologia\Service\Parser\PageParser;
+use OCA\Epidemiologia\Service\Parser\PahoParser;
+use OCA\Epidemiologia\Service\Sources;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Http\Client\IClient;
@@ -34,8 +40,15 @@ use Throwable;
  * dropped until round 2 of review caught it (see
  * testTheEbolaAlertsAreNotSilentlyDropped) — a real fixture earns its keep
  * exactly here, by carrying a defect nobody would have thought to write.
+ *
+ * The alert pipeline's suite, read through degreyd (ADR-0017). It was
+ * MinsalRepositoryTest while degreyd had a class of its own; the pipeline is
+ * built here the way Sources asks for it — through AlertRepositories — so every
+ * test below also pins degreyd's configuration: its address (fixture() answers
+ * degreyd.minsal.cl, and epi.minsal.cl only for epi's own tests), its keys and
+ * its sentences.
  */
-class MinsalRepositoryTest extends TestCase {
+class AlertRepositoryTest extends TestCase {
 	use Doubles;
 
 	/** 2026-08-01T12:00:00Z — fixed, so every freshness assertion is relative to it. */
@@ -45,6 +58,9 @@ class MinsalRepositoryTest extends TestCase {
 
 	/** The persisted set: the AlertMapper double's table — Alert entities, like the real one holds. */
 	private array $rows = [];
+
+	/** @var list<string> the fuente every readSet()/replaceSet() was scoped to, in call order */
+	private array $scopes = [];
 
 	/** @var list<array> every request's options, in order — the UA pin reads the first */
 	private array $options = [];
@@ -64,6 +80,7 @@ class MinsalRepositoryTest extends TestCase {
 	protected function setUp(): void {
 		$this->store = [];
 		$this->rows = [];
+		$this->scopes = [];
 		$this->options = [];
 		$this->requested = [];
 		$this->jobs = [];
@@ -280,7 +297,7 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
 		// The feed's own key, not the whole store: degrading also arms the cooldown that
 		// stops the outage being retried on every read, which is a second key.
-		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
+		self::assertSame($cached['feed-alerts'], $this->store['feed-alerts'], 'the cache must not have been touched');
 	}
 
 	// --- failure: the rule the whole design rests on -------------------------
@@ -294,13 +311,13 @@ class MinsalRepositoryTest extends TestCase {
 		// An hour later, the revalidation runs behind the response and the
 		// restructure degrades without ever touching the cache.
 		$this->repository(body: '<p>En mantención</p>', now: self::NOW + 7200)->revalidate();
-		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
+		self::assertSame($cached['feed-alerts'], $this->store['feed-alerts'], 'the cache must not have been touched');
 
 		$after = $this->repository(body: '<p>En mantención</p>', now: self::NOW + 7260)->get();
 
 		self::assertTrue($after['degraded']);
 		self::assertSame($good['items'], $after['items'], 'the last good list must still be served');
-		self::assertSame($cached['feed-' . MinsalRepository::ALERTS], $this->store['feed-' . MinsalRepository::ALERTS], 'the cache must not have been touched');
+		self::assertSame($cached['feed-alerts'], $this->store['feed-alerts'], 'the cache must not have been touched');
 	}
 
 	public function testAnUnreachableMinsalServesTheLastGoodCopyFlaggedDegraded(): void {
@@ -439,6 +456,42 @@ class MinsalRepositoryTest extends TestCase {
 		);
 	}
 
+	/**
+	 * ADR-0017: every alert fuente shares these lines, so they are templates
+	 * now, and degreyd's Fuente renders each exactly as it read while this
+	 * pipeline was MinsalRepository's — an admin's grep for yesterday's line
+	 * still finds today's. Five faults, each on a cache of its own; the last is
+	 * the table's, which pins the storage rule on the way: logged, never a
+	 * degrade — the fetch succeeded, so the fresh copy serves.
+	 */
+	public function testDegreydsLinesReadAsTheyDidBeforeTheMove(): void {
+		$huge = '<a href="https://degreyd.minsal.cl/wp-content/uploads/2026/07/x.pdf">Alerta</a>'
+			. str_repeat('<!-- pad -->', 60000);
+
+		$this->repository(offline: true)->get();
+		$this->repository(body: '<p>Sin alertas publicadas.</p>', reuseCache: false)->get();
+		$this->repository(refused: 403, reuseCache: false)->get();
+		$this->repository(body: $huge, reuseCache: false)->get();
+		$served = $this->repository(reuseCache: false, brokenTable: true)->get();
+
+		self::assertSame(
+			[
+				'Could not reach the MINSAL alerts page',
+				'The MINSAL alerts page could not be read',
+				'The MINSAL alerts page carried no alerts',
+				'MINSAL answered 403; under freno 1 time(s), waiting 7200s',
+				'The MINSAL alerts page could not be read',
+				sprintf('MINSAL alerts page of %d bytes, discarded', strlen($huge)),
+				'The MINSAL alerts page could not be read',
+				'Could not read the persisted MINSAL alerts set',
+				'Could not persist the MINSAL alerts set',
+			],
+			$this->warnings(),
+		);
+		self::assertFalse($served['degraded'], 'a table that fails is logged, never served as an outage');
+		self::assertCount(13, $served['items']);
+	}
+
 	public function testTheCooldownExpiresAndTheFeedIsTriedAgain(): void {
 		$this->repository()->get();
 		$this->repository(offline: true, now: self::NOW + 7200)->revalidate();
@@ -521,6 +574,77 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertFalse($result['degraded']);
 		self::assertCount(1, $this->requested, 'nothing stored: today\'s bounded synchronous fetch, once');
 		self::assertSame([], $this->jobs, 'no dispatch without a copy to serve');
+	}
+
+	/**
+	 * Sync once, then behind the response (ADR-0017 D9). The first cold read
+	 * still fetches while someone waits — a fresh install has nothing else to
+	 * show. Once that fetch failed and its cooldown lapsed with nothing
+	 * stored, the next cold read asks nothing: it dispatches the revalidation
+	 * and says degraded, so a blocked host costs a render one bounded wait per
+	 * cache lifetime instead of one every five minutes. The revalidation it
+	 * dispatched is what fills the fuente.
+	 */
+	public function testASecondColdReadMovesTheFetchBehindTheResponse(): void {
+		$first = $this->repository(offline: true)->get();
+		self::assertTrue($first['degraded']);
+		self::assertCount(1, $this->requested, 'precondition: the first cold read fetched while someone waited');
+
+		$second = $this->repository(offline: true, now: self::NOW + 301)->get();
+		$third = $this->repository(offline: true, now: self::NOW + 302)->get();
+
+		self::assertCount(1, $this->requested, 'past the cooldown, a cold read asks nothing while someone waits');
+		self::assertSame(['items' => [], 'fetched_at' => null, 'degraded' => true], $second, 'nothing to serve is degraded, never an empty healthy list');
+		self::assertSame($second, $third);
+		self::assertSame(
+			[[RevalidateJob::class, ['source' => Sources::ALERTS]]],
+			$this->jobs,
+			'one dispatch behind the response, deduped by the marker',
+		);
+
+		$this->repository(now: self::NOW + 303)->revalidate();
+		$filled = $this->repository(now: self::NOW + 304)->get();
+
+		self::assertFalse($filled['degraded'], 'the revalidation it dispatched filled the fuente');
+		self::assertCount(13, $filled['items']);
+	}
+
+	/**
+	 * The revalidator asks the host's gates again (ADR-0017 D8). The hourly
+	 * pass queues one revalidation per stale fuente, and the first of them to
+	 * meet an outage arms its host's cooldown — seeded here as any fuente on
+	 * the host writes it, after this job was queued. The job behind it asks
+	 * nothing, and still frees its marker for the reader past the cooldown.
+	 */
+	public function testAQueuedRevalidationMakesNoRequestWhileTheHostCoolsDown(): void {
+		$this->repository()->get();
+		$this->repository(now: self::NOW + 7200)->get();
+		self::assertCount(1, $this->jobs, 'precondition: the stale read queued its revalidation');
+
+		$this->cache(self::NOW + 7200)->set('cooldown-alerts', 1, 300);
+		$this->repository(now: self::NOW + 7210)->revalidate();
+
+		self::assertCount(1, $this->requested, 'a revalidation queued behind a cooling host asks nothing');
+		self::assertArrayNotHasKey('revalidating-' . Sources::ALERTS, $this->store, 'and the skip still frees the marker');
+	}
+
+	/**
+	 * The brake's half of the same guard: past the cooldown a refusal leaves
+	 * and inside its brake, a queued revalidation asks nothing and escalates
+	 * nothing — the probe stays the one ask that goes through the brake.
+	 */
+	public function testAQueuedRevalidationMakesNoRequestWhileTheHostIsBraked(): void {
+		$this->repository()->get();
+		$this->repository(refused: 403, now: self::NOW + 7200)->revalidate();
+
+		$this->repository(refused: 403, now: self::NOW + 7501)->revalidate();
+
+		self::assertCount(2, $this->requested, 'a braked host is not asked by a queued revalidation');
+		self::assertCount(
+			1,
+			array_filter($this->warnings(), static fn (string $w): bool => str_contains($w, 'answered 403')),
+			'nothing asked, nothing escalated',
+		);
 	}
 
 	// --- search --------------------------------------------------------------
@@ -670,7 +794,7 @@ class MinsalRepositoryTest extends TestCase {
 		// D8: the fabricated entry carries no digest, so the probe cannot
 		// "match" its way out of re-storing — the cache entry is back, from the
 		// one fetch the probe always costs, and the replace-set re-ran.
-		self::assertArrayHasKey('feed-' . MinsalRepository::ALERTS, $this->store, 'the probe must re-store on a cold cache');
+		self::assertArrayHasKey('feed-alerts', $this->store, 'the probe must re-store on a cold cache');
 		self::assertCount(13, $this->rows, 'the replace-set re-ran idempotently');
 		self::assertCount(1, $this->requested, 'one probe fetch');
 	}
@@ -711,6 +835,23 @@ class MinsalRepositoryTest extends TestCase {
 			$before,
 			array_map(static fn (Alert $a): string => $a->getUrl(), $this->rows),
 			'fail() writes nothing — the persisted set is the last good one',
+		);
+	}
+
+	/**
+	 * ADR-0017: the table is every alert fuente's now, so this fuente reads and
+	 * replaces only its own set — asked for by id, never the whole table.
+	 * Recorded by the double rather than asserted inside it: store() catches
+	 * Throwable, so an assertion thrown there would be swallowed as a storage
+	 * fault and the test would pass for the wrong reason.
+	 */
+	public function testTheSetIsReadAndReplacedUnderItsOwnFuente(): void {
+		$this->repository()->get();
+
+		self::assertSame(
+			['alerts', 'alerts'],
+			$this->scopes,
+			'the cold read asked the table, then the fetch replaced the set — both under alerts',
 		);
 	}
 
@@ -784,27 +925,109 @@ class MinsalRepositoryTest extends TestCase {
 		self::assertSame(15, $this->options[0]['timeout'] ?? null, 'the read stays bounded — a gate that blocks silently is not a gate (#130)');
 	}
 
-	// --- doubles -------------------------------------------------------------
+	// --- epi: a second page on a host of its own (ADR-0017) -----------------
 
 	/**
-	 * @param string|null $body       served for every request, instead of the fixture
-	 * @param int|null    $refused    an HTTP status the host answers with instead of a page —
-	 *                                the refusal class, carried by the throwable the way a
-	 *                                BadResponseException carries its response
-	 * @param int|null    $now        later than NOW to push a cached copy past its freshness window
-	 * @param bool        $reuseCache false gives this repository its own empty cache instead of
-	 *                                sharing $this->store with earlier repository() calls in the
-	 *                                same test — the app-update tests use it to model ADR-0012's
-	 *                                namespace move, and the mapper double keeps sharing $this->rows
-	 *                                either way, because the table is what survives the update.
+	 * epi.minsal.cl is read by the same parser from its own address, into its
+	 * own cache entry and its own table scope — and its host is its own:
+	 * degreyd's outage, left behind as degreyd's cooldown, does not hold it.
 	 */
+	public function testEpiReadsItsOwnPageUnderItsOwnHost(): void {
+		$this->repository(offline: true)->get();
+		$this->requested = [];
+		$this->scopes = [];
+
+		$epi = $this->repositories()->repository(Sources::EPI)->get();
+
+		self::assertFalse($epi['degraded'], 'degreyd\'s host being down is not epi\'s');
+		self::assertCount(77, $epi['items']);
+		self::assertSame(['https://epi.minsal.cl/alertas-epidemiologicas-vigentes/'], $this->requested);
+		self::assertSame(['epi_alerts', 'epi_alerts'], $this->scopes, 'read and replaced under its own fuente');
+		self::assertArrayHasKey('feed-epi_alerts', $this->store);
+	}
+
+	/**
+	 * The other direction, in epi's own sentences: Cloudflare's 403 to a
+	 * datacentre brakes epi's host, names epi in the log, and leaves
+	 * degreyd's reads asking.
+	 */
+	public function testARefusalFromEpiBrakesEpiAloneAndSaysSo(): void {
+		$this->repositories(refused: 403)->repository(Sources::EPI)->get();
+
+		self::assertSame(
+			[
+				'MINSAL epi answered 403; under freno 1 time(s), waiting 7200s',
+				'The MINSAL epi alerts page could not be read',
+			],
+			$this->warnings(),
+		);
+		self::assertArrayHasKey('freno-epi', $this->store);
+
+		$degreyd = $this->repository()->get();
+
+		self::assertFalse($degreyd['degraded'], 'epi\'s brake does not hold degreyd');
+		self::assertCount(2, $this->requested);
+	}
+
+	// --- the factory -------------------------------------------------------
+
+	/**
+	 * The catalogue's loudness, carried across the factory (ADR-0017). Every
+	 * suite that builds Sources hands it a factory double, so none of them walks
+	 * AlertRepositories' own match — and an id listed in Sources::ALL and
+	 * missing there would reach production as an UnhandledMatchError on Inicio,
+	 * for everyone. Every id but the informe's is an alert fuente; each resolves
+	 * here, to one instance however often Sources asks.
+	 */
+	public function testEveryAlertIdInTheCatalogueResolvesToOnePipeline(): void {
+		$repositories = $this->repositories();
+		$ids = array_diff(Sources::ALL, [Sources::REPORTS]);
+		self::assertNotSame([], $ids, 'a catalogue with no alert fuente would pass this walk for free');
+
+		foreach ($ids as $id) {
+			self::assertSame($repositories->repository($id), $repositories->repository($id), $id);
+		}
+	}
+
+	// --- doubles -------------------------------------------------------------
+
+	/** degreyd's pipeline, as Sources is handed it — see repositories() for the doubles. */
 	private function repository(
 		?string $body = null,
 		bool $offline = false,
 		?int $now = null,
 		bool $reuseCache = true,
 		?int $refused = null,
-	): MinsalRepository {
+		bool $brokenTable = false,
+	): AlertRepository {
+		return $this->repositories($body, $offline, $now, $reuseCache, $refused, $brokenTable)->repository(Sources::ALERTS);
+	}
+
+	/**
+	 * The factory every alert pipeline is built through (ADR-0017), over this
+	 * suite's doubles — the one place the suite constructs anything.
+	 *
+	 * @param string|null $body        served for every request, instead of the fixture
+	 * @param int|null    $refused     an HTTP status the host answers with instead of a page —
+	 *                                 the refusal class, carried by the throwable the way a
+	 *                                 BadResponseException carries its response
+	 * @param int|null    $now         later than NOW to push a cached copy past its freshness window
+	 * @param bool        $reuseCache  false gives this repository its own empty cache instead of
+	 *                                 sharing $this->store with earlier repository() calls in the
+	 *                                 same test — the app-update tests use it to model ADR-0012's
+	 *                                 namespace move, and the mapper double keeps sharing $this->rows
+	 *                                 either way, because the table is what survives the update.
+	 * @param bool        $brokenTable every read and write of the table throws — a storage fault,
+	 *                                 which the pipeline logs and never serves as an outage
+	 */
+	private function repositories(
+		?string $body = null,
+		bool $offline = false,
+		?int $now = null,
+		bool $reuseCache = true,
+		?int $refused = null,
+		bool $brokenTable = false,
+	): AlertRepositories {
 		if (!$reuseCache) {
 			$this->store = [];
 		}
@@ -869,12 +1092,41 @@ class MinsalRepositoryTest extends TestCase {
 		 * assertable as an absent row, never as a call count.
 		 */
 		$mapper = $this->createMock(AlertMapper::class);
-		$mapper->method('readSet')->willReturnCallback(fn (): array => $this->rows);
-		$mapper->method('replaceSet')->willReturnCallback(function (array $alerts): void {
+		$mapper->method('readSet')->willReturnCallback(function (string $fuente) use ($brokenTable): array {
+			$this->scopes[] = $fuente;
+			if ($brokenTable) {
+				throw new RuntimeException('SQLSTATE[08006]: the connection to the database was lost');
+			}
+
+			return $this->rows;
+		});
+		$mapper->method('replaceSet')->willReturnCallback(function (string $fuente, array $alerts) use ($brokenTable): void {
+			$this->scopes[] = $fuente;
+			if ($brokenTable) {
+				throw new RuntimeException('SQLSTATE[08006]: the connection to the database was lost');
+			}
 			$this->rows = $alerts;
 		});
 
-		return new MinsalRepository($clients, $time, $this->logger(), $mapper, $cacheFactory, $jobs);
+		// One recorder for both: the parse's warnings land in $this->logged
+		// exactly as they did while parse() was this repository's own method.
+		$logger = $this->logger();
+
+		// The ISP's and OPS/OMS's collaborators too, because the factory
+		// takes them: this suite's fuentes never reach them (AlertStreamTest's do).
+		return new AlertRepositories(
+			$clients,
+			$time,
+			$logger,
+			$mapper,
+			$cacheFactory,
+			$jobs,
+			new PageParser($logger),
+			$this->appConfig(),
+			$this->createMock(CertificateBundle::class),
+			new FeedParser($logger),
+			new PahoParser($logger),
+		);
 	}
 
 	/**
@@ -907,13 +1159,31 @@ class MinsalRepositoryTest extends TestCase {
 	}
 
 	/**
-	 * The one real captured response this suite is tested against. MINSAL serves
-	 * this fuente from exactly one fixed URL now, so there is no slug or category
-	 * left to dispatch on the way IspRepositoryTest still has to.
+	 * Every warning as nextcloud.log prints it: each `{key}` replaced by its
+	 * context value, the interpolation Nextcloud's Log applies before a line is
+	 * written. What an admin greps for is the rendered sentence, not the template.
+	 *
+	 * @return list<string>
+	 */
+	private function warnings(): array {
+		return array_map(
+			static fn (array $l): string => (string)preg_replace_callback(
+				'/\{(\w+)\}/',
+				static fn (array $m): string => is_scalar($l['context'][$m[1]] ?? null) ? (string)$l['context'][$m[1]] : $m[0],
+				$l['message'],
+			),
+			array_values(array_filter($this->logged, static fn (array $l): bool => $l['level'] === 'warning')),
+		);
+	}
+
+	/**
+	 * The real captured responses this suite is tested against: degreyd's page,
+	 * and epi's for epi's own tests. Each fuente reads exactly one fixed URL, so
+	 * the host is all there is to dispatch on.
 	 *
 	 * An unmatched url is recorded and asserted in tearDown, NOT thrown here.
 	 * Throwing looks right and is useless: this runs inside the client's get(),
-	 * and MinsalRepository::request() catches Throwable — AssertionFailedError
+	 * and AlertRepository::request() catches Throwable — AssertionFailedError
 	 * included — logs a warning and returns null. A missing fixture would
 	 * therefore read as an unreachable host, go down the degraded path, and let
 	 * a test pass green. That is the exact failure this double exists to make
@@ -922,6 +1192,10 @@ class MinsalRepositoryTest extends TestCase {
 	 * Pass `body:` for a request that is meant to have no fixture.
 	 */
 	private function fixture(string $url): string {
+		if (str_contains($url, 'epi.minsal.cl')) {
+			return (string)file_get_contents(__DIR__ . '/fixtures/epi-alertas-vigentes.html');
+		}
+
 		if (!str_contains($url, 'degreyd.minsal.cl')) {
 			$this->unmatched[] = $url;
 

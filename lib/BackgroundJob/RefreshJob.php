@@ -14,39 +14,36 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
- * Keeps an install nobody opened fresh.
+ * The deep pass, nightly (L3-08).
  *
- * The read path refreshes only when someone opens the app, so on its own an
- * unopened install would keep serving its last fetched answer forever and
- * stop keeping new informes: the first clinician back after a fortnight
- * would find the week they need missing, and the kept-document back
- * catalogue would never finish converging (ADR-0015 §2). This job is the
- * freshness mechanism for installs nobody is looking at — one daily pass
- * through the catalogue, and an unopened install converges on the current
- * week within a day of publication. Opened panes stay the read path's
- * business: its hourly-on-open refresh keeps serving them.
+ * The read path serves each fuente's first page and stops, so what a first
+ * page cannot carry is done here, off the request path: the informe's
+ * back-catalogue walk and document archiver, and each stream fuente's
+ * one-shot backfill of its two older pages. Their worst case — the
+ * informe's WALK_PAGES of pages and ARCHIVE_BUDGET of documents, a stream's
+ * two pages, 15 s each — costs a nightly window nobody waits in, and the
+ * documents an unopened install keeps converge here, ARCHIVE_BUDGET a night
+ * (ADR-0015 §2).
  *
- * It rides Sources::get() — the same mint point the page serves from, where
- * the cache entry is written, the table upserted and the documents kept —
- * and NOT probe(), which exists to detect and deliberately asks through the
- * freno (#218beba): a daily pass through that door would re-ask a host that
- * said no, which is exactly what the brake exists to stop. get() consults
- * the freshness window, the cooldown and the freno before any request, so
- * this job needs no bounds of its own: every fetch behind it is a
- * repository's own, bounded at 15 s, and a refusing host answers degraded,
- * costing nothing (ADR-0015 §4).
+ * Until ADR-0017 this job also kept unopened installs fresh, with a get()
+ * loop over the catalogue ahead of the deep pass. That loop is WarmJob's
+ * now, hourly — which this class could not become: it is TIME_INSENSITIVE,
+ * which on an instance with a maintenance window runs only inside it, and
+ * its row's time_sensitive, once written 0, is never raised again (see
+ * WarmJob).
  *
- * It never touches ProbeRecord. The failure counts are the daily-detection
- * substrate and ProbeJob is their sole writer — CONTEXT.md's Sondeo entry
- * keeps the rule, and ProbeRecord::record() counts calls, not days: a second
- * writer on this cadence would turn the [2, 7, 30] alarm schedule into
- * arithmetic about the wrong interval, the bell-spam defect class. A
- * degraded answer passes through unexamined: detection is ProbeJob's
- * business, and the flag is rendered where it belongs, by the read path.
+ * It rides Sources::converge() and no other door: not get(), which is
+ * WarmJob's, and not probe(), which asks through the freno (#218beba). Each
+ * converge() carries its own bounds — the informe's page and document
+ * budgets, a stream's host gates and its once-per-install flag — so this
+ * job needs none of its own.
+ *
+ * It never touches ProbeRecord: the failure counts are ProbeJob's alone
+ * (CONTEXT.md's Sondeo entry), and a deep pass that throws is not an outage
+ * verdict.
  *
  * 24h and TIME_INSENSITIVE, ProbeJob-aligned: both run in the platform's
- * nightly maintenance window, off the request path, and the daily cost
- * against healthy publishers is one read per fuente.
+ * nightly maintenance window.
  */
 class RefreshJob extends TimedJob {
 	public function __construct(
@@ -62,34 +59,18 @@ class RefreshJob extends TimedJob {
 
 	#[\Override]
 	protected function run($argument): void {
-		// Every fuente through the same mint point the read path rides, so
-		// there is no second code path for the same work to disagree with it.
-		// The answer is ignored on purpose — this job warms; ProbeJob detects,
-		// and a degraded payload is a fact the read path renders, not one to
-		// act on here.
-		//
-		// Per-source isolation (L3-03), the refresher's half: a get() that
-		// throws is logged and stepped over — the sibling fuente still gets
-		// its pass, and tomorrow's run retries the thrower. Deliberately NOT
-		// recorded as a probe failure: the counts are ProbeJob's alone (see
-		// the class docblock), and this class has no cleaner signal than the
-		// log for a throw that is not an outage verdict.
-		foreach (Sources::ALL as $source) {
+		// Isolated per fuente (L3-03): one stream's walk that throws does not
+		// cost the informe its archiver, nor the next stream its history —
+		// it is logged and stepped over, and tomorrow's run asks again.
+		foreach (Sources::ACCUMULATING as $source) {
 			try {
-				$this->sources->get($source);
+				$this->sources->converge($source);
 			} catch (Throwable $e) {
-				$this->logger->warning('The refresh pass of {source} threw instead of answering', [
+				$this->logger->warning('The deep pass of {source} threw instead of finishing', [
 					'source' => $source,
 					'exception' => $e,
 				]);
 			}
 		}
-
-		// The deep pass (L3-08): the read path serves page 1 and stops, so the
-		// one-shot backfill and the document archiver run HERE — off the
-		// request path, where their worst case (WALK_PAGES of pages and
-		// ARCHIVE_BUDGET of documents, 15 s each) costs a nightly window
-		// nobody waits in.
-		$this->sources->converge();
 	}
 }

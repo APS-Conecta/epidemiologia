@@ -7,7 +7,7 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\Sources;
 use OCA\Epidemiologia\Service\IspReportRepository;
 use PHPUnit\Framework\TestCase;
@@ -28,10 +28,12 @@ use PHPUnit\Framework\TestCase;
  *    does it quietly in production.
  */
 final class ApiContractTest extends TestCase {
+	use Doubles;
+
 	private const RUTA = '/ocs/v2.php/apps/epidemiologia/api/v1/sources';
 
 	/** What the spec can name unambiguously: source keys minus the schema-keyword collision, plus item keys. */
-	private const NOMBRES = ['fetched_at', 'degraded', 'total', 'has_more', 'title', 'url', 'year', 'month', 'se'];
+	private const NOMBRES = ['fetched_at', 'degraded', 'total', 'has_more', 'title', 'url', 'year', 'month', 'se', 'date', 'tipo'];
 
 	/** What Sources::get() serves, read from the code. */
 	private const SIRVIDO = ['items', 'fetched_at', 'degraded', 'total', 'has_more'];
@@ -79,12 +81,12 @@ final class ApiContractTest extends TestCase {
 
 	public function testSourcesServesExactlyTheFiveSourceKeys(): void {
 		$payload = ['items' => [], 'fetched_at' => null, 'degraded' => false];
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$minsal->method('get')->willReturn($payload);
 		$informes = $this->createMock(IspReportRepository::class);
 		$informes->method('get')->willReturn($payload);
 
-		$served = (new Sources($minsal, $informes))->get(Sources::ALERTS);
+		$served = (new Sources($this->alertRepositories($minsal), $informes))->get(Sources::ALERTS);
 
 		self::assertSame(
 			self::SIRVIDO,

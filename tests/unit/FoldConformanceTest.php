@@ -7,11 +7,11 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
-use OCA\Epidemiologia\Service\MinsalRepository;
+use OCA\Epidemiologia\Service\AlertRepository;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Accent folding exists twice — `MinsalRepository::fold()` for OCS and global search,
+ * Accent folding exists twice — `AlertRepository::fold()` for OCS and global search,
  * `fold()` in `src/pure.js` (re-exported through `src/state.js` until L7-01)
  * for the in-browser filter — because a clinician types
  * "sarampion" on both sides of the wire. Two languages, so the duplication cannot be
@@ -43,7 +43,7 @@ class FoldConformanceTest extends TestCase {
 			// The input in the message, because a bare "failed asserting two strings are
 			// equal" over combining marks is unreadable — one of these cases IS a
 			// combining mark, and it renders as nothing at all.
-			self::assertSame($expected, MinsalRepository::fold($input), json_encode($input));
+			self::assertSame($expected, AlertRepository::fold($input), json_encode($input));
 		}
 	}
 }

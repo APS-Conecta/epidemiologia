@@ -62,15 +62,15 @@ class ProbeJobTest extends TestCase {
 	public function testAdminsAreToldOnTheSecondConsecutiveFailure(): void {
 		$this->runDays(2, healthy: false);
 
-		// two fuentes (alertas MINSAL, informes ISP) x one admin
-		self::assertSame(['admin', 'admin'], $this->notified);
+		// every fuente in the catalogue x one admin
+		self::assertSame(array_fill(0, count(Sources::ALL), 'admin'), $this->notified);
 	}
 
 	public function testAThirtyDayOutageProducesThreeAlarmsAndNotThirty(): void {
 		$this->runDays(30, healthy: false);
 
-		// days 2, 7 and 30, for each of the two sources — not 60 notifications
-		self::assertCount(6, $this->notified);
+		// days 2, 7 and 30, for each source — not thirty per source
+		self::assertCount(3 * count(Sources::ALL), $this->notified);
 		self::assertSame(30, $this->probeRecord()->consecutive('alerts'));
 	}
 
@@ -86,7 +86,7 @@ class ProbeJobTest extends TestCase {
 
 		// Two alarms per source (days 2 and 7), each preceded by a markProcessed, so
 		// the bell holds one row per source rather than one per alarm.
-		self::assertSame(4, $this->cleared);
+		self::assertSame(2 * count(Sources::ALL), $this->cleared);
 	}
 
 	public function testRecoveryResetsTheStateAndTakesTheNotificationOffTheBell(): void {
@@ -96,7 +96,7 @@ class ProbeJobTest extends TestCase {
 
 		self::assertSame(0, $this->probeRecord()->consecutive('alerts'));
 		self::assertNull($this->probeRecord()->failingSince('alerts'));
-		self::assertSame(2, $this->cleared, 'one per source');
+		self::assertSame(count(Sources::ALL), $this->cleared, 'one per source');
 	}
 
 	public function testAlreadyHealthyRunsDoNotTouchTheBellAtAll(): void {
@@ -136,7 +136,7 @@ class ProbeJobTest extends TestCase {
 		$this->config['notify_groups'] = ['informatica'];
 		$this->runDays(2, healthy: false);
 
-		self::assertSame(['tecnico', 'tecnico'], $this->notified);
+		self::assertSame(array_fill(0, count(Sources::ALL), 'tecnico'), $this->notified);
 	}
 
 	/**

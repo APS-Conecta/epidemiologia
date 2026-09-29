@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Tests\Unit;
 use OCA\Epidemiologia\BackgroundJob\RevalidateJob;
 use OCA\Epidemiologia\Db\Report;
 use OCA\Epidemiologia\Db\ReportMapper;
+use OCA\Epidemiologia\Service\AlertRepositories;
 use OCA\Epidemiologia\Service\CertificateBundle;
 use OCA\Epidemiologia\Service\IspReportRepository;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -472,14 +473,14 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertTrue($held['degraded']);
 		self::assertNotSame([], $held['items'], 'the last good copy serves while the brake holds');
 		self::assertCount(2, $this->requested, 'a braked read must not ask — a 403 is an answer, not a challenge');
-		self::assertSame(1, $this->store['freno-isp-informes']['v']['n'] ?? null, 'one refusal, one count');
+		self::assertSame(1, $this->store['freno-isp']['v']['n'] ?? null, 'one refusal, one count');
 	}
 
 	public function testATimeoutStaysCooldownClassAndNeverArmsTheBrake(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 
 		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, offline: true)->revalidate();
-		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'no answer came back — there is no refusal to remember');
+		self::assertArrayNotHasKey('freno-isp', $this->store, 'no answer came back — there is no refusal to remember');
 
 		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 7501, offline: true)->revalidate();
 
@@ -500,17 +501,17 @@ class IspReportRepositoryTest extends TestCase {
 
 		self::assertFalse($probe->probe());
 		self::assertCount(1, $this->requested, 'the probe asked through the brake');
-		self::assertSame(2, $this->store['freno-isp-informes']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
+		self::assertSame(2, $this->store['freno-isp']['v']['n'] ?? null, 'the ask escalated the count, it did not assume the state');
 	}
 
 	public function testAHostThatAnswersAgainClearsTheBrakeSoReadsResume(): void {
 		$this->repository(body: $this->rss([self::WEEK]))->get();
 		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
-		self::assertArrayHasKey('freno-isp-informes', $this->store);
+		self::assertArrayHasKey('freno-isp', $this->store);
 
 		// The daily ask catches the recovery, and the answer clears the key.
 		self::assertTrue($this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 7260)->probe());
-		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'an answer removes the key outright — recovery is one step');
+		self::assertArrayNotHasKey('freno-isp', $this->store, 'an answer removes the key outright — recovery is one step');
 
 		/*
 		 * Past the cooldown the refusal left (+7500) AND past the probe's own
@@ -541,8 +542,54 @@ class IspReportRepositoryTest extends TestCase {
 		$waf = $this->repository(body: '<html><body>Attention Required</body></html>', reuseCache: true, now: self::NOW + 7260);
 
 		self::assertFalse($waf->probe());
-		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'the 200 lifted the brake even though the parse failed');
-		self::assertNotNull($this->store['cooldown-isp-informes']['v'] ?? null, 'the WAF page lands in the cooldown');
+		self::assertArrayNotHasKey('freno-isp', $this->store, 'the 200 lifted the brake even though the parse failed');
+		self::assertNotNull($this->store['cooldown-isp']['v'] ?? null, 'the WAF page lands in the cooldown');
+	}
+
+	/**
+	 * The brake and the cooldown are the ISP host's, not this feed's (ADR-0017
+	 * D8): the ISP alert feeds read www.ispch.gob.cl too, and whichever of them
+	 * meets an outage first arms the host's cooldown — seeded here the way
+	 * that sibling's pipeline writes it, after this feed's revalidation was
+	 * queued. The queued revalidation asks nothing, and the stale read serves
+	 * the series degraded without queueing another.
+	 */
+	public function testASiblingsTimeoutOnTheIspHostHoldsTheInformeToo(): void {
+		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$this->requested = [];
+		$this->jobs = [];
+
+		$this->cache(self::NOW + self::STALE)->set('cooldown-' . AlertRepositories::ISP_HOST, 1, 300);
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE)->revalidate();
+		$stale = $this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 60)->get();
+
+		self::assertSame([], $this->requested, 'a revalidation queued behind a cooling host asks nothing');
+		self::assertTrue($stale['degraded'], 'the host is down for the informe as much as for the feed that met it');
+		self::assertNotSame([], $stale['items'], 'and the last good series still serves');
+		self::assertSame([], $this->jobs, 'a cooling host is not asked behind the response either');
+	}
+
+	/**
+	 * The brake's half of the same guard: past the cooldown a refusal leaves
+	 * and inside its brake, a queued revalidation asks nothing and escalates
+	 * nothing. The one warning the refusal wrote names the host's publisher —
+	 * the grain is the host now, and its sentence is every ISP fuente's.
+	 */
+	public function testAQueuedRevalidationMakesNoRequestWhileTheHostIsBraked(): void {
+		$this->repository(body: $this->rss([self::WEEK]))->get();
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE, refused: 403)->revalidate();
+		$this->requested = [];
+
+		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + 7501, refused: 403)->revalidate();
+
+		self::assertSame([], $this->requested, 'a braked host is not asked by a queued revalidation');
+		self::assertSame(1, $this->store['freno-isp']['v']['n'] ?? null, 'nothing asked, nothing escalated');
+		$refusals = array_values(array_filter(
+			$this->logged,
+			static fn (array $l): bool => str_contains($l['message'], '{subject} answered'),
+		));
+		self::assertCount(1, $refusals);
+		self::assertSame('ISP', $refusals[0]['context']['subject'] ?? null, 'the brake names the host\'s publisher, not one of its feeds');
 	}
 
 	// --- the one-shot backfill ---------------------------------------------------
@@ -656,7 +703,7 @@ class IspReportRepositoryTest extends TestCase {
 		$items = $repository->get()['items'];
 
 		self::assertNotSame([], $items, 'page 1 answered — the deep page is not the read');
-		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'a deep page must not arm the freno');
+		self::assertArrayNotHasKey('freno-isp', $this->store, 'a deep page must not arm the freno');
 
 		$repository->converge();
 		self::assertSame(2, $this->cursor(), 'the walk resumes from the same page next refresh');
@@ -758,6 +805,38 @@ class IspReportRepositoryTest extends TestCase {
 		$this->repository(body: $this->rss([self::WEEK]), reuseCache: true, now: self::NOW + self::STALE + 60)->get();
 
 		self::assertCount(1, $this->jobs, 'the marker dedups the dispatch');
+	}
+
+	/**
+	 * Sync once, then behind the response — the pipeline's rule (ADR-0017 D9),
+	 * here because this sibling's cold branch had the same cost: the first
+	 * cold read fetches while someone waits; once that fetch failed and its
+	 * cooldown lapsed with nothing stored, the next cold read asks nothing,
+	 * dispatches the revalidation and says degraded. The dispatched
+	 * revalidation is what fills the series.
+	 */
+	public function testASecondColdReadMovesTheFetchBehindTheResponse(): void {
+		$first = $this->repository(body: $this->rss([self::WEEK]), offline: true)->get();
+		self::assertTrue($first['degraded']);
+		self::assertCount(1, $this->requested, 'precondition: the first cold read fetched while someone waited');
+
+		$second = $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 301, offline: true)->get();
+		$third = $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 302, offline: true)->get();
+
+		self::assertCount(1, $this->requested, 'past the cooldown, a cold read asks nothing while someone waits');
+		self::assertSame(['items' => [], 'fetched_at' => null, 'degraded' => true], $second, 'nothing to serve is degraded, never an empty healthy list');
+		self::assertSame($second, $third);
+		self::assertSame(
+			[[RevalidateJob::class, ['source' => 'reports']]],
+			$this->jobs,
+			'one dispatch behind the response, deduped by the marker',
+		);
+
+		$this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 303)->revalidate();
+		$filled = $this->repository(body: $this->rss([self::WEEK]), now: self::NOW + 304)->get();
+
+		self::assertFalse($filled['degraded'], 'the revalidation it dispatched filled the series');
+		self::assertNotSame([], $filled['items']);
 	}
 
 	public function testRevalidationHoldsTheLockSoOneRefreshRunsAtATime(): void {
@@ -976,7 +1055,7 @@ class IspReportRepositoryTest extends TestCase {
 		self::assertFalse($result['degraded'], 'a document that cannot be kept is not the fuente\'s failure');
 		self::assertNull($this->rows['2026-35']->getPath(), 'nothing is claimed that was not kept');
 		self::assertSame('https://www.ispch.gob.cl/documento/semana-35-2026/', $result['items'][0]['url'], 'the publisher\'s own page answers until the document is kept');
-		self::assertArrayNotHasKey('freno-isp-informes', $this->store, 'a document\'s refusal must not arm the read\'s brake');
+		self::assertArrayNotHasKey('freno-isp', $this->store, 'a document\'s refusal must not arm the read\'s brake');
 		self::assertSame([], $this->appData->written, 'and nothing was written');
 	}
 
@@ -1431,7 +1510,7 @@ class IspReportRepositoryTest extends TestCase {
 	 * thrown here: this runs inside the client's get(), and request()
 	 * catches Throwable — AssertionFailedError included — so a missing
 	 * fixture would read as an unreachable host and let a test pass green.
-	 * Same reason as MinsalRepositoryTest's copy.
+	 * Same reason as AlertRepositoryTest's copy.
 	 */
 	private function fixture(string $url): string {
 		if (!str_contains($url, 'ispch.gob.cl')) {

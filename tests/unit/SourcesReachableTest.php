@@ -7,8 +7,8 @@ declare(strict_types=1);
 
 namespace OCA\Epidemiologia\Tests\Unit;
 
+use OCA\Epidemiologia\Service\AlertRepository;
 use OCA\Epidemiologia\Service\IspReportRepository;
-use OCA\Epidemiologia\Service\MinsalRepository;
 use OCA\Epidemiologia\Service\ProbeRecord;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCA\Epidemiologia\Service\Sources;
@@ -214,7 +214,7 @@ class SourcesReachableTest extends TestCase {
 	}
 
 	private function check(bool $explosive = false): SourcesReachable {
-		$minsal = $this->createMock(MinsalRepository::class);
+		$minsal = $this->createMock(AlertRepository::class);
 		$informes = $this->createMock(IspReportRepository::class);
 
 		if ($explosive) {
@@ -228,7 +228,7 @@ class SourcesReachableTest extends TestCase {
 			}
 		}
 
-		return new SourcesReachable($this->probeRecord(), new Sources($minsal, $informes), $this->l10n());
+		return new SourcesReachable($this->probeRecord(), new Sources($this->alertRepositories($minsal), $informes), $this->l10n());
 	}
 
 	/** Real, over the shared config double — see ProbeJobTest for why it is not a mock. */

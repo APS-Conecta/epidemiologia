@@ -10,7 +10,7 @@
 //
 // Usage: EPI_TOKEN=<token> node scripts/layout.mjs <base-url> <user>
 import { chromium } from 'playwright'
-import { PANE_IDS } from '../src/panes.js'
+import { PANES, PANE_IDS } from '../src/panes.js'
 
 // The token comes through the ENVIRONMENT, not argv. A command line is readable from
 // /proc/*/cmdline by any local user for as long as the run lasts, and this one holds a
@@ -217,12 +217,14 @@ const INSPECT = (paneIndex) => {
  *
  * @param {import('playwright').Page} page - The page under test.
  * @param {number} paneIndex - Which `.epi > section` to open.
- * @param {boolean} unanswerable - Whether this pane's fuente is degraded AND carries
- *   zero items, the one state that makes the missing-options complaint unanswerable.
- * @return {Promise<string[]>} One complaint per option that shows no count.
+ * @param {boolean} empty - Whether this pane's fuente carries zero items, whatever the
+ *   reason: the one state that makes the missing-options complaint unanswerable.
+ * @return {Promise<{complaints: string[], names: string[]}>} One complaint per option
+ *   that shows no count, and the radio names its menus render (check 10's input).
  */
-const inspectMenus = async (page, paneIndex, unanswerable) => {
+const inspectMenus = async (page, paneIndex, empty) => {
 	const complaints = []
+	const names = []
 	const menus = await page.evaluate((i) => {
 		const panes = [...document.querySelectorAll('.epi > section')]
 		panes.forEach((p, j) => { p.style.display = j === i ? 'block' : 'none' })
@@ -244,10 +246,14 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 		}, { i: paneIndex, m })
 		await page.waitForFunction(() => !!document.querySelector('.v-popper__popper'), null, { timeout: 5000 })
 
-		const options = await page.evaluate(() => {
+		const { options, radios } = await page.evaluate(() => {
 			const popper = [...document.querySelectorAll('.v-popper__popper')].pop()
-			return [...popper.querySelectorAll('.action-radio__text')].map((e) => e.textContent.trim())
+			return {
+				options: [...popper.querySelectorAll('.action-radio__text')].map((e) => e.textContent.trim()),
+				radios: [...popper.querySelectorAll('input[type="radio"]')].map((e) => e.name),
+			}
 		})
+		names.push(...new Set(radios))
 
 		// The first row is "Todos los años" / "Todos los tipos": no filter, so
 		// nothing to count. Every row after it names a subset and states its size.
@@ -264,15 +270,16 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 		}
 		// The pane carries no items, so tally() builds no options and the menu
 		// legitimately holds nothing but its "todo" row. Degraded alone does not imply
-		// this — MinsalRepository::present() keeps serving the last GOOD copy while
+		// this — AlertRepository::present() keeps serving the last GOOD copy while
 		// degraded, so a fuente that degrades after having items still has items to
-		// count. `degraded` only names WHY a genuinely empty one is empty; the caller
-		// computes `unanswerable` from BOTH degraded and a zero item count. Going red
-		// here blames this app for a host it does not own — the same DATA-reason red
-		// check 8 already refuses to go. Only THIS complaint is withheld: the menus are
-		// still opened, the pane must still have them, and an option that does appear is
-		// still read for its count. The caller prints the skip that names the fuente.
-		if (options.length === 1 && !unanswerable) {
+		// count — and an answered fuente can carry none: a category with nothing
+		// published is a publisher saying zero. "Zero items" is the one fact that
+		// empties the menus, whatever its reason, and the caller names the reason in
+		// its skip. Going red here blames this app for a host it does not own or a
+		// publisher's silence — the same DATA-reason red check 8 already refused to go.
+		// Only THIS complaint is withheld: the menus are still opened, the pane must
+		// still have them, and an option that does appear is still read for its count.
+		if (options.length === 1 && !empty) {
 			complaints.push('a filter menu offers nothing but its "todo" row')
 		}
 
@@ -335,50 +342,134 @@ const inspectMenus = async (page, paneIndex, unanswerable) => {
 			.catch(() => {})
 	}
 
-	return complaints
+	return { complaints, names }
 }
 
 /**
- * Is this pane's fuente in the one state that makes the missing-options complaint
- * unanswerable — degraded AND serving zero items?
+ * What the page says about one fuente — degraded or not, carrying items or not —
+ * read the way the app reads it. Checks 6 and 11 turn on these two facts.
  *
- * Degraded alone does not mean empty: MinsalRepository::present($stored, true) (the
- * degrade() path, present() at :452) keeps serving `$stored['items'] ?? []` — the last
+ * Degraded alone does not mean empty: AlertRepository::degrade() answers through
+ * present($stored, true), which keeps serving `$stored['items'] ?? []` — the last
  * GOOD copy — so a fuente that degrades after having items still has items, and its
- * menus should build year/month options same as ever. The fact that makes tally()
- * build nothing is "zero items", not "degraded"; `degraded` only names WHY a fuente
- * that genuinely has none is empty. A reviewer caught this before it could expire:
- * this instance has no last-good copy for either fuente today, so the two facts
- * happen to coincide here, but two later tasks in this plan repoint these fuentes at
- * live sources, where a degrade-with-items is the expected case, not a hypothetical.
+ * menus should build year/month options same as ever. Nor does empty mean degraded:
+ * a fuente can answer with nothing. The two facts are read apart and combined by
+ * the check that needs them.
+ *
+ * A key the payload does not carry is both: src/state.js reads a missing key as
+ * degraded and empty (L3-14), and that is what the pane renders — so the gate reads
+ * it the same way, instead of as a fuente with items it cannot count.
  *
  * Read from the initial-state node rather than from the rendered DegradedNotice: that
  * node is the same contract src/state.js reads (PageController provides ONE `sources`
  * key for every fuente) and loadState() leaves it in the DOM, whereas the notice
  * is @nextcloud/vue markup that can be restyled without the fact changing.
  *
- * Both halves fail closed, in the direction that keeps the assertion RUNNING: a
- * `degraded` that cannot be read answers false (not known to be degraded), and an
- * `items` that cannot be read or is not an array answers non-zero (not known to be
- * empty) — either default alone already keeps the AND false. One expression, not two
- * independent try/catches that could disagree about what "unreadable" means. A
- * detection that broke must leave the gate red rather than quiet — and unlike a
- * genuinely unanswerable fuente, which silences one pane, a broken read here would
- * silence every pane at once.
+ * A payload that cannot be read fails closed, in the direction that keeps every
+ * assertion RUNNING: not degraded, not empty. A detection that broke must leave the
+ * gate red rather than quiet — unlike a genuinely empty fuente, which silences one
+ * pane's count check, a broken read here would silence every pane at once.
  *
  * @param {import('playwright').Page} page - The page under test.
  * @param {string} fuente - The payload key, as Service/Sources.php spells it.
- * @return {Promise<boolean>} True only when the payload says degraded AND empty.
+ * @return {Promise<{degraded: boolean, empty: boolean}>} The two facts.
  */
-const isUnanswerable = (page, fuente) => page.evaluate((key) => {
+const fuenteState = (page, fuente) => page.evaluate((key) => {
 	try {
 		const source = JSON.parse(atob(document.querySelector('#initial-state-epidemiologia-sources').value))[key]
-		const itemCount = Array.isArray(source.items) ? source.items.length : Infinity
-		return source.degraded === true && itemCount === 0
+		if (source === undefined) {
+			return { degraded: true, empty: true }
+		}
+		return {
+			degraded: source.degraded === true,
+			empty: Array.isArray(source.items) && source.items.length === 0,
+		}
 	} catch {
-		return false
+		return { degraded: false, empty: false }
 	}
 }, fuente)
+
+/**
+ * Check 12, Inicio's hero board, which needs clicks and a page as the app left it.
+ *
+ * One tile per alert sector, in the registry's order (src/panes.js), plus the
+ * informe's card; each tile says whether its own fuente answered; and each tile's
+ * button opens its own pane, headed by the name the tile carries. The three are
+ * one walk: tile i is clicked and the registry's i-th sector must be the one pane
+ * showing — which proves the order, the wiring and the naming together, without
+ * this script knowing a single name (paneName() needs the page's l10n).
+ *
+ * "Says whether it answered" is compared with the payload, not with a guess: a
+ * tile is gold exactly when its fuente is degraded — and a key the page does not
+ * carry reads as degraded too (src/state.js, L3-14). From this server four
+ * sectors are, so the comparison runs against live data both ways.
+ *
+ * @param {import('playwright').Page} page - A freshly loaded page, v-show untouched.
+ * @return {Promise<string[]>} One complaint per way the board is wrong.
+ */
+const inspectBoard = async (page) => {
+	const sectors = PANES.filter((p) => p.source)
+	const board = await page.evaluate((keys) => {
+		let state = null
+		try {
+			state = JSON.parse(atob(document.querySelector('#initial-state-epidemiologia-sources').value))
+		} catch {
+			return null
+		}
+		const inicio = document.querySelector('.epi > section.epi-inicio')
+		const tiles = [...(inicio?.querySelectorAll('.epi-inicio__sources > .epi-card') ?? [])]
+
+		return {
+			tiles: tiles.map((tile) => ({
+				name: tile.querySelector('h2')?.textContent.trim() ?? '',
+				degraded: tile.classList.contains('epi-card--degraded'),
+			})),
+			degraded: keys.map((key) => state[key] === undefined || state[key].degraded === true),
+			informe: inicio?.querySelectorAll(':scope > .epi-card').length ?? 0,
+		}
+	}, sectors.map((p) => p.source))
+
+	if (board === null) {
+		return ['the page carries no readable sources state, so the board cannot be checked against it']
+	}
+	const complaints = []
+	if (board.tiles.length !== sectors.length) {
+		complaints.push(`${board.tiles.length} tiles for ${sectors.length} sectors`)
+	}
+	if (board.informe !== 1) {
+		complaints.push(`${board.informe} informe cards below the tiles, not one`)
+	}
+	board.tiles.forEach((tile, i) => {
+		if (i < sectors.length && tile.degraded !== board.degraded[i]) {
+			complaints.push(`"${tile.name}" is ${tile.degraded ? '' : 'not '}marked degraded while ${sectors[i].source} ${board.degraded[i] ? 'is' : 'is not'}`)
+		}
+	})
+
+	for (const [i, sector] of sectors.entries()) {
+		if (i >= board.tiles.length) {
+			break
+		}
+		await page.evaluate((n) => {
+			document.querySelectorAll('.epi-inicio .epi-inicio__sources > .epi-card')[n].querySelector('.epi-card__more').click()
+		}, i)
+		// The object, not the heading alone: an empty heading is falsy, and
+		// waitForFunction would keep waiting on a pane that did open.
+		const opened = await page.waitForFunction((index) => {
+			const sections = [...document.querySelectorAll('.epi > section')]
+			const shown = sections.filter((section) => getComputedStyle(section).display !== 'none')
+			return shown.length === 1 && shown[0] === sections[index]
+				? { heading: shown[0].querySelector('h2, h1')?.textContent.trim() ?? '' }
+				: undefined
+		}, PANE_IDS.indexOf(sector.id), { timeout: 3000 }).then((handle) => handle.jsonValue()).catch(() => null)
+		if (opened === null) {
+			complaints.push(`tile ${i + 1}, "${board.tiles[i].name}", does not open the ${sector.id} pane alone`)
+		} else if (opened.heading !== board.tiles[i].name) {
+			complaints.push(`tile "${board.tiles[i].name}" opens a pane headed "${opened.heading}"`)
+		}
+	}
+
+	return complaints
+}
 
 const browser = await chromium.launch()
 // The header is sent on EVERY request, not left to httpCredentials. Playwright
@@ -408,6 +499,17 @@ for (const { w, h } of VIEWPORTS) {
 	)
 
 	console.log(`  \x1b[1m${w}×${h}\x1b[0m`)
+
+	// Check 12 first, while the page is as the app left it: the loops below force
+	// every pane's display by hand, and this one needs v-show alone deciding which
+	// pane shows.
+	const board = await inspectBoard(page)
+	if (board.length === 0) {
+		pass(`${'Inicio'.padEnd(26)} one tile per sector, in order, degraded as its fuente, each opening its pane`)
+	} else {
+		board.forEach((c) => fail('Inicio — the hero board', [c]))
+	}
+
 	const count = await page.evaluate(() => document.querySelectorAll('.epi > section').length)
 
 	for (let i = 0; i < count; i++) {
@@ -439,24 +541,63 @@ for (const { w, h } of VIEWPORTS) {
 	// itself, so nothing needs a clean load. The checks keep their numbers; 8
 	// is the retirement's own footprint.)
 
-	// The one pane that carries a toolbar, named beside the fuente that fills its
-	// menus. The second tuple — the ISP pane's — retired with its fuente
-	// (ADR-0016); ReportPane never carried a FilterBar, so the alertas pane is
-	// the whole list. AlertsPane keeps DOM index 1 — the section that stood
-	// after it is gone, and nothing before it moved.
-	for (const [paneIndex, name, fuente] of [[1, 'Alertas vigentes', 'alerts']]) {
-		const unanswerable = await isUnanswerable(page, fuente)
-		const complaints = await inspectMenus(page, paneIndex, unanswerable)
-		if (unanswerable) {
-			skip(`${name.padEnd(26)} the fuente ${fuente} is degraded: not checking the counts in its filter menus`)
+	// Every pane that carries a toolbar is an alert sector, named here by its registry
+	// id beside the fuente that fills its menus — derived from the registry (src/panes.js),
+	// so a sector is checked the day it is added and no tuple is left to update. The DOM
+	// index is the registry index: App.vue mounts one section per entry, in order.
+	// ReportPane never carried a FilterBar, so the sectors are the whole list.
+	const radioOwners = new Map()
+	for (const { id, source: fuente } of PANES.filter((p) => p.source)) {
+		const paneIndex = PANE_IDS.indexOf(id)
+		const { degraded, empty } = await fuenteState(page, fuente)
+		const { complaints, names } = await inspectMenus(page, paneIndex, empty)
+		if (empty) {
+			skip(`${id.padEnd(26)} the fuente ${fuente} ${degraded ? 'is degraded' : 'answered'} with no items: not checking the counts in its filter menus`)
 		}
-		// Not an `else`: the complaints that survive an unanswerable fuente — a pane
-		// with no menus at all, an `undefined` label — are still failures. And no pass
-		// is printed beside the skip, because a check nobody made is not a check that held.
+		// Not an `else`: the complaints that survive an empty fuente — a pane with no
+		// menus at all, an `undefined` label — are still failures. And no pass is
+		// printed beside the skip, because a check nobody made is not a check that held.
 		if (complaints.length > 0) {
-			complaints.forEach((c) => fail(`${name} — count missing`, [c]))
-		} else if (!unanswerable) {
-			pass(`${name.padEnd(26)} counts in the filter menus`)
+			complaints.forEach((c) => fail(`${id} — count missing`, [c]))
+		} else if (!empty) {
+			pass(`${id.padEnd(26)} counts in the filter menus`)
+		}
+
+		/*
+		 * 10. one radio group per menu, per pane.
+		 *
+		 * Every sector is one AlertsPane and all six are mounted at once (v-show), while
+		 * a native radio's `name` is document-wide: a name two panes render is ONE group
+		 * spanning both, and choosing a year on one unticks the other's. The names carry
+		 * the pane id; this is the place they are seen rendered. Read off every menu the
+		 * loop above opened — a degraded pane's menus still render their "todo" radio —
+		 * and two menus of one pane sharing a name is the same fault (FilterMenu's prop).
+		 */
+		const shared = names.filter((name, i) => radioOwners.has(name) || names.indexOf(name) !== i)
+		if (shared.length > 0) {
+			fail(`${id} — a radio group shared across menus`, shared.map((n) => (radioOwners.has(n)
+				? `"${n}" is also ${radioOwners.get(n)}'s`
+				: `"${n}" names two of this pane's menus`)))
+		} else if (names.length > 0) {
+			pass(`${id.padEnd(26)} radio groups of its own (${names.join(', ')})`)
+		}
+		names.forEach((name) => radioOwners.set(name, radioOwners.get(name) ?? id))
+
+		/*
+		 * 11. a fuente nobody could read is never shown as a fuente with nothing.
+		 *
+		 * Degraded with zero items, the pane owes its reader the warning and nothing
+		 * else: an "Sin alertas" beside it is the publisher-said-zero claim L3-14 exists
+		 * to refuse. From a datacentre four sectors are in exactly this state (a
+		 * Cloudflare 403, an ISP timeout), so this runs against live data rather than a
+		 * hypothetical. A fuente that answered, or serves a last copy, cannot be in it.
+		 */
+		if (!degraded || !empty) {
+			skip(`${id.padEnd(26)} the fuente ${fuente} ${degraded ? 'serves its last copy' : 'answered'}: no unread, empty state to check`)
+		} else if (await page.evaluate((i) => !!document.querySelectorAll('.epi > section')[i].querySelector('.empty-content'), paneIndex)) {
+			fail(`${id} — a fuente nobody could read is shown as empty`, ['the pane renders an empty-content block beside the degraded notice'])
+		} else {
+			pass(`${id.padEnd(26)} unread, and not shown as empty`)
 		}
 	}
 }

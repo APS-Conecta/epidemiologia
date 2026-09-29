@@ -10,33 +10,75 @@
  * fold comes from the vendored aps-common module (L0-03): one fold for the
  * org, PHP and JS, corpus-checked.
  */
-import { getCanonicalLocale, t } from '@nextcloud/l10n'
+import { getCanonicalLocale, n, t } from '@nextcloud/l10n'
 import { fold } from './aps/filters.js'
 
 export { fold }
 
 /**
- * The fuentes this app reads, named mid-sentence with their article (L3-20):
- * "MINSAL" takes none, "el ISP" takes the one. The convention was documented
- * in state.js prose and pinned only by a test that reads component source as
- * text; the constants are the machine-checked half now. DegradedNotice's
+ * The publishers this app reads, named mid-sentence with their article (L3-20):
+ * "MINSAL" takes none, "el ISP" and "la OPS/OMS" take theirs. The convention was
+ * documented in state.js prose and pinned only by a test that reads component
+ * source as text; the constants are the machine-checked half now. DegradedNotice's
  * docblock is the sentence-level rationale.
  *
- * `url` is the publisher's official site — where a reader is SENT when the
- * pane cannot serve the list (L6-01) — deliberately NOT the address the
- * repositories read from: where to READ is the backend's fact, where to
- * SEND the reader is the frontend's, and the two only look alike. Each
- * publisher is said once here; no pane carries an address inline.
+ * Keyed by the registry's group (src/panes.js), which groups by publisher, so a
+ * sector pane finds its publisher as FUENTES[group]. `caption` is the publisher
+ * standing alone, with no article: the navigation's caption over its rows, and
+ * the label over its tiles on Inicio — one string, so the two cannot drift.
+ * `count` is the publisher's
+ * noun for what its lists hold, as the toolbar counts them: MINSAL's two lists
+ * are in-force sets, so "vigentes" carries a fact; the ISP's are alertas; the
+ * OPS/OMS list mixes alertas, actualizaciones and other publications, so it
+ * counts publicaciones. A literal pair each, because n() needs both forms whole.
  */
 export const FUENTES = {
 	minsal: {
 		name: 'MINSAL',
-		url: 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/',
+		caption: 'MINSAL',
+		count: (k) => n('epidemiologia', '%n alerta vigente', '%n alertas vigentes', k),
 	},
 	isp: {
 		name: t('epidemiologia', 'el ISP'),
-		url: 'https://www.ispch.gob.cl/virusrespiratorios/',
+		caption: t('epidemiologia', 'ISP'),
+		count: (k) => n('epidemiologia', '%n alerta', '%n alertas', k),
 	},
+	ops: {
+		name: t('epidemiologia', 'la OPS/OMS'),
+		caption: t('epidemiologia', 'OPS/OMS'),
+		count: (k) => n('epidemiologia', '%n publicación', '%n publicaciones', k),
+	},
+}
+
+/**
+ * Where a reader is SENT when a pane cannot serve its list (L6-01), keyed by the
+ * backend id (Service/Sources.php): one address per LIST, not per publisher.
+ *
+ * FUENTES carried one `url` per publisher while each publisher had one list. With
+ * four ISP lists, that one address — the informe's virus-respiratorios page — would
+ * have sent the reader of the ANAMED pane to a list that is not ANAMED's. Each entry
+ * is the publisher's own page for the list the pane mirrors: for the ISP's
+ * categories, the WordPress archive whose `/feed/` the backend reads.
+ *
+ * Deliberately NOT read off the backend's Fuente config: where to READ is the
+ * backend's fact, where to SEND the reader is the frontend's. For the three page
+ * fuentes the two are one address; for a feed they are not; and either can move
+ * without the other. Each address is said once here, and no pane carries one inline.
+ *
+ * epi.minsal.cl is the one this app once withdrew: ADR-0014 measured it closed to
+ * every network, the owner's residential connection included, on 2026-09-15. It
+ * answered that connection again on 2026-09-27 (the capture PageParserTest reads)
+ * while still refusing this server, and it is the reader's connection that follows
+ * this link.
+ */
+export const SITIOS = {
+	alerts: 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/',
+	epi_alerts: 'https://epi.minsal.cl/alertas-epidemiologicas-vigentes/',
+	reports: 'https://www.ispch.gob.cl/virusrespiratorios/',
+	isp_anamed: 'https://www.ispch.gob.cl/categorias-alertas/anamed/',
+	isp_pharmacovigilance: 'https://www.ispch.gob.cl/categorias-alertas/farmacovigilancia/',
+	isp_cosmetics: 'https://www.ispch.gob.cl/categorias-alertas/vigilancia-de-cosmeticos/',
+	paho_alerts: 'https://www.paho.org/es/alertas-actualizaciones-epidemiologicas',
 }
 
 /**
@@ -102,7 +144,11 @@ export function degradedText(fuente) {
  * possessive named something that did not exist.
  */
 export function emptyText(fuente) {
-	return t('epidemiologia', '{fuente} no trae alertas en este momento.', { fuente })
+	// The sentence opens with the name, and FUENTES names "el ISP" and "la OPS/OMS"
+	// for mid-sentence use — lower-case, which would open this one lower-case.
+	return t('epidemiologia', '{fuente} no trae alertas en este momento.', {
+		fuente: fuente.charAt(0).toUpperCase() + fuente.slice(1),
+	})
 }
 
 /**
@@ -162,4 +208,36 @@ export function monthOptions(items, yearOf, monthOf, year) {
 	const scoped = year ? items.filter((item) => yearOf(item) === year) : items
 
 	return tally(scoped, monthOf).sort(newestFirst).map((m) => ({ ...m, label: mes(m.id) }))
+}
+
+/**
+ * The OPS/OMS's three kinds of publication, in the order its Tipo menu offers
+ * them: the values PahoParser::tipo() writes, read off the title's first words.
+ */
+const TIPOS = {
+	alerta: () => t('epidemiologia', 'Alerta'),
+	actualizacion: () => t('epidemiologia', 'Actualización'),
+	otro: () => t('epidemiologia', 'Otra publicación'),
+}
+
+/**
+ * The Tipo menu's options: the kinds this list carries, in TIPOS' order, counted.
+ *
+ * Built from the data like the año and the mes: a list whose items carry no `tipo`
+ * answers [], and the pane draws no menu — which is how five of the six sectors
+ * have none without any of them saying so.
+ *
+ * ponytail: a value outside TIPOS is not offered (its items still show under
+ * "Todos los tipos"); the backend writes only these three. Label it by its id the
+ * day PahoParser grows a fourth.
+ *
+ * @param {Array} items - The pane's items.
+ * @return {Array} `[{ id, count, label }]`.
+ */
+export function tipoOptions(items) {
+	const counts = new Map(tally(items, (item) => item.tipo).map((o) => [o.id, o.count]))
+
+	return Object.keys(TIPOS)
+		.filter((id) => counts.has(id))
+		.map((id) => ({ id, count: counts.get(id), label: TIPOS[id]() }))
 }

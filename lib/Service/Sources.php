@@ -19,32 +19,68 @@ use OCP\IL10N;
  * would have produced it again. So: one list here, and everything else asks.
  *
  * It is a catalogue, NOT a base class. Its two owners are not merged and must not
- * be: MinsalRepository is one page whose emptiness is always a failure, and
- * IspReportRepository is one feed that ACCUMULATES what it reads, because the ISP
- * publishes only the current informe and the series' history lives in the feed's
- * pages. Those disagreements are the whole reason there are two classes — see
- * each one's docblock. This maps ids to owners; the owners keep their rules.
+ * be: AlertRepositories serves every alert fuente on one pipeline, an
+ * AlertRepository per fuente (ADR-0017), and IspReportRepository is one feed read
+ * as a SERIES — one informe per semana, keyed by (year, se), each document kept —
+ * because the ISP publishes only the current informe and the series' history
+ * lives in the feed's pages. Those disagreements are the whole reason there are
+ * two owners — see each one's docblock. This maps ids to owners; the owners keep
+ * their rules.
  *
- * Outside a repository, a source is identified by the id below. The repositories
- * keep their own internal feed names and cache keys, and this is the only place
- * the translation between the two lives.
+ * Outside a repository, a source is identified by the id below. An alert fuente
+ * carries the id itself — AlertRepositories spells each one in its own match, and
+ * AlertRepositoryTest walks ALL through it — while the informe keeps its own feed
+ * name and cache key, and this is where that one translates.
  */
 class Sources {
 	public const ALERTS = 'alerts';
+	public const EPI = 'epi_alerts';
 	public const REPORTS = 'reports';
+	public const ISP_ANAMED = 'isp_anamed';
+	public const ISP_PHARMACOVIGILANCE = 'isp_pharmacovigilance';
+	public const ISP_COSMETICS = 'isp_cosmetics';
+	public const PAHO = 'paho_alerts';
 
 	/** Every source, in the order the app presents them. */
-	public const ALL = [self::ALERTS, self::REPORTS];
+	public const ALL = [
+		self::ALERTS,
+		self::EPI,
+		self::REPORTS,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
+		self::PAHO,
+	];
 
 	/**
 	 * The sources that carry alerts somebody would search for by subject. An
 	 * informe is a weekly PDF identified by its semana epidemiológica, so matching
 	 * "sarampión" against its title finds nothing a reader wanted.
 	 */
-	private const SEARCHABLE = [self::ALERTS];
+	private const SEARCHABLE = [
+		self::ALERTS,
+		self::EPI,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
+		self::PAHO,
+	];
+
+	/**
+	 * The sources that keep what they read and have a history deeper than
+	 * their first page — the refresh job's deep pass walks these (converge()).
+	 * An in-force set replaces itself whole inside get() and has none.
+	 */
+	public const ACCUMULATING = [
+		self::REPORTS,
+		self::ISP_ANAMED,
+		self::ISP_PHARMACOVIGILANCE,
+		self::ISP_COSMETICS,
+		self::PAHO,
+	];
 
 	public function __construct(
-		private MinsalRepository $minsal,
+		private AlertRepositories $alerts,
 		private IspReportRepository $informes,
 	) {
 	}
@@ -74,8 +110,13 @@ class Sources {
 		// through every method so the failure lands in CI-less development, not in
 		// front of a clinician.
 		$source = match ($id) {
-			self::ALERTS => $this->minsal->get(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->get(),
+			self::EPI => $this->alerts->repository(self::EPI)->get(),
 			self::REPORTS => $this->informes->get(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->get(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->get(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->get(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->get(),
 		};
 
 		// Every source says how many it holds and whether anything was left out.
@@ -89,8 +130,13 @@ class Sources {
 	/** @return bool false when the source is unreachable, or changed into something we cannot parse */
 	public function probe(string $id): bool {
 		return match ($id) {
-			self::ALERTS => $this->minsal->probe(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->probe(),
+			self::EPI => $this->alerts->repository(self::EPI)->probe(),
 			self::REPORTS => $this->informes->probe(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->probe(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->probe(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->probe(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->probe(),
 		};
 	}
 
@@ -101,22 +147,31 @@ class Sources {
 	 */
 	public function revalidate(string $id): void {
 		match ($id) {
-			self::ALERTS => $this->minsal->revalidate(),
+			self::ALERTS => $this->alerts->repository(self::ALERTS)->revalidate(),
+			self::EPI => $this->alerts->repository(self::EPI)->revalidate(),
 			self::REPORTS => $this->informes->revalidate(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->revalidate(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->revalidate(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->revalidate(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->revalidate(),
 		};
 	}
 
 	/**
-	 * The accumulating fuente's deep pass — the one-shot backfill and the
-	 * document archiver (L3-08). The read path serves page 1 and stops; this
-	 * is the job's door to everything deeper. Only REPORTS accumulates a
-	 * back catalogue — an in-force set replaces itself whole inside get() —
-	 * so the call is direct rather than a match: a second fuente that starts
-	 * accumulating says so by gaining an arm here, the same loudness every
-	 * other method of this class carries.
+	 * One accumulating fuente's deep pass (L3-08): the informe's backfill walk
+	 * and document archiver, a stream's one-shot backfill (ADR-0017 D7). The
+	 * read path serves page 1 and stops; this is the job's door to everything
+	 * deeper. Arms for ACCUMULATING alone, and no default: an in-force id has
+	 * no history to walk, and asking for one throws rather than doing nothing.
 	 */
-	public function converge(): void {
-		$this->informes->converge();
+	public function converge(string $id): void {
+		match ($id) {
+			self::REPORTS => $this->informes->converge(),
+			self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->converge(),
+			self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->converge(),
+			self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->converge(),
+			self::PAHO => $this->alerts->repository(self::PAHO)->converge(),
+		};
 	}
 
 	/**
@@ -128,7 +183,12 @@ class Sources {
 	public function name(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('las alertas epidemiológicas vigentes del MINSAL'),
+			self::EPI => $l->t('las alertas del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('el informe semanal de Circulación de Virus Respiratorios del ISP'),
+			self::ISP_ANAMED => $l->t('las alertas de medicamentos (ANAMED) del ISP'),
+			self::ISP_PHARMACOVIGILANCE => $l->t('las alertas de farmacovigilancia del ISP'),
+			self::ISP_COSMETICS => $l->t('las alertas de vigilancia de cosméticos del ISP'),
+			self::PAHO => $l->t('las alertas y actualizaciones epidemiológicas de la OPS/OMS'),
 		};
 	}
 
@@ -141,14 +201,19 @@ class Sources {
 	public function kind(string $id, IL10N $l): string {
 		return match ($id) {
 			self::ALERTS => $l->t('Alerta epidemiológica MINSAL'),
+			self::EPI => $l->t('Alerta del Departamento de Epidemiología del MINSAL'),
 			self::REPORTS => $l->t('Informe del ISP'),
+			self::ISP_ANAMED => $l->t('Alerta de medicamentos (ANAMED) del ISP'),
+			self::ISP_PHARMACOVIGILANCE => $l->t('Alerta de farmacovigilancia del ISP'),
+			self::ISP_COSMETICS => $l->t('Alerta de vigilancia de cosméticos del ISP'),
+			self::PAHO => $l->t('Alerta o actualización epidemiológica de la OPS/OMS'),
 		};
 	}
 
 	/**
 	 * Search across the searchable sources — the cache, then the durable table
 	 * behind each fuente — carrying each hit's source with it so the caller can
-	 * label it. Never fetches — see MinsalRepository::search().
+	 * label it. Never fetches — see AlertRepository::search().
 	 *
 	 * @return list<array{source: string, item: array<string, string>}>
 	 */
@@ -156,7 +221,12 @@ class Sources {
 		$hits = [];
 		foreach (self::SEARCHABLE as $id) {
 			$items = match ($id) {
-				self::ALERTS => $this->minsal->search($term),
+				self::ALERTS => $this->alerts->repository(self::ALERTS)->search($term),
+				self::EPI => $this->alerts->repository(self::EPI)->search($term),
+				self::ISP_ANAMED => $this->alerts->repository(self::ISP_ANAMED)->search($term),
+				self::ISP_PHARMACOVIGILANCE => $this->alerts->repository(self::ISP_PHARMACOVIGILANCE)->search($term),
+				self::ISP_COSMETICS => $this->alerts->repository(self::ISP_COSMETICS)->search($term),
+				self::PAHO => $this->alerts->repository(self::PAHO)->search($term),
 			};
 
 			foreach ($items as $item) {

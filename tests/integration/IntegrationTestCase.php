@@ -17,8 +17,8 @@ use OCP\IDBConnection;
 use PHPUnit\Framework\TestCase;
 
 /**
- * One in-memory SQLite database per test, carrying the migration's two
- * tables.
+ * One in-memory SQLite database per test, carrying the app's two tables as
+ * the migrations leave them (Version001000, then Version001100's alert key).
  *
  * Built through Doctrine's DriverManager with Nextcloud's own wrapper class,
  * and deliberately NOT through OC\DB\ConnectionFactory: the factory merges
@@ -64,11 +64,14 @@ abstract class IntegrationTestCase extends TestCase {
 			PRIMARY KEY(year, se)
 		)');
 		$this->db->executeQuery('CREATE TABLE epidemiologia_alert (
+			fuente VARCHAR(32) NOT NULL DEFAULT \'alerts\',
 			url VARCHAR(255) NOT NULL,
-			title VARCHAR(255) NOT NULL,
+			title VARCHAR(1000) NOT NULL,
 			year VARCHAR(4) NOT NULL,
 			month VARCHAR(7) NOT NULL,
-			PRIMARY KEY(url)
+			day VARCHAR(10) DEFAULT NULL,
+			tipo VARCHAR(16) DEFAULT NULL,
+			PRIMARY KEY(fuente, url)
 		)');
 	}
 
@@ -87,13 +90,22 @@ abstract class IntegrationTestCase extends TestCase {
 		return $r;
 	}
 
-	/** One alert row, as MinsalRepository builds them. */
-	protected function alert(string $url, string $month): Alert {
+	/** One alert row, as an alert repository builds them; replaceSet() stamps the fuente it writes under. */
+	protected function alert(
+		string $url,
+		string $month,
+		string $fuente = 'alerts',
+		?string $day = null,
+		?string $tipo = null,
+	): Alert {
 		$a = new Alert();
+		$a->setFuente($fuente);
 		$a->setUrl($url);
 		$a->setTitle('OFICIO ' . $url);
 		$a->setYear(substr($month, 0, 4));
 		$a->setMonth($month);
+		$a->setDay($day);
+		$a->setTipo($tipo);
 
 		return $a;
 	}

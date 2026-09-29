@@ -3,17 +3,18 @@
  *
  * The reports fuente moved to the ISP and the alerts fuente moved to a different
  * MINSAL host, but the user-facing surfaces kept crediting the old institution and
- * linking a host that has been unreachable since October 2025 (epi.minsal.cl).
- * CONTEXT.md is explicit that conflating fuente with institución is exactly what
- * once made an ISP outage report itself as MINSAL — this guards the same class of
- * defect on the frontend.
+ * linking a host that had stopped answering. CONTEXT.md is explicit that conflating
+ * fuente with institución is exactly what once made an ISP outage report itself as
+ * MINSAL — this guards the same class of defect on the frontend.
  *
  * Read as TEXT rather than imported: these components run under vitest's `node`
  * environment on purpose (vitest.config.js), so a single-file component cannot be
- * imported.
+ * imported. The registry and the maps are plain modules, and are imported.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { PANES } from '../../src/panes.js'
+import { FUENTES, SITIOS } from '../../src/pure.js'
 
 const src = (path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8')
 
@@ -25,10 +26,24 @@ const SURFACES = [
 	'components/EpivigilaPane.vue',
 ]
 
+const SECTORS = PANES.filter((p) => p.source)
+
 describe('attribution', () => {
-	it('never points a clinician at a host that no longer answers', () => {
+	// This used to pin one host by name — epi.minsal.cl, "unreachable since October
+	// 2025". It answered the owner's residential connection again on 2026-09-27, and
+	// the Departamento de Epidemiología pane now sends its readers there on purpose,
+	// from SITIOS. What survives is the half that was always the point (L6-01): a
+	// list's address lives in one place, so an address that dies is fixed in one place.
+	it('keeps every list address in SITIOS, never inline in a surface', () => {
 		for (const path of SURFACES) {
-			expect(src(path), path).not.toContain('epi.minsal.cl')
+			for (const address of Object.values(SITIOS)) {
+				expect(src(path), path).not.toContain(address)
+			}
+		}
+		// The two panes that send a reader somewhere name no host at all, not even in prose.
+		for (const { host } of Object.values(SITIOS).map((address) => new URL(address))) {
+			expect(src('components/AlertsPane.vue')).not.toContain(host)
+			expect(src('components/ReportPane.vue')).not.toContain(host)
 		}
 	})
 
@@ -37,13 +52,38 @@ describe('attribution', () => {
 		// differs between "MINSAL" and "el ISP" (L3-20 — FUENTES, in
 		// src/pure.js), and every pane carries the constant, never a literal.
 		expect(src('components/ReportPane.vue')).toContain(':source="FUENTES.isp.name"')
-		expect(src('components/AlertsPane.vue')).toContain(':source="FUENTES.minsal.name"')
+		expect(src('components/ReportPane.vue')).toContain(':url="SITIOS.reports"')
 
-		// L6-01: each publisher's official-site URL is said once, in the
-		// FUENTES map — no pane carries an address inline any more.
-		expect(src('components/AlertsPane.vue')).not.toContain('degreyd.minsal.cl')
-		expect(src('components/ReportPane.vue')).not.toContain('ispch.gob.cl')
-		expect(src('pure.js')).toContain("url: 'https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/'")
-		expect(src('pure.js')).toContain("url: 'https://www.ispch.gob.cl/virusrespiratorios/'")
+		// The sector pane names its publisher through the registry's group and sends
+		// its reader to its own list's page — so every sector's group has a publisher
+		// to name and a noun to count in, and every sector's list has a page.
+		expect(src('components/AlertsPane.vue')).toContain('const fuente = FUENTES[sector.group]')
+		expect(src('components/AlertsPane.vue')).toContain(':source="fuente.name" :url="SITIOS[sector.source]"')
+		for (const { id, group, source } of SECTORS) {
+			expect(typeof FUENTES[group]?.name, id).toBe('string')
+			expect(typeof FUENTES[group]?.count, id).toBe('function')
+			expect(SITIOS[source], id).toMatch(/^https:\/\//)
+		}
+
+		// Each list's page, not its publisher's front door — the ISP's four lists are
+		// four pages, and the informe's is not ANAMED's.
+		expect(SITIOS.alerts).toBe('https://degreyd.minsal.cl/alertas-sanitarias-y-epidemiologicas-vigentes-en-chile/')
+		expect(SITIOS.reports).toBe('https://www.ispch.gob.cl/virusrespiratorios/')
+		expect(new Set(Object.values(SITIOS)).size).toBe(Object.keys(SITIOS).length)
+	})
+
+	// Inicio's tiles sit under no navigation caption, so each names its publisher
+	// itself — with the caption's own string, from the one place both read it.
+	// Two copies of "ISP" is how the navigation and the board would come to
+	// disagree about who publishes a sector.
+	it('names each publisher the same way over its rows and over its tiles', () => {
+		expect(SECTORS.map(({ group }) => FUENTES[group].caption)).toEqual(['MINSAL', 'MINSAL', 'ISP', 'ISP', 'ISP', 'OPS/OMS'])
+		for (const group of new Set(SECTORS.map((p) => p.group))) {
+			expect(src('App.vue'), group).toContain(`:name="FUENTES.${group}.caption"`)
+		}
+		expect(src('App.vue')).not.toMatch(/NcAppNavigationCaption :name="t\(/)
+		expect(src('components/InicioPane.vue')).toContain('publisher: fuente.caption')
+		expect(src('components/InicioPane.vue')).toContain('const fuente = FUENTES[pane.group]')
+		expect(src('components/InicioPane.vue')).not.toContain('FUENTES.minsal')
 	})
 })

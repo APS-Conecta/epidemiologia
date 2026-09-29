@@ -28,7 +28,7 @@ use OCP\SetupCheck\SetupResult;
  * would hang Visión general for as long as that server felt like taking. The
  * measurement already exists — ProbeJob asks once a day — and repeating it during
  * a page render is the same duplicated work in a hot path that
- * MinsalRepository::search() already refuses to do.
+ * AlertRepository::search() already refuses to do.
  *
  * It was called MinsalReachable and looped over MINSAL's two feeds by name, which
  * is why an ISP outage left this row green while ProbeJob was counting the failure

@@ -21,7 +21,7 @@ use RuntimeException;
  * doors it must not: get() (which would serve the stale copy again and
  * dispatch a second job — the loop the marker exists to prevent) and
  * probe() (which asks through the freno and would re-ask a host that said
- * no — #218beba, the same reason the refresher rides the reader's rule).
+ * no — #218beba, the same reason WarmJob rides the reader's rule).
  *
  * No Doubles trait here: nothing this suite builds reads config, cache or
  * l10n — the Sources double is built directly, the way RefreshJobTest
