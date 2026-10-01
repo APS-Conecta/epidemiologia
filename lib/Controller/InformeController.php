@@ -113,7 +113,9 @@ class InformeController extends Controller {
 			return new RedirectResponse($this->publisherPage($report));
 		}
 
-		$name = sprintf('informe-%s-%s.pdf', $year, $semana);
+		// Security: construct filename using canonical validated entity properties rather than
+		// raw route parameters to prevent HTTP header parameter injection or header splitting.
+		$name = sprintf('informe-%s-%s.pdf', $report->getYear(), $report->getSe());
 
 		// Inline, not attachment: the pane opens this in a new tab, and the
 		// report is something to read, not something to file. addHeader
