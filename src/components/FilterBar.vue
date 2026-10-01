@@ -21,6 +21,7 @@
 				:label="t('epidemiologia', 'Buscar')"
 				:show-trailing-button="!!query"
 				trailing-button-icon="close"
+				:trailing-button-label="t('epidemiologia', 'Borrar búsqueda')"
 				@update:model-value="$emit('update:query', $event)"
 				@trailing-button-click="$emit('update:query', '')">
 				<Magnify :size="16" />
