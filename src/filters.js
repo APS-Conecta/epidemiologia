@@ -53,8 +53,7 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 		}
 	})
 
-	// Folded and extracted once, not per keystroke: every row times every character typed adds up.
-	// Accessor functions are evaluated once at setup to avoid per-item function calls during filtering.
+	// Folded and extracted once, not per keystroke: accessors evaluate at setup to avoid per-item calls during filtering.
 	const folded = items.map((i) => ({
 		...i,
 		_fold: fold(textOf(i)),
