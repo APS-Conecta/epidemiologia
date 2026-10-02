@@ -10,6 +10,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The search box's clear button says what it does, in Spanish.** Screen readers announced it as *Clear text*, in English, for anyone whose language is a Spanish other than `es`, `es-AR`, `es-EC` or `es-MX` (Chile's `es-CL` among them); it is now *Borrar búsqueda*.
+
 ## [0.11.2] — 2026-09-29
 
 ### Fixed
