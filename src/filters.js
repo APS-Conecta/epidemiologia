@@ -53,15 +53,21 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 		}
 	})
 
-	// Folded once, not per keystroke: every row times every character typed adds up.
-	const folded = items.map((i) => ({ ...i, _fold: fold(textOf(i)) }))
+	// Folded and extracted once, not per keystroke: accessors evaluate at setup to avoid per-item calls during filtering.
+	const folded = items.map((i) => ({
+		...i,
+		_fold: fold(textOf(i)),
+		_year: yearOf(i),
+		_month: monthOf(i),
+	}))
 
 	const matches = computed(() => {
 		const needle = fold(query.value.trim())
 
-		return folded.filter((i) => (!needle || i._fold.includes(needle))
-			&& (!year.value || yearOf(i) === year.value)
-			&& (!month.value || monthOf(i) === month.value))
+		// Short-circuit using fast primitive equality (year, month) before executing string substring search (_fold)
+		return folded.filter((i) => (!year.value || i._year === year.value)
+			&& (!month.value || i._month === month.value)
+			&& (!needle || i._fold.includes(needle)))
 	})
 
 	/**
