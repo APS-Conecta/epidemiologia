@@ -29,12 +29,19 @@ already English, as #1, #25 and #37 are.
 
 Domain docs, the issue tracker and the triage labels: [`docs/agents/README.md`](docs/agents/README.md).
 
-## Scheduled Jules agents (Bolt ⚡ / Sentinel 🛡️ / Palette 🎨)
+## Scheduled Jules agents
 
-Nightly Jules presets — Sentinel (security), Bolt (performance), Palette (UX/a11y). Claude reviews every PR; everything above binds them too.
+One Jules agent visits this repo each night at 02:00 (Chile): Mon 🗡️ Breaker, Tue 🐞 Tracer,
+Wed ⚡ Bolt / ✂️ Simplifier (alternate weeks), Thu 🧹 Janitor, Fri 🎨 Palette, Sat 📚 Scribe,
+Sun 🔤 Lexicon. Their prompts and the code standards live in the private `APS-Conecta/agents` repo;
+Claude reviews every PR. These rules, and everything above, bind every agent.
 
-- **Journals** live only in lowercase `.jules/` (`bolt.md`, `sentinel.md`, `palette.md`) — never create `.Jules/`.
+- **Journals** live only in lowercase `.jules/` (`breaker.md`, `tracer.md`, `bolt.md`, `simplifier.md`,
+  `janitor.md`, `palette.md`, `scribe.md`, `lexicon.md`) — never create `.Jules/`.
   Date each entry with today's `date +%F`, never a remembered or copied date.
+- **Names:** code is English, but domain vocabulary keeps the spelling `CONTEXT.md` gives it
+  (`createPregunta`, not `createQuestion`). Rename existing names only inside code a change already touches.
+- **Threat model:** read `docs/threat-model.md` before any security work.
 - **Gate before opening a PR** — what `ci.yml` and `docs.yml` run. This repo uses **npm**, not pnpm:
   `npm ci && npm test`; `npm run build`, then `git status --porcelain -- js/ css/` prints nothing;
   PHPUnit 11 in the instance image — `curl -sSLf -o tools/phpunit.phar https://phar.phpunit.de/phpunit-11.phar`, then
