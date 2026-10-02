@@ -10,6 +10,7 @@ namespace OCA\Epidemiologia\Service\Parser;
 use DateTimeImmutable;
 use DateTimeZone;
 use Psr\Log\LoggerInterface;
+use SimpleXMLElement;
 
 /**
  * The ISP's alert categories, as WordPress syndicates them: one RSS 2.0 feed
@@ -50,7 +51,7 @@ class FeedParser implements Parser {
 	 */
 	public function parse(string $body, string $subject): array {
 		$previous = libxml_use_internal_errors(true);
-		$feed = simplexml_load_string($body);
+		$feed = simplexml_load_string($body, SimpleXMLElement::class, LIBXML_NONET);
 		libxml_clear_errors();
 		libxml_use_internal_errors($previous);
 
