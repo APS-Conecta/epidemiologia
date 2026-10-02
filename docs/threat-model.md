@@ -28,23 +28,28 @@ work; the 🗡️ Breaker agent starts here.*
 
 | Entry point | Who can call it | Guard |
 |---|---|---|
-| `GET /` — `PageController` (`lib/Controller/PageController.php`) | any logged-in user | `#[NoAdminRequired]`, `#[NoCSRFRequired]` (GET, read-only) |
-| `GET /informe/{year}/{semana}` — `InformeController::show` (`appinfo/routes.php`, `lib/Controller/InformeController.php:74`) | any logged-in user | `#[NoAdminRequired]`, `#[NoCSRFRequired]` (GET). It looks up the stored record and redirects only to an https URL built from (se, year), "never feed-supplied" (`InformeController.php:45-46`). |
+| `GET /` — `PageController` (`lib/Controller/PageController.php`) | any logged-in user | `#[NoAdminRequired]`, `#[NoCSRFRequired]` (GET, read-only). Its CSP allows framing `https://app.powerbi.com` for the Tablero MINSAL (`PageController.php:76-78`): a third-party frame inside the staff session. |
+| `GET /informe/{year}/{semana}` — `InformeController::show` (`appinfo/routes.php`, `lib/Controller/InformeController.php:74`) | any logged-in user | `#[NoAdminRequired]`, `#[NoCSRFRequired]` (GET). It serves the kept PDF **inline, from the Nextcloud origin** (`InformeController.php:124`), and only the `%PDF` magic bytes vouch for it (`lib/Service/IspReportRepository.php:848`). Without a kept copy it redirects to an https URL built from (se, year), "never feed-supplied" (`InformeController.php:45-46`). |
 | OCS `GET /api/v1/sources` — `ApiController` (`lib/Controller/ApiController.php`) | any logged-in user | `#[NoAdminRequired]`, `#[UserRateLimit]` |
-| Background jobs `ProbeJob`, `RefreshJob`, `WarmJob` (`appinfo/info.xml:36-38`) | the server, on schedule | none needed. They fetch fixed publisher hosts (below). |
-| Outbound fetches (`lib/Service/AlertRepositories.php`, `AlertRepository.php`, `IspReportRepository.php`) | the jobs | fixed hosts only: `degreyd.minsal.cl`, `epi.minsal.cl`, `www.ispch.gob.cl`, `www.paho.org`, with a pinned CA bundle (`lib/Service/CertificateBundle.php`) |
-| Parsers of hostile input: RSS/XML (`lib/Service/Parser/FeedParser.php`, `IspReportRepository::parse`), HTML pages (`lib/Service/Parser/*`) | data the publishers send | `LIBXML_NONET` (#148); the anchor-count guard in `PageParser` |
+| Unified search — `AlertProvider` (`lib/Search/AlertProvider.php:61`) | any logged-in user | returns each alert's feed `title` and `url` to Nextcloud's global search: a rendering sink outside this app's Vue code |
+| Background jobs `ProbeJob`, `RefreshJob`, `WarmJob` (`appinfo/info.xml:36-38`), and `RevalidateJob`, queued on demand (`lib/Service/AlertRepository.php:198`, `IspReportRepository.php:381`) | the server | none needed; they run the fetches below |
+| Outbound fetches of feeds and pages (`lib/Service/AlertRepositories.php`, `AlertRepository.php`, `IspReportRepository.php`) | the jobs | fixed hosts: `degreyd.minsal.cl`, `epi.minsal.cl`, `www.ispch.gob.cl`, `www.paho.org`. TLS is verified against a **merged** CA bundle: the instance's anchors plus the ISP's certificate (`lib/Service/CertificateBundle.php`). It widens trust; it pins nothing. |
+| **Outbound fetch of each informe PDF** (`IspReportRepository::document`, `:821`) | the jobs | **The URL is feed-supplied:** the first `<a href>` in the ISP item's `content:encoded` (`:914`), https-only (`:918`), any host. Guards: Nextcloud's `IClient`, which refuses local and private addresses unless `allow_local_remote_servers` is set; a 15 s timeout; `DOC_MAX_BYTES`, 8 MiB (`:840`); the `%PDF` check (`:848`). This is the SSRF surface. |
+| Admin notifications (`lib/Notification/Notifier.php:90-101`) and the `SourcesReachable` setup check (`lib/SetupCheck/SourcesReachable.php`) | admins | low risk: fixed source names and a link to the app's own route |
+| Parsers of hostile input: RSS/XML (`lib/Service/Parser/FeedParser.php`, `IspReportRepository::parse`), HTML pages (`lib/Service/Parser/*`) | data the publishers send | `LIBXML_NONET` (#148); https-only links (`FeedParser.php:84`, `PahoParser.php:125`, `PageParser.php:117`, `IspReportRepository.php:918`) |
 
 ## Trust boundaries
 
 - **Publishers' pages and feeds are untrusted.** Titles, links and dates are rendered to staff.
   Vue's `{{ }}` text binding escapes them, and `src/` has no `v-html`. Any new raw-HTML sink would be
-  a direct XSS path.
-- **Links from publishers** are rendered as links. A `javascript:` or attacker-controlled URL in a
-  feed would reach a clinician's click.
+  a direct XSS path. Global search renders the same titles outside Vue (`AlertProvider`).
+- **Links from publishers** are rendered as links. Every parser keeps only `https://` hrefs, so a
+  `javascript:` URL is refused; an attacker-chosen https URL still reaches a clinician's click.
+- **The informe PDF is publisher content served from our origin**, inline, with only its magic bytes
+  checked. Its `application/pdf` type and the browser's PDF viewer are what contain a hostile file.
 - **Users are all trusted staff of one CESFAM**, with no per-user data. Breaking one user's
   permissions gives nothing beyond what every user already sees.
-- **The platform (Nextcloud)** owns authentication, sessions and CSRF tokens.
+- **The platform (Nextcloud)** owns authentication, sessions, CSRF tokens and the outbound HTTP client.
 
 ## Accepted risks
 
