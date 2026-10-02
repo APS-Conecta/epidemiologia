@@ -147,6 +147,12 @@ the publisher's day (`YYYY-MM-DD`); the OPS/OMS's add `tipo`. A key a fuente doe
 never null. `openapi.json` is generated from `ApiController::sources()`'s `@return`, so each key
 entered that docblock and the spec was regenerated.
 
+**Amended 2026-09-29 (0.11.3): epi's items carry `date` too.** Its two tables date every row in a
+column headed *Fecha*, and that day gives an alerta its `date`, `month` and `year`, where the upload
+folder had named another month for 24 of the 77. A row that names a month and no day (*Junio 2024*,
+one of 77) keeps that month and carries no `date`. degreyd's table heads its date column *Desde*, in
+force since rather than published on, so its items stay `{title, url, year, month}` byte for byte.
+
 ### D12 — Ids and presentation order
 
 `Sources::ALL` is `alerts`, `epi_alerts`, `reports`, `isp_anamed`, `isp_pharmacovigilance`,

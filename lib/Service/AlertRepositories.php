@@ -115,7 +115,8 @@ class AlertRepositories {
 			/*
 			 * epi.minsal.cl's in-force page, read by the same PageParser as
 			 * degreyd's — the address is the only difference (its international
-			 * table's repeated "Descargar Documento" is what rowTitles() is for).
+			 * table's repeated "Descargar Documento" is what rowTitles() is for,
+			 * and its tables' Fecha column what rowDates() is for).
 			 * Not a copy of degreyd's list: 77 alerts against degreyd's 13, filed
 			 * where the Departamento de Epidemiología files them. Its own host,
 			 * because it is one: Cloudflare in front of it answers 403 to a

@@ -32,8 +32,8 @@ use Throwable;
  * upsert()'s find-then-write and readSet()'s ordering; their home test is the
  * integration suite (tests/integration/, L3-06) — the repository suites mock
  * this class.
- * Within-month order is not preserved on this path for the MINSAL pages (no
- * sequence column, and they publish no day; the cache — the hot path — keeps
+ * Within-month order is not preserved on this path for degreyd's page (no
+ * sequence column, and it publishes no day; the cache — the hot path — keeps
  * MINSAL's own curation); the table serves only after flushes and outages,
  * where a cosmetic within-month reshuffle is the honest price of a column
  * fewer.

@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "epidemiologia",
-        "version": "0.11.2",
+        "version": "0.11.3",
         "description": "Alertas del MINSAL, del ISP y de la OPS/OMS, informe semanal de virus respiratorios del ISP y tablero nacional",
         "license": {
             "name": "AGPL-3.0-or-later"
@@ -108,7 +108,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds and OPS/OMS carry `date`, the publisher's day, and OPS/OMS `tipo` — alerta, actualizacion or otro; the MINSAL pages carry neither), per SourcesTest's name-every-key doctrine",
+                        "description": "Each source asked for, with its items, its freshness and its own degraded flag — item keys are the per-source union (reports carries `se`; the ISP alert feeds, OPS/OMS and the Departamento de Epidemiología's page carry `date`, the publisher's day, where it gives one, and OPS/OMS `tipo` — alerta, actualizacion or otro; degreyd's page carries neither), per SourcesTest's name-every-key doctrine",
                         "content": {
                             "application/json": {
                                 "schema": {

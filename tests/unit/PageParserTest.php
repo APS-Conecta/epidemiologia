@@ -88,26 +88,90 @@ class PageParserTest extends TestCase {
 		self::assertStringEndsWith('(ESPII).', $bundibugyo);
 	}
 
-	/** The in-force wire shape (ADR-0017): the upload folder dates it, and nothing else is claimed. */
-	public function testEveryAlertIsAnHttpsUploadDatedByItsFolder(): void {
+	/**
+	 * epi dates every row in its "Fecha" column, and that day is the alert's
+	 * (ADR-0017 D11, amended in 0.11.3): the upload folder is when a PDF was
+	 * put on the server, and it names another month for 24 of the 77 — the
+	 * oropouche oficio of 10 December 2024 sits in 2025/04.
+	 */
+	public function testEveryAlertCarriesTheDayItsRowGivesIt(): void {
 		$items = $this->parse();
 		self::assertNotSame([], $items, 'the fixture must parse, or this test asserts nothing');
 
-		foreach ($items as $item) {
-			self::assertSame(['title', 'url', 'year', 'month'], array_keys($item));
-			self::assertNotSame('', $item['title']);
-			self::assertStringStartsWith('https://epi.minsal.cl/wp-content/uploads/' . str_replace('-', '/', $item['month']) . '/', $item['url']);
-			self::assertSame(substr($item['month'], 0, 4), $item['year']);
+		$dated = array_filter($items, static fn (array $item): bool => isset($item['date']));
+		self::assertCount(76, $dated, 'every row but the one that names no day');
+		foreach ($dated as $item) {
+			self::assertSame(['title', 'url', 'year', 'month', 'date'], array_keys($item));
+			self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $item['date']);
+			self::assertSame(substr($item['date'], 0, 7), $item['month']);
+			self::assertSame(substr($item['date'], 0, 4), $item['year']);
 		}
 	}
 
-	/** epi's markup carries 9 month inversions across its 78 links (pinned above); the list carries none. */
-	public function testSortsNewestMonthFirst(): void {
-		$months = array_column($this->parse(), 'month');
+	/**
+	 * One pin per shape the column takes: its plain form, the date a rowspan
+	 * cell carries down to the rows it spans, a row's own date beside a
+	 * spanned name, and the three spellings MINSAL mixes in.
+	 */
+	public function testTheRowsDayIsReadWhateverShapeTheRowTakes(): void {
+		$days = array_column($this->parse(), 'date', 'url');
+		$uploads = 'https://epi.minsal.cl/wp-content/uploads/';
 
-		self::assertSame('2026-09', $months[0]);
-		for ($i = 1, $n = count($months); $i < $n; $i++) {
-			self::assertGreaterThanOrEqual($months[$i], $months[$i - 1], "alert $i is newer than the one before it");
+		foreach ([
+			'2026/09/OFICIO_CP_N22695_2026_coqueluche.pdf' => '2026-09-15', // "15 de Septiembre de 2026"
+			'2025/04/ORD_3422_INFORMA_SITUACION_DE_OROPOUCHE_EN_LAS_AMERICAS.pdf' => '2024-12-10', // filed four months late
+			'2025/05/ORD_1255_ALERTA_EPIDEMIOLOGICA_VIGILANCIA_ENF_MENINGOCOCICA_POR_AUMENTO_ESTACIONAL_ESPERADO_2025.pdf' => '2025-05-06', // a rowspan date, "6 de mayo del 2025"
+			'2024/05/ORD_1359_09_05_2024.pdf' => '2024-06-09', // a rowspan date again
+			'2024/07/ORD-2869-24-07-2023-Alerta-epidem-deteccion-de-EV-A71.pdf' => '2023-07-24', // its own date, its name spanned
+			'2024/06/3760_ORD_REFUERZA_VACUNACION_CONTRA_SARAMPION.pdf' => '2024-09-15', // "15 de septiembre 2024"
+			'2025/06/2025_mayo_31_phe_alerta_epidemiologica_fiebre_amarilla.pdf' => '2025-05-31', // "31 mayo 2025"
+			'2024/07/2023_Dic_26_Alerta_epidemiologica-Riesgo_infeccion_por_virus_encefalitis_equina_del_oeste.pdf' => '2023-12-26', // "Corrigendum – 26 de diciembre del 2023"
+		] as $path => $day) {
+			self::assertSame($day, $days[$uploads . $path] ?? null, $path);
+		}
+	}
+
+	/** "Junio 2024" names a month and no day: the month is the row's, and no day is made up for it. */
+	public function testARowThatNamesNoDayKeepsItsMonthAndClaimsNoDay(): void {
+		$items = array_column($this->parse(), null, 'url');
+		$protocolo = $items['https://epi.minsal.cl/wp-content/uploads/2024/09/RES_EXENTA_N_1227_PROTOCOLO.pdf'] ?? null;
+
+		self::assertSame(['title', 'url', 'year', 'month'], array_keys($protocolo ?? []));
+		self::assertSame('2024-06', $protocolo['month'], 'the row\'s June, not the folder\'s September');
+		self::assertSame('2024', $protocolo['year']);
+	}
+
+	/**
+	 * degreyd's table heads its date column "Desde" — in force since, not
+	 * published on — so none of its alerts is dated from it, and its wire
+	 * shape stays byte for byte what ADR-0017 D11 pinned.
+	 */
+	public function testATableWithNoFechaColumnDatesNothing(): void {
+		$html = file_get_contents(__DIR__ . '/fixtures/degreyd-alertas.html');
+		self::assertIsString($html, 'the degreyd capture is missing from fixtures/');
+
+		$items = $this->parser()->parse($html, 'MINSAL alerts page');
+
+		self::assertCount(13, $items);
+		foreach ($items as $item) {
+			self::assertSame(['title', 'url', 'year', 'month'], array_keys($item));
+		}
+	}
+
+	/**
+	 * epi's markup carries 9 month inversions across its 78 links (pinned
+	 * above); the list carries none, and within a month the later day leads.
+	 */
+	public function testSortsNewestFirst(): void {
+		$items = $this->parse();
+
+		self::assertSame('2026-09-15', $items[0]['date']);
+		for ($i = 1, $n = count($items); $i < $n; $i++) {
+			self::assertGreaterThanOrEqual(
+				[$items[$i]['month'], $items[$i]['date'] ?? ''],
+				[$items[$i - 1]['month'], $items[$i - 1]['date'] ?? ''],
+				"alert $i is newer than the one before it",
+			);
 		}
 	}
 
