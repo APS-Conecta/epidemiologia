@@ -92,9 +92,31 @@ export const SITIOS = {
  *
  * `T00:00:00` makes it local midnight, so no offset can move the day the string names.
  */
+let cachedDateFormatterLocale
+let cachedDateFormatter
+let cachedMonthFormatterLocale
+let cachedMonthFormatter
+
+// Caches Intl.DateTimeFormat instances to avoid expensive repeated construction on every format call
+function getDateFormatter(locale) {
+	if (!cachedDateFormatter || cachedDateFormatterLocale !== locale) {
+		cachedDateFormatterLocale = locale
+		cachedDateFormatter = new Intl.DateTimeFormat(locale, { dateStyle: 'long' })
+	}
+	return cachedDateFormatter
+}
+
+function getMonthFormatter(locale) {
+	if (!cachedMonthFormatter || cachedMonthFormatterLocale !== locale) {
+		cachedMonthFormatterLocale = locale
+		cachedMonthFormatter = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
+	}
+	return cachedMonthFormatter
+}
+
 export function fecha(iso) {
 	return /^\d{4}-\d{2}-\d{2}$/.test(iso ?? '')
-		? new Intl.DateTimeFormat(getCanonicalLocale(), { dateStyle: 'long' }).format(new Date(iso + 'T00:00:00'))
+		? getDateFormatter(getCanonicalLocale()).format(new Date(iso + 'T00:00:00'))
 		: ''
 }
 
@@ -113,8 +135,7 @@ export function mes(monthKey) {
 		return ''
 	}
 	const [year, month] = monthKey.split('-').map(Number)
-	return new Intl.DateTimeFormat(getCanonicalLocale(), { month: 'long', year: 'numeric' })
-		.format(new Date(year, month - 1, 1))
+	return getMonthFormatter(getCanonicalLocale()).format(new Date(year, month - 1, 1))
 }
 
 /**

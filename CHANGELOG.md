@@ -15,6 +15,7 @@ made belongs in the commit, the issue, or a comment beside the code.
 ### Fixed
 
 - **The Departamento de Epidemiología's alertas carry the date MINSAL gives them.** Each was dated by the month its PDF was uploaded in, which is another month for 24 of the 77 — the oropouche oficio of 10 December 2024 was filed under April 2025. The pane, its Año and Mes filters and its tile on Inicio now show each row's own *Fecha*, to the day, and `date` joins its items on the OCS route; a row that names only a month keeps that month and claims no day. The Alertas vigentes sector is unchanged.
+- **The search box's clear button says what it does, in Spanish.** Screen readers announced it as *Clear text*, in English, for anyone whose language is a Spanish other than `es`, `es-AR`, `es-EC` or `es-MX` (Chile's `es-CL` among them); it is now *Borrar búsqueda*.
 
 ## [0.11.2] — 2026-09-29
 
