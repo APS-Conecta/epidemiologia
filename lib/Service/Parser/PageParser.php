@@ -23,8 +23,20 @@ use Psr\Log\LoggerInterface;
  * Read by regex rather than a DOM, on purpose: this is not a document with a
  * schema, and the anchor scan has to keep finding every link whatever the
  * table around it has been edited into.
+ *
+ * epi's tables also date every row, in a column headed "Fecha", and that day
+ * is the alert's (rowDates()). degreyd's heads no such column, so its alerts
+ * stay dated by their upload folder and its wire shape does not move.
  */
 class PageParser implements Parser {
+	/** Spanish month names as MINSAL writes them, lower-cased; "setiembre" is Chile's other spelling. */
+	private const MONTHS = [
+		'enero' => '01', 'febrero' => '02', 'marzo' => '03', 'abril' => '04',
+		'mayo' => '05', 'junio' => '06', 'julio' => '07', 'agosto' => '08',
+		'septiembre' => '09', 'setiembre' => '09', 'octubre' => '10',
+		'noviembre' => '11', 'diciembre' => '12',
+	];
+
 	public function __construct(
 		private LoggerInterface $logger,
 	) {
@@ -60,6 +72,7 @@ class PageParser implements Parser {
 		}
 
 		$rowTitles = $this->rowTitles($body);
+		$rowDates = $this->rowDates($body);
 
 		/*
 		 * An anchor text used by more than one row is a LINK LABEL, not a title.
@@ -106,9 +119,10 @@ class PageParser implements Parser {
 				continue;
 			}
 
-			// The upload folder is the only date signal there is, and it is not
-			// derivable from the epi week — SE 29 sits under 2026/07 while SE 24
-			// sits under 2026/06. Anchors are parsed, never constructed.
+			// The upload folder is degreyd's only date signal, and the fallback
+			// for an epi row whose date cannot be read. It is not derivable from
+			// the epi week — SE 29 sits under 2026/07 while SE 24 sits under
+			// 2026/06. Anchors are parsed, never constructed.
 			if (preg_match('#/uploads/(\d{4})/(\d{2})/#', $url, $when) !== 1) {
 				continue;
 			}
@@ -132,17 +146,24 @@ class PageParser implements Parser {
 				continue;
 			}
 
+			/*
+			 * The row's own date where its table gives one — epi's, for 77 of 77
+			 * (76 to the day; "Junio 2024" names only the month). Otherwise the
+			 * upload year, not the oficio's year: measured 12 of 13 titles on
+			 * degreyd's page carry no year at all, so the path is the only field
+			 * with full coverage there. The UI labels it plain "Año" and claims
+			 * nothing more. `date` is absent, never null, where no day was read.
+			 */
+			$dated = $rowDates[$url] ?? null;
 			$item = [
 				'title' => $title,
 				'url' => $url,
-				// Upload year, not the oficio's year: measured 12 of 13 titles on
-				// degreyd's page carry no year at all (47 of 75 on epi's, when it
-				// was the alerts fuente's host), so the path is the only field with
-				// full coverage either way. The UI therefore labels it plain "Año"
-				// and claims nothing more.
-				'year' => $when[1],
-				'month' => $when[1] . '-' . $when[2],
+				'year' => $dated['year'] ?? $when[1],
+				'month' => $dated['month'] ?? $when[1] . '-' . $when[2],
 			];
+			if (isset($dated['date'])) {
+				$item['date'] = $dated['date'];
+			}
 
 			// Keyed by URL, because MINSAL links the same PDF from two rows of its own
 			// table — epi does, today: one 2024 respiratory alert, two rows. The panes
@@ -230,6 +251,99 @@ class PageParser implements Parser {
 	}
 
 	/**
+	 * The date each PDF's row gives it, keyed by URL, read from the column its
+	 * table heads "Fecha" — epi's two tables do. degreyd's heads its date
+	 * column "Desde", in force since rather than published on, and a table
+	 * with no Fecha column adds nothing here.
+	 *
+	 * Cell by cell, with every rowspan carried down to the rows it spans: epi
+	 * spans a group's name over the rows below it, and twice its date too, so
+	 * a row's Fecha is not always its own nth `<td>` — the continuation rows
+	 * of "Alertas Entéricas" hold two cells, their date first.
+	 *
+	 * @return array<string, array{year: string, month: string, date?: string}>
+	 */
+	private function rowDates(string $html): array {
+		preg_match_all('#<table\b.*?</table>#is', $html, $tables);
+
+		$dates = [];
+		foreach ($tables[0] as $table) {
+			preg_match_all('#<tr\b.*?</tr>#is', $table, $rows);
+
+			$column = null;
+			$spans = []; // column => [rows still to fill, the spanning cell's text]
+			foreach ($rows[0] as $row) {
+				preg_match_all('#<t([dh])\b([^>]*)>(.*?)</t\1>#is', $row, $cells, PREG_SET_ORDER);
+
+				$texts = [];
+				for ($at = 0; $cells !== [] || isset($spans[$at]); $at++) {
+					if (isset($spans[$at])) {
+						$texts[$at] = $spans[$at][1];
+						if (--$spans[$at][0] === 0) {
+							unset($spans[$at]);
+						}
+						continue;
+					}
+
+					[, , $attributes, $cell] = array_shift($cells);
+					$texts[$at] = self::text($cell);
+					if (preg_match('#\browspan\s*=\s*"?\s*(\d+)#i', $attributes, $span) === 1 && (int)$span[1] > 1) {
+						$spans[$at] = [(int)$span[1] - 1, $texts[$at]];
+					}
+				}
+
+				// Nothing is dated before the row that names the column.
+				if ($column === null) {
+					$found = array_search('fecha', array_map('mb_strtolower', $texts), true);
+					$column = $found === false ? null : $found;
+					continue;
+				}
+
+				$date = self::readDate($texts[$column] ?? '');
+				if ($date === null) {
+					continue;
+				}
+
+				// The same `\s*` tolerance as parse()'s anchor scan, so both
+				// sides key by the URL a browser would request.
+				preg_match_all('#<a[^>]+href="\s*([^"]+\.pdf)\s*"#i', $row, $links);
+				foreach ($links[1] as $href) {
+					$dates[trim(html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'))] = $date;
+				}
+			}
+		}
+
+		return $dates;
+	}
+
+	/**
+	 * One Fecha cell as MINSAL writes it — "15 de Septiembre de 2026", "6 de
+	 * mayo del 2025", "31 mayo 2025", "Corrigendum – 26 de diciembre del
+	 * 2023" — or null when it names no month and year. "Junio 2024" names no
+	 * day, and gets none: the month is the publisher's, a day would be ours.
+	 *
+	 * @return ?array{year: string, month: string, date?: string}
+	 */
+	private static function readDate(string $cell): ?array {
+		$months = implode('|', array_keys(self::MONTHS));
+		if (preg_match('/(?:\b(\d{1,2})\s+(?:de\s+)?)?\b(' . $months . ')\s+(?:del?\s+)?(\d{4})\b/u', mb_strtolower($cell), $m) !== 1) {
+			return null;
+		}
+
+		$month = $m[3] . '-' . self::MONTHS[$m[2]];
+		if ($m[1] === '') {
+			return ['year' => $m[3], 'month' => $month];
+		}
+
+		// A day the month does not have is a typo, and a typo is no date.
+		if (!checkdate((int)self::MONTHS[$m[2]], (int)$m[1], (int)$m[3])) {
+			return null;
+		}
+
+		return ['year' => $m[3], 'month' => $month, 'date' => sprintf('%s-%02d', $month, (int)$m[1])];
+	}
+
+	/**
 	 * A cheap, independent count of every `href="…pdf"`, anywhere in the raw
 	 * document — with no dependency on the richer anchor pattern in parse()
 	 * actually matching it. That pattern requires `<a[^>]+href="…"[^>]*>…</a>`,
@@ -264,17 +378,19 @@ class PageParser implements Parser {
 	 * markup — see testTheFixtureStillContainsTheInversionThisSortExistsToFix),
 	 * 9 across epi's 78 (2026-09-28).
 	 *
-	 * usort is stable in PHP 8, which is the point — within a month (5 distinct
-	 * months across degreyd's 13 alerts, 27 across epi's 77) MINSAL's own
-	 * curation survives, and that is the only ordering signal finer than a month
-	 * we are entitled to use.
+	 * Within a month the later day leads where the row gives one — epi's do —
+	 * and readSet() orders the table's copy the same way. Where none does,
+	 * usort is stable in PHP 8, which is the point: within each of degreyd's 5
+	 * months MINSAL's own curation survives, the only ordering signal finer
+	 * than a month that page entitles us to.
 	 *
 	 * @param list<array<string, string>> $items
 	 *
 	 * @return list<array<string, string>>
 	 */
 	private function sort(array $items): array {
-		usort($items, static fn (array $a, array $b): int => strcmp($b['month'], $a['month']));
+		usort($items, static fn (array $a, array $b): int
+			=> [$b['month'], $b['date'] ?? ''] <=> [$a['month'], $a['date'] ?? '']);
 
 		return $items;
 	}
