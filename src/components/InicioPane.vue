@@ -90,7 +90,10 @@
 					</li>
 				</ul>
 
-				<NcButton variant="tertiary" class="epi-card__more" @click="$emit('open', tile.id)">
+				<NcButton variant="tertiary"
+					class="epi-card__more"
+					:aria-label="tile.ariaMoreText"
+					@click="$emit('open', tile.id)">
 					{{ tile.moreText }}
 				</NcButton>
 			</article>
@@ -99,7 +102,9 @@
 		<article class="epi-card">
 			<div class="epi-card__head">
 				<h2 class="epi-card__title">{{ paneName('informe') }}</h2>
-				<NcButton variant="tertiary" @click="$emit('open', 'informe')">
+				<NcButton variant="tertiary"
+					:aria-label="t('epidemiologia', 'Ver todos los informes')"
+					@click="$emit('open', 'informe')">
 					{{ t('epidemiologia', 'Ver todos') }}
 				</NcButton>
 			</div>
@@ -200,6 +205,9 @@ const tiles = PANES.filter((pane) => pane.source).map((pane) => {
 		moreText: feed.items.length
 			? t('epidemiologia', 'Ver {cuantas}', { cuantas: fuente.count(feed.items.length) })
 			: t('epidemiologia', 'Ver la sección'),
+		ariaMoreText: feed.items.length
+			? t('epidemiologia', 'Ver {cuantas} de {seccion}', { cuantas: fuente.count(feed.items.length), seccion: paneName(pane.id) })
+			: t('epidemiologia', 'Ver la sección {seccion}', { seccion: paneName(pane.id) }),
 		emptyText: emptyText(fuente.name),
 		degradedText: degradedText(fuente.name),
 	}

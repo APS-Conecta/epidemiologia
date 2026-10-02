@@ -23,6 +23,7 @@ use OCP\ICacheFactory;
 use OCP\IMemcache;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
+use SimpleXMLElement;
 use Throwable;
 
 /**
@@ -865,7 +866,7 @@ class IspReportRepository {
 	 */
 	private function parse(string $xml): array {
 		$previous = libxml_use_internal_errors(true);
-		$feed = simplexml_load_string($xml);
+		$feed = simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET);
 		libxml_clear_errors();
 		libxml_use_internal_errors($previous);
 
