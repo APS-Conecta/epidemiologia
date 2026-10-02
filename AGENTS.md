@@ -48,4 +48,5 @@ Nightly Jules presets — Sentinel (security), Bolt (performance), Palette (UX/a
 - **One concern per PR**, under 50 lines of hand-written source (rebuilt bundle excluded), and it contains every change
   its description claims — a journal-only PR is invalid. Nothing worthwhile → no PR. Never repeat a change an open or
   recently closed PR already proposes.
-- **PR text:** Conventional Commits title; tick the template's AI-involvement box (`ai-assisted`), leave «Human-reviewed» unticked.
+- **PR text:** keep your preset's title prefix (`⚡ Bolt:` / `🛡️ Sentinel:` / `🎨 Palette:`) and its body format;
+  the maintainer gives the squash commit its Conventional Commits title and adds the `ai-assisted` label.
