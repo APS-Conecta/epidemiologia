@@ -10,6 +10,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+- **Docs alignment**: the README moves installation and configuration up beside the quickstart and
+  pins its OCS citation to server 34; `docs/index.md` gains the Reader column; `appinfo/info.xml`
+  declares its documentation links.
+
 ## [0.11.3] — 2026-10-02
 
 ### Fixed

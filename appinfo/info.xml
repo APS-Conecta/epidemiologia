@@ -22,6 +22,10 @@ documentos en el sitio oficial de quien las publica.
     <licence>AGPL-3.0-or-later</licence>
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>
+    <documentation>
+        <admin>https://github.com/APS-Conecta/epidemiologia/blob/main/README.md#configuration</admin>
+        <developer>https://github.com/APS-Conecta/epidemiologia/blob/main/README.md#development</developer>
+    </documentation>
     <category>monitoring</category>
     <dependencies>
         <!-- Nextcloud only *recommends* intl, but AlertRepository::fold() needs

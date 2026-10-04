@@ -52,6 +52,32 @@ Four steps, on a machine already running the `gestion` stack.
    browser cannot). Inicio shows one tile per alert sector, each with
    the latest thing its publisher posted. From the shell, `scripts/smoke.sh` asserts the same wiring and more.
 
+## Installation
+
+The quickstart's first two steps *are* the install; what differs on a real instance is updating. Raising `<version>` is now the delivery mechanism: it puts the instance into *requires upgrade* until `occ upgrade` runs, and that upgrade is how the migrations, the repair step and the background jobs reach an install. After a `git pull` that changed `<version>`, run `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ upgrade`, then restart the web container: the web workers cache the app's routes and state in APCu, which nothing in `occ` clears (see *Things that bite*). **0.11.0's migration rewrites `epidemiologia_alert`'s primary key, and Nextcloud has no down-migrations**: dump the database before that upgrade, because restoring the dump and reinstalling 0.10.0 is the only rollback. `js/` and
+`css/` **are committed**, so deploying needs no Node on the server; anyone touching `src/` runs
+`npm run build` and commits the result, and `scripts/smoke.sh` flags a bundle that has fallen behind.
+Raising `<version>` in `info.xml` is not free — see *Things that bite*.
+
+> **`node_modules` should not live in the webroot of a production instance.** `.htaccess` closes it
+> off — Apache-dependent, and to *anyone*, authenticated or not; see its comments. The right fix is
+> to build elsewhere and deploy only what is needed.
+
+## Configuration
+
+One setting is meant to be changed, and it has a working default; everything else in the app's
+config is written by the app itself.
+
+| Setting | What it does | Default | Where it lives |
+| --- | --- | --- | --- |
+| `notify_groups` | Which groups are told when a fuente has been unreachable for 2, 7 or 30 days | `["admin"]`, compiled in — a fresh install has no row | App config: `occ config:app:set epidemiologia notify_groups --value='["admin","epi"]' --type=array` |
+| `probe_failures_<fuente>`, `probe_failing_since_<fuente>` | The consecutive-failure counts the notification and *Administración → Visión general* both read | absent until the first probe | App config, written only by `ProbeRecord` — **do not set by hand** |
+| `backfilled_<fuente>` | That a stream has walked its two older pages; deleting it makes the next deep pass walk them again | absent until that walk | App config, written only by `AlertRepository::converge()` — **do not set by hand** |
+| `EPI_CONTAINER`, `EPI_USER`, `EPI_BASE` | Which container, user and base URL the dev scripts talk to | `apsconecta-gestion-nextcloud-1`, `admin`, `http://localhost:8180` | Environment, read by `scripts/*.sh` |
+
+Cache lifetimes are constants, not settings: one hour fresh, thirty days kept as the last good copy, and a table behind each fuente that outlives the cache (`AlertRepository`, `IspReportRepository`). A setting there would let an instance configure itself into
+showing an alerta MINSAL has withdrawn as though it were still vigente.
+
 ## How it works
 
 A read-through proxy over a cache and two of its own tables: the cache is the hot path, the tables the durable copy that an app update no longer takes away. Three rules are not guessable from the code:
@@ -69,7 +95,10 @@ A read-through proxy over a cache and two of its own tables: the cache is the ho
 
 **One** read-only OCS route, every source keyed by its id:
 `GET /ocs/v2.php/apps/epidemiologia/api/v1/sources?format=json`, with `OCS-APIRequest: true` — **not
-optional**, Nextcloud answers `412` without it before reaching the controller.
+optional**, Nextcloud answers `412` without it before reaching the controller. The envelope and the
+header are Nextcloud's own mechanism —
+[OCS API](https://docs.nextcloud.com/server/34/developer_manual/client_apis/OCS/index.html); what
+follows is this app's contract on top of it.
 
 Parameters: `source` — and nothing else. The narrowing retired with the only fuente that ever had one: `category` and `olderThan` answer **400** on every source, not a confidently filtered list, so a consumer still paging learns the retirement loudly. Unknown `source` answers **404**; a blank parameter means "not asked". **Each source carries its own freshness, its own `degraded`, and `total`/`has_more`** — every answer is the whole set, so `total` is the fuente's own count and `has_more` is always false.
 Rate limit 120/min per user; no `#[CORS]` yet, it needs a concrete origin.
@@ -174,32 +203,6 @@ against what those sites actually publish, quirks included.
   without turning the loglevel down to `debug`.
 - **The ISP's WAF answers a literal `curl/*` User-Agent with an empty reply**, and 200 to anything
   else — which reads exactly like a TLS fault. The app names itself on every request (`APS-Conecta-Epidemiologia/1.0 (+https://github.com/APS-Conecta/epidemiologia)`, `AlertRepository::UA` and `IspReportRepository::UA`), so it is fine; do not "simplify" a reproduction down to curl and conclude the host is down.
-
-## Installation
-
-The quickstart's first two steps *are* the install; what differs on a real instance is updating. Raising `<version>` is now the delivery mechanism: it puts the instance into *requires upgrade* until `occ upgrade` runs, and that upgrade is how the migrations, the repair step and the background jobs reach an install. After a `git pull` that changed `<version>`, run `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ upgrade`, then restart the web container: the web workers cache the app's routes and state in APCu, which nothing in `occ` clears (see *Things that bite*). **0.11.0's migration rewrites `epidemiologia_alert`'s primary key, and Nextcloud has no down-migrations**: dump the database before that upgrade, because restoring the dump and reinstalling 0.10.0 is the only rollback. `js/` and
-`css/` **are committed**, so deploying needs no Node on the server; anyone touching `src/` runs
-`npm run build` and commits the result, and `scripts/smoke.sh` flags a bundle that has fallen behind.
-Raising `<version>` in `info.xml` is not free — see *Things that bite*.
-
-> **`node_modules` should not live in the webroot of a production instance.** `.htaccess` closes it
-> off — Apache-dependent, and to *anyone*, authenticated or not; see its comments. The right fix is
-> to build elsewhere and deploy only what is needed.
-
-## Configuration
-
-One setting is meant to be changed, and it has a working default; everything else in the app's
-config is written by the app itself.
-
-| Setting | What it does | Default | Where it lives |
-| --- | --- | --- | --- |
-| `notify_groups` | Which groups are told when a fuente has been unreachable for 2, 7 or 30 days | `["admin"]`, compiled in — a fresh install has no row | App config: `occ config:app:set epidemiologia notify_groups --value='["admin","epi"]' --type=array` |
-| `probe_failures_<fuente>`, `probe_failing_since_<fuente>` | The consecutive-failure counts the notification and *Administración → Visión general* both read | absent until the first probe | App config, written only by `ProbeRecord` — **do not set by hand** |
-| `backfilled_<fuente>` | That a stream has walked its two older pages; deleting it makes the next deep pass walk them again | absent until that walk | App config, written only by `AlertRepository::converge()` — **do not set by hand** |
-| `EPI_CONTAINER`, `EPI_USER`, `EPI_BASE` | Which container, user and base URL the dev scripts talk to | `apsconecta-gestion-nextcloud-1`, `admin`, `http://localhost:8180` | Environment, read by `scripts/*.sh` |
-
-Cache lifetimes are constants, not settings: one hour fresh, thirty days kept as the last good copy, and a table behind each fuente that outlives the cache (`AlertRepository`, `IspReportRepository`). A setting there would let an instance configure itself into
-showing an alerta MINSAL has withdrawn as though it were still vigente.
 
 ## Licence
 
