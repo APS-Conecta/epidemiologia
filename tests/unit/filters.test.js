@@ -5,6 +5,7 @@
  * tests/setup.js answers it. See vitest.config.js for why there is no jsdom.
  */
 import { describe, expect, it } from 'vitest'
+import { ref } from 'vue'
 import { useFilters } from '../../src/filters.js'
 
 describe('useFilters', () => {
@@ -68,6 +69,25 @@ describe('useFilters', () => {
 		f.year.value = '2026'
 
 		expect(titles(f)).toEqual(['Dengue en la Región'])
+	})
+
+	it('updates matches when reactive items change', () => {
+		const reactiveItems = ref([
+			{ title: 'Sarampión en las Américas', date: '2026-08-01' },
+		])
+		const f = useFilters(reactiveItems, accessors)
+
+		expect(titles(f)).toEqual(['Sarampión en las Américas'])
+
+		reactiveItems.value = [
+			{ title: 'Sarampión en las Américas', date: '2026-08-01' },
+			{ title: 'Dengue en la Región', date: '2026-07-15' },
+		]
+
+		expect(titles(f)).toEqual([
+			'Sarampión en las Américas',
+			'Dengue en la Región',
+		])
 	})
 })
 

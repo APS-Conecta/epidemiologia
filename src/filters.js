@@ -12,7 +12,7 @@
  * sentence to stop being true — it never was — and it is the one line a reader would
  * consult before adding the jsdom dependency both of those files exist to refuse.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref, unref, watch } from 'vue'
 import { t } from '@nextcloud/l10n'
 import { fold, monthOptions, yearOptions } from './pure.js'
 
@@ -42,8 +42,10 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 	const year = ref(null)
 	const month = ref(null)
 
-	const years = yearOptions(items, yearOf)
-	const months = computed(() => monthOptions(items, yearOf, monthOf, year.value))
+	const getItems = () => unref(items) ?? []
+
+	const years = computed(() => yearOptions(getItems(), yearOf))
+	const months = computed(() => monthOptions(getItems(), yearOf, monthOf, year.value))
 
 	// Changing the year can strand a month that year does not have, which would show zero
 	// results and read as a fault in the data rather than in the filter pair.
@@ -53,19 +55,18 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 		}
 	})
 
-	// Folded and extracted once, not per keystroke: accessors evaluate at setup to avoid per-item calls during filtering.
-	const folded = items.map((i) => ({
+	const folded = computed(() => getItems().map((i) => ({
 		...i,
 		_fold: fold(textOf(i)),
 		_year: yearOf(i),
 		_month: monthOf(i),
-	}))
+	})))
 
 	const matches = computed(() => {
 		const needle = fold(query.value.trim())
 
 		// Short-circuit using fast primitive equality (year, month) before executing string substring search (_fold)
-		return folded.filter((i) => (!year.value || i._year === year.value)
+		return folded.value.filter((i) => (!year.value || i._year === year.value)
 			&& (!month.value || i._month === month.value)
 			&& (!needle || i._fold.includes(needle)))
 	})
