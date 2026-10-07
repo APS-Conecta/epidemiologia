@@ -107,3 +107,25 @@ describe('useFilters — the token flow (L3-19)', () => {
 		expect(active.value).toEqual([])
 	})
 })
+
+describe('useFilters — 5,000 items scaling and equivalence (⚡ Bolt)', () => {
+	const largeSet = Array.from({ length: 5000 }, (_, i) => ({
+		title: `Alerta ${i} Sarampión`,
+		date: `202${i % 7}-0${(i % 9) + 1}-15`,
+	}))
+	const accessors = {
+		yearOf: (a) => a.date.slice(0, 4),
+		monthOf: (a) => a.date.slice(0, 7),
+		textOf: (a) => a.title,
+	}
+
+	it('correctly derives year and month options and filters matches at scale', () => {
+		const f = useFilters(largeSet, accessors)
+		expect(f.years.length).toBeGreaterThan(0)
+		expect(f.months.value.length).toBeGreaterThan(0)
+		expect(f.matches.value.length).toBe(5000)
+
+		f.year.value = '2024'
+		expect(f.matches.value.every((m) => m.date.startsWith('2024'))).toBe(true)
+	})
+})

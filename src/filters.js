@@ -42,8 +42,16 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 	const year = ref(null)
 	const month = ref(null)
 
-	const years = yearOptions(items, yearOf)
-	const months = computed(() => monthOptions(items, yearOf, monthOf, year.value))
+	// Folded and extracted once, not per keystroke: accessors evaluate at setup to avoid per-item calls during filtering.
+	const folded = items.map((i) => ({
+		...i,
+		_fold: fold(textOf(i)),
+		_year: yearOf(i),
+		_month: monthOf(i),
+	}))
+
+	const years = yearOptions(folded, (i) => i._year)
+	const months = computed(() => monthOptions(folded, (i) => i._year, (i) => i._month, year.value))
 
 	// Changing the year can strand a month that year does not have, which would show zero
 	// results and read as a fault in the data rather than in the filter pair.
@@ -52,14 +60,6 @@ export function useFilters(items, { yearOf, monthOf, textOf }) {
 			month.value = null
 		}
 	})
-
-	// Folded and extracted once, not per keystroke: accessors evaluate at setup to avoid per-item calls during filtering.
-	const folded = items.map((i) => ({
-		...i,
-		_fold: fold(textOf(i)),
-		_year: yearOf(i),
-		_month: monthOf(i),
-	}))
 
 	const matches = computed(() => {
 		const needle = fold(query.value.trim())
