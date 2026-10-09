@@ -93,7 +93,7 @@
 			:name="t('epidemiologia', 'Sin alertas')"
 			:description="emptyText(fuente.name)">
 			<template #icon>
-				<Magnify :size="20" />
+				<CheckCircle :size="20" />
 			</template>
 		</NcEmptyContent>
 	</section>
@@ -103,6 +103,7 @@
 import { computed, ref } from 'vue'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import { t } from '@nextcloud/l10n'
+import CheckCircle from 'vue-material-design-icons/CheckCircle.vue'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import CalendarMonthOutline from 'vue-material-design-icons/CalendarMonthOutline.vue'
 import CalendarRange from 'vue-material-design-icons/CalendarRange.vue'
