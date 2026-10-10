@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import * as stateExports from '../../src/state.js'
 import { reports, source } from '../../src/state.js'
-import { degradedText, emptyText, fecha, mes, monthOptions, tally, tipoOptions, yearOptions, FUENTES } from '../../src/pure.js'
+import { countText, degradedText, emptyText, fecha, mes, monthOptions, tally, tipoOptions, yearOptions, FUENTES } from '../../src/pure.js'
 import { PANES } from '../../src/panes.js'
 
 /**
@@ -162,6 +162,26 @@ describe('FUENTES.count', () => {
 	})
 })
 
+describe('countText', () => {
+	// The toolbar's count. A fuente nobody could read that holds nothing has none:
+	// "0 alertas vigentes" beside the warning is the publisher-said-zero claim L3-14
+	// refuses — the state epi_alerts is in while epi.minsal.cl refuses this server.
+	it('counts nothing for a fuente nobody could read that holds nothing', () => {
+		expect(countText(FUENTES.minsal, { items: [], degraded: true }, 0)).toBe('')
+		// The missing-key path this suite runs on (state.js): degraded and empty.
+		expect(countText(FUENTES.minsal, source('epi_alerts'), 0)).toBe('')
+	})
+
+	it('counts a last copy served degraded, and a real answer of zero', () => {
+		expect(countText(FUENTES.isp, { items: [{}, {}], degraded: true }, 2)).toBe('2 alertas')
+		expect(countText(FUENTES.minsal, { items: [], degraded: false }, 0)).toBe('0 alertas vigentes')
+	})
+
+	it('counts what the filters let through against the total', () => {
+		expect(countText(FUENTES.ops, { items: [{}, {}, {}], degraded: false }, 1)).toBe('1 de 3 publicaciones')
+	})
+})
+
 describe('tipoOptions', () => {
 	// Shaped like paho_alerts' items, and deliberately NOT in the menu's order — an
 	// options builder that did no ordering must not pass on a fixture that arrived sorted.
@@ -211,7 +231,7 @@ describe('the state half (L3-17)', () => {
 	// resolve to pure.js directly — what this pins is the ABSENCE of the
 	// re-export, which is the property the split existed to deliver.
 	it('no longer re-exports the pure half', () => {
-		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'tipoOptions', 'FUENTES', 'SITIOS']) {
+		for (const name of ['fold', 'fecha', 'mes', 'degradedText', 'countText', 'emptyText', 'tally', 'yearOptions', 'monthOptions', 'tipoOptions', 'FUENTES', 'SITIOS']) {
 			expect(stateExports).not.toHaveProperty(name)
 		}
 	})

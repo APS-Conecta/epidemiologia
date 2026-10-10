@@ -114,7 +114,7 @@ import PaneHeader from './PaneHeader.vue'
 import DegradedNotice from './DegradedNotice.vue'
 import { PANES, paneName } from '../panes.js'
 import { source } from '../state.js'
-import { emptyText, fecha, mes, tipoOptions, FUENTES, SITIOS } from '../pure.js'
+import { countText, emptyText, fecha, mes, tipoOptions, FUENTES, SITIOS } from '../pure.js'
 import { useFilters } from '../filters.js'
 
 const props = defineProps({
@@ -163,13 +163,8 @@ function clearFilter(id) {
 	}
 }
 
-const countLabel = computed(() => {
-	const total = feed.items.length
-	if (shown.value.length === total) {
-		return fuente.count(total)
-	}
-	return t('epidemiologia', '{shown} de {total}', { shown: shown.value.length, total: fuente.count(total) })
-})
+/** The toolbar's count — none for a fuente nobody could read that holds nothing (pure.js). */
+const countLabel = computed(() => countText(fuente, feed, shown.value.length))
 </script>
 
 <style scoped>

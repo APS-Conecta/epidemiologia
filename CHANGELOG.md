@@ -15,6 +15,9 @@ made belongs in the commit, the issue, or a comment beside the code.
   declares its documentation links.
 - **App summary**: `appinfo/info.xml` and the OpenAPI description name the ISP's report the
   «informe semanal de circulación de virus respiratorios».
+- **Unread sectors count nothing**: a sector whose publisher could not be read and that holds
+  nothing — the Departamento de Epidemiología's, while epi.minsal.cl refuses the server — showed
+  *0 alertas vigentes* beside its warning; its toolbar now shows no count until it has a list.
 
 ## [0.11.3] — 2026-10-02
 
