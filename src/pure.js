@@ -173,6 +173,25 @@ export function emptyText(fuente) {
 }
 
 /**
+ * What the toolbar counts, in the publisher's noun — or nothing at all.
+ *
+ * Nothing for a fuente nobody could read that holds nothing (L3-14, CONTEXT.md's
+ * Estado degradado): "0 alertas vigentes" beside the warning is the publisher-said-zero
+ * claim the pane's empty states already refuse, made in the toolbar instead. A last
+ * copy served degraded still counts what it holds, and a fuente that answered zero
+ * says zero.
+ */
+export function countText(fuente, feed, shown) {
+	const total = feed.items.length
+	if (feed.degraded && !total) {
+		return ''
+	}
+	return shown === total
+		? fuente.count(total)
+		: t('epidemiologia', '{shown} de {total}', { shown, total: fuente.count(total) })
+}
+
+/**
  * How many items carry each value of `key`, as [{ id, count }].
  *
  * Filter options are built from the data rather than declared, so a filter can
