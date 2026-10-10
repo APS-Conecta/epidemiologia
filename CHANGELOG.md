@@ -13,6 +13,7 @@ made belongs in the commit, the issue, or a comment beside the code.
 - **Docs alignment**: the README moves installation and configuration up beside the quickstart and
   pins its OCS citation to server 34; `docs/index.md` gains the Reader column; `appinfo/info.xml`
   declares its documentation links.
+- **Domain terminology qualification**: the app's summary and description metadata qualify "informe semanal" as "informe semanal de circulación de virus respiratorios".
 
 ## [0.11.3] — 2026-10-02
 
