@@ -1,6 +1,10 @@
 # The freno and the backfill stay inside `IspRepository`
 
-**Status: accepted, 2026-08-05.** An architecture review proposed extracting two mechanisms, each
+**Status: superseded.** Its first reopen condition was met when a second repository needed backoff, as
+[ADR-0017](0017-six-alert-sectors-one-pipeline.md) (2026-09-28) records: the freno is now
+`lib/Service/Freno.php`, keyed by host, and `IspRepository` is gone. Accepted 2026-08-05.
+
+An architecture review proposed extracting two mechanisms, each
 into a module behind the repository's unchanged interface: the **freno** — `braked()` / `brake()` /
 `frenoKey()`, an exponential backoff whose curve is a literal inside `brake()` — and the **backfill**
 — `backfill()` / `page()` plus a cursor in each category's cache entry, with its own budget, exhaustion rule and
