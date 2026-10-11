@@ -1,6 +1,8 @@
 # Family icons where the ISP names the family, and none where it does not
 
-**Status: accepted, 2026-08-07.** This narrows a rule `App.vue` has carried since #52. That rule was
+**Status: superseded.** The family navigation it governs left with `IspPane` and `familias.js` when
+[ADR-0016](0016-the-isp-has-one-job.md) (2026-09-19) retired the ISP's alertas. Accepted 2026-08-07.
+This narrows a rule `App.vue` has carried since #52. That rule was
 right when it was written and half of it still is; the half that is not was falsified by the module
 written two issues later.
 
