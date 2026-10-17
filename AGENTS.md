@@ -33,8 +33,7 @@ Domain docs, the issue tracker and the triage labels: [`docs/agents/README.md`](
 
 One Jules agent visits this repo each night at 02:00 (Chile): Mon 🗡️ Breaker, Tue 🐞 Tracer,
 Wed ⚡ Bolt / ✂️ Simplifier (alternate weeks), Thu 🧹 Janitor, Fri 🎨 Palette, Sat 📚 Scribe,
-Sun 🔤 Lexicon. Their prompts and the code standards live in the private `APS-Conecta/agents` repo;
-Claude reviews every PR. These rules, and everything above, bind every agent.
+Sun 🔤 Lexicon. Claude reviews every PR. These rules, and everything above, bind every agent.
 
 - **Journals** live only in lowercase `.jules/` (`breaker.md`, `tracer.md`, `bolt.md`, `simplifier.md`,
   `janitor.md`, `palette.md`, `scribe.md`, `lexicon.md`) — never create `.Jules/`.
