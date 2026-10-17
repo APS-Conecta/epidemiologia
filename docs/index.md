@@ -9,7 +9,7 @@ same thing, the one named here as its authority wins and the other should be lin
 | [`../CONTEXT.md`](../CONTEXT.md) | reference | everyone | **The vocabulary.** Fuente, sondeo, and what this context deliberately has no word for |
 | [`../AGENTS.md`](../AGENTS.md) | reference | agent | The language split, and the repo rules an AI agent must follow |
 | [`adr/`](adr/) | explanation | developer | Each decision and the reasoning that was live when it was taken |
-| [`threat-model.md`](threat-model.md) | reference | developer | What an attacker wants, the entry points and their guards; the Breaker agent starts here |
+| [`threat-model.md`](threat-model.md) | reference | developer | What an attacker wants, the entry points and their guards |
 | [`fuentes-checklist.md`](fuentes-checklist.md) | how-to | developer | Every place a new fuente or alert sector is added, and the gates that fail when one is missed |
 | [`agents/README.md`](agents/README.md) | reference | agent | Where the domain docs, the tracker and the triage labels are, for this repo |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | history | operator | What changed, one line per change, per version |
