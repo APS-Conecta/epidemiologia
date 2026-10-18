@@ -10,6 +10,16 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+- **README in Spanish, docs-es opt-in**: the README follows the five-section Spanish contract (`Qué es`,
+  `Documentación`, `Estado`, `Inicio rápido de desarrollo`, `Licencia`) and points to the documentation
+  site for the long reference; `.github/docs-es` opts the repo into repo-docs ADR 0006 and the vendored
+  checker and profiles are refreshed. `AGENTS.md`' language table says so. The reference the README
+  carried (configuration, update, traps, certificate rotation) and the checklist for adding a fuente
+  now live in the development page of the documentation site.
+- **Removed `docs/index.md`**: the README's *Documentación* section is the index now.
+- **Removed `docs/fuentes-checklist.md`**: moved to the documentation site as "Añadir una fuente"
+  (ADR-0017 links there).
+
 - **Docs alignment**: the README moves installation and configuration up beside the quickstart and
   pins its OCS citation to server 34; `docs/index.md` gains the Reader column; `appinfo/info.xml`
   declares its documentation links.

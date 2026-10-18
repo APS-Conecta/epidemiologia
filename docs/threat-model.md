@@ -10,8 +10,8 @@ work.*
   (`lib/Migration/Version001000Date20260920000000.php`, `lib/Migration/Version001100Date20260928000000.php`).
 - **One copy of each ISP informe PDF**, in the app data folder `informes`
   (`lib/Service/IspReportRepository.php:210`), served by `/informe/{year}/{semana}`.
-- **No patient data.** The README says the app "persists only what its publishers publish"
-  (`README.md:6`), and `CONTEXT.md:4` says "No patient data enters this context."
+- **No patient data.** The README says the app persists only what its publishers publish
+  (its *Qué es* section), and `CONTEXT.md:4` says "No patient data enters this context."
 
 ## What an attacker wants
 

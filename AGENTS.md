@@ -14,7 +14,8 @@ Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo ci
 | --- | --- |
 | UI strings — `t('epidemiologia', …)`, `n(…)`, anything rendered in the app | **Spanish** |
 | Code, identifiers, comments, test names, docblocks | **English** |
-| `README.md`, `CHANGELOG.md`, `CONTEXT.md`, `docs/` | **English** |
+| `README.md` (and `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` if present) | **Spanish** — repo-docs ADR 0006; the repo opts in with `.github/docs-es` |
+| `CHANGELOG.md`, `CONTEXT.md`, `docs/` (ADRs, threat model) | **English** |
 | `scripts/` output | **English** |
 | `nextcloud.log` lines — every `LoggerInterface` message | **English** |
 
