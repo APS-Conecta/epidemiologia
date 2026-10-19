@@ -10,6 +10,7 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+- **`appinfo/info.xml` documentation links**: the admin and developer links pointed at README anchors (`#configuration`, `#development`) that the Spanish README no longer has; they now point at `desarrollo/epidemiologia` on the documentation site.
 - **README in Spanish, docs-es opt-in**: the README follows the five-section Spanish contract (`Qué es`,
   `Documentación`, `Estado`, `Inicio rápido de desarrollo`, `Licencia`) and points to the documentation
   site for the long reference; `.github/docs-es` opts the repo into repo-docs ADR 0006 and the vendored

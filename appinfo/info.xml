@@ -23,8 +23,8 @@ documentos en el sitio oficial de quien las publica.
     <author mail="d.espinoza.charrier@gmail.com">Daniel Espinoza</author>
     <namespace>Epidemiologia</namespace>
     <documentation>
-        <admin>https://github.com/APS-Conecta/epidemiologia/blob/main/README.md#configuration</admin>
-        <developer>https://github.com/APS-Conecta/epidemiologia/blob/main/README.md#development</developer>
+        <admin>https://aps-conecta.github.io/documentation/desarrollo/epidemiologia.html#configuracion</admin>
+        <developer>https://aps-conecta.github.io/documentation/desarrollo/epidemiologia.html</developer>
     </documentation>
     <category>monitoring</category>
     <dependencies>
