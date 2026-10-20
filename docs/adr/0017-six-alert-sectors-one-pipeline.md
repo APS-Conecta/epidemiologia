@@ -82,7 +82,7 @@ revalidation guard and cold path as the pipeline.
 ### D4 — `Sources` keeps one match arm per id per method
 
 Default-less, at seven ids as at two: an id in `ALL` without an arm throws `UnhandledMatchError`, and
-`SourcesTest` walks `ALL` through every method. the checklist for adding a fuente (once `docs/fuentes-checklist.md`, now "Añadir una fuente" in the
+`SourcesTest` walks `ALL` through every method. The checklist for adding a fuente ("Añadir una fuente" in the
 [development reference](https://aps-conecta.github.io/documentation/desarrollo/epidemiologia.html))
 lists the arms.
 

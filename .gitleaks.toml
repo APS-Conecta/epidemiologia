@@ -1,6 +1,5 @@
 # gitleaks configuration — read by `gitleaks detect` when repo-docs' `secrets` rule
-# finds gitleaks on PATH (CI does not install it; the rule then falls back to its
-# own file checks).
+# finds gitleaks on PATH (otherwise the rule falls back to its own file checks).
 #
 # Audited 2026-09-29, both findings: generic-api-key in the two OPS/OMS captures,
 # tests/unit/fixtures/paho-alertas-p0.html and -p1.html (PahoParserTest's fixtures,
