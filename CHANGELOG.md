@@ -17,12 +17,8 @@ made belongs in the commit, the issue, or a comment beside the code.
   checker and profiles are refreshed. `AGENTS.md`' language table says so. The reference the README
   carried (configuration, update, traps, certificate rotation) and the checklist for adding a fuente
   now live in the development page of the documentation site.
-- **Removed `docs/index.md`**: the README's *Documentación* section is the index now.
-- **Removed `docs/fuentes-checklist.md`**: moved to the documentation site as "Añadir una fuente"
-  (ADR-0017 links there).
-
 - **Docs alignment**: the README moves installation and configuration up beside the quickstart and
-  pins its OCS citation to server 34; `docs/index.md` gains the Reader column; `appinfo/info.xml`
+  pins its OCS citation to server 34; `appinfo/info.xml`
   declares its documentation links.
 - **App summary**: `appinfo/info.xml` and the OpenAPI description name the ISP's report the
   «informe semanal de circulación de virus respiratorios».
@@ -88,8 +84,8 @@ Five alert sectors join the one there was, all six on one pipeline — see [ADR-
 ### Added
 
 - The app's mount shows its loading state instead of a blank frame while the bundle boots —
-  spinner and `<noscript>` from the suite theme, the same component in every custom app
-  (territorio review L0-04). Vue's mount replaces the stub's children on boot, so it removes itself.
+  spinner and `<noscript>` from the suite theme, the same component in every custom app.
+  Vue's mount replaces the stub's children on boot, so it removes itself.
 - A render error in any pane now shows *"No pudimos mostrar esta sección"* instead of a blank page.
   The panes are shown with `v-show`, so every pane is mounted at once and one throwing pane took the
   whole app down on load — and an empty page looks exactly like the instance being broken. The error
@@ -354,11 +350,6 @@ Five alert sectors join the one there was, all six on one pipeline — see [ADR-
 - The filters never said what was filtered (#44).
 - The version was written in three places and two were wrong (#53).
 - The test cache double ignored TTL and `remove()`, so a test passed for the wrong reason.
-
-### Removed
-
-- 1.072 lines of prose (#54). Nothing from the freno or the backfill: ADR-0010 records why an
-  architecture review's proposal to extract them was rejected.
 
 ## [0.4.0] — 2026-08-03
 

@@ -31,7 +31,7 @@ Dentro de este repositorio quedan solo los documentos que viajan con el código:
 
 - [`CONTEXT.md`](CONTEXT.md): el vocabulario (fuente, sondeo y lo que este contexto deliberadamente no nombra), en inglés.
 - [`AGENTS.md`](AGENTS.md): las reglas del repositorio para agentes de IA, en inglés.
-- [`docs/adr/`](docs/adr/): cada decisión y el razonamiento vigente cuando se tomó. Los números son direcciones: la numeración parte en 0002 (el 0001 pasó a una aplicación hermana que luego se retiró) y no se reutiliza ni se renumera.
+- [`docs/adr/`](docs/adr/): cada decisión y el razonamiento vigente cuando se tomó. Los números son direcciones: la numeración parte en 0002 y no se reutiliza ni se renumera.
 - [`docs/threat-model.md`](docs/threat-model.md): qué busca un atacante, los puntos de entrada y sus resguardos.
 - [`docs/agents/README.md`](docs/agents/README.md): dónde están los documentos de dominio, el tablero de incidencias y las etiquetas de triaje.
 - [`certs/README.md`](certs/README.md): por qué el certificado intermedio del ISP viaja en este repositorio, de dónde se derivó y el comando que lo reemplaza.

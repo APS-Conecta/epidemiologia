@@ -1,6 +1,6 @@
 # No `l10n/es.json`, and no seam for an app nothing calls
 
-**Status: accepted, 2026-08-05.** #65 rescued two items from a plan document deleted in #54, both
+**Status: accepted, 2026-08-05.** #65 recorded two items, both
 written down as things not yet done. They are things that should not be done yet, and a future review
 will notice them again.
 

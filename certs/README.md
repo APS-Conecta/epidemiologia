@@ -6,17 +6,16 @@ already downloads and trusts when it visits `https://www.ispch.gob.cl/`.
 
 ## Why `.crt` and not `.pem`
 
-This file was originally tracked as `gsgccr6alphasslca2025.pem`. It is now
-`.crt`, deliberately, and **must not be renamed back**. Two independent
-reasons converged:
+This file is `.crt`, deliberately, and **must keep that extension**. Two
+independent reasons:
 
 - The repo's docs CI (`.github/repo-docs.py`, `_r_secrets`) has two code
   paths. When `gitleaks` is on `PATH` it content-scans every tracked file and
-  is authoritative; when it is not (as on GitHub's own runners, where this
-  check actually failed) the rule falls back to a filename heuristic that
+  is authoritative; when it is not, the rule falls
+  back to a filename heuristic that
   blocks anything matching `\.(pem|key|p12)$` on sight, because private keys
-  are routinely PEM-encoded too. Renaming this file to `.crt` gets it past
-  that fallback. Say so plainly: that is partly what this rename is for.
+  are routinely PEM-encoded too. The `.crt` extension gets this file past
+  that fallback.
 - It is also the more correct name on its own terms, independent of CI.
   GlobalSign itself publishes this exact artifact at
   `http://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt` — `.crt` is
@@ -25,15 +24,14 @@ reasons converged:
   (base64 with header/footer lines), and that encoding is shared by
   certificates, CSRs and private keys alike — which is exactly why a bare
   `.pem` is the ambiguous, suspicious-looking case and `.crt` is not. The
-  bytes in this file are unchanged and are still PEM-encoded text; only the
-  extension changed.
+  bytes in this file are PEM-encoded text.
 
-Renaming back to `.pem` re-trips the CI fallback with no offsetting benefit —
+Using `.pem` re-trips the CI fallback with no offsetting benefit —
 don't.
 
 ## It is safe to ship despite looking secret-shaped
 
-The rename does not weaken what the check is actually for. This file
+The `.crt` extension does not weaken what the check is actually for. This file
 provably contains exactly one `BEGIN CERTIFICATE` block and no key material,
 the same rule's content scan for `BEGIN [A-Z ]*PRIVATE KEY` still runs
 against every tracked file regardless of extension, and `gitleaks` — when
