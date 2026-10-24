@@ -1,5 +1,6 @@
-# gitleaks configuration — read by `gitleaks detect` when repo-docs' `secrets` rule
-# finds gitleaks on PATH (otherwise the rule falls back to its own file checks).
+# gitleaks configuration — read by `gitleaks protect` in the pre-commit hook
+# (.githooks/pre-commit) when gitleaks is on PATH (without it the hook still
+# blocks the secret file shapes itself).
 #
 # Audited 2026-09-29, both findings: generic-api-key in the two OPS/OMS captures,
 # tests/unit/fixtures/paho-alertas-p0.html and -p1.html (PahoParserTest's fixtures,

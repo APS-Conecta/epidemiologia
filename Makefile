@@ -16,8 +16,8 @@ aps-sync:
 	git -C "$(APS)" archive HEAD js | tar -x -C src/aps --strip-components=1
 	rm -f src/aps/*.test.js
 
-# src/aps is committed, so it can drift from the package the way js/ can
-# drift from src/. Until CI lands here, this target IS the gate
+# src/aps is committed, so it can drift from the package the way any vendored
+# copy drifts from its source. Until CI lands here, this target IS the gate
 # (same posture farmacia's Makefile records).
 aps-drift: aps-sync
 	@drift="$$(git status --porcelain -- src/aps)"; \

@@ -241,25 +241,20 @@ for path in js/$APP-main.mjs.map vitest.config.js vite.config.js src/state.js; d
 	esac
 done
 
-# The bundle in js/ is committed — that IS the deployment. So the failure this
-# guards is src/ moving without a rebuild: the running app would then not be the
-# code in this repo.
-#
-# CI now runs this same assertion and does NOT skip (#39), which matters because
-# the skip below triggers exactly where the check is most needed: a fresh clone
-# has no node_modules. This copy stays anyway — it costs nothing when node is
-# present, and it answers the question locally before a push rather than after.
+# The bundle in js/ and css/ is build output — untracked, built by the release
+# workflow before packing. What this guards locally is that the build a checkout
+# runs actually produces the two artifacts the app serves; "src/ moved and the
+# build is broken" is caught here before a push, and by the release workflow's
+# pack step on every pull request.
 if command -v npm >/dev/null 2>&1 && [ -d node_modules ]; then
 	npm run build --silent >/dev/null 2>&1
-	drift="$(git status --porcelain js/ css/ 2>/dev/null)"
-	if [ -z "$drift" ]; then
-		pass "the js/ bundle matches src/"
+	if [ -s "js/$APP-main.mjs" ] && [ -s "css/$APP-style.css" ]; then
+		pass "the build produces the js/ bundle and the css/ stylesheet"
 	else
-		fail "js/ is behind src/ — run 'npm run build' and commit the result"
-		printf '%s\n' "$drift" | sed 's/^/        /'
+		fail "npm run build produced no bundle — the app would serve nothing"
 	fi
 else
-	printf '  --    no node_modules: not checking whether the bundle is current\n'
+	printf '  --    no node_modules: not checking whether the build produces the bundle\n'
 fi
 
 # The one this script is really for. Read the CSP header specifically, so that a
