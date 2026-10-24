@@ -3,7 +3,11 @@
 # Everything here used to be run by hand, on every change, forever — and the one
 # guarding that the shipped bundle matches src/ SKIPPED ITSELF whenever
 # node_modules was absent, which is the state of a fresh clone. That is exactly
-# the machine a check like this should not trust a human to have set up.
+# the machine a check like this should not trust a human to have set up. That
+# bundle check is gone with the committed bundle (instalador #34): js/ and css/ are
+# build output now, and the machine's check that the build happens at all — and
+# that it packs — is the release workflow, on every pull request
+# (.github/workflows/release.yml).
 #
 # What is deliberately NOT here: the rest of scripts/smoke.sh. Those assertions
 # need a provisioned Nextcloud with the app enabled, an admin user and an app
@@ -59,8 +63,8 @@ jobs:
           NEXTCLOUD_ROOT: /usr/src/nextcloud
         run: php tools/phpunit.phar
 
-  bundle:
-    name: Bundle matches src/
+  frontend:
+    name: Frontend unit tests
     runs-on: ubuntu-latest
 
     steps:
@@ -81,22 +85,7 @@ jobs:
       - name: Unit-test the frontend logic
         run: npm test
 
-      # js/ and css/ are committed — that IS the deployment, so src/ moving
-      # without a rebuild means the running app is not the code in this repo.
-      # Rebuilding and requiring a clean tree is the same assertion smoke.sh
-      # makes, minus the self-skip that made it unreliable where it mattered.
-      #
-      # `git status --porcelain` and NOT `git diff --exit-code`: the CSS chunk
-      # carries a content hash, so a rebuild after a real change writes a NEW
-      # file and deletes the old one. `git diff` reports the deletion and is
-      # blind to the addition, so it can pass on precisely the drift that
-      # matters. Verified by planting an untracked chunk — diff called it clean.
-      - name: Rebuild and require no drift
-        run: |
-          npm run build
-          drift="$(git status --porcelain -- js/ css/)"
-          if [ -n "$drift" ]; then
-            printf '%s\n' "$drift"
-            echo "::error::js/ and css/ are behind src/. Run 'npm run build' and commit the result."
-            exit 1
-          fi
+      # Nothing rebuild-and-require-no-drift here any more: the bundle is ignored
+      # build output, so there is no committed copy to drift. The release workflow's
+      # pack step builds on every pull request and fails a PR whose build produces no
+      # bundle.

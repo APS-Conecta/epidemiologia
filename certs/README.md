@@ -6,37 +6,27 @@ already downloads and trusts when it visits `https://www.ispch.gob.cl/`.
 
 ## Why `.crt` and not `.pem`
 
-This file is `.crt`, deliberately, and **must keep that extension**. Two
-independent reasons:
+This file is `.crt`, deliberately, and **must keep that extension**. It is the
+more correct name on its own terms: GlobalSign itself publishes this exact artifact at
+`http://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt` — `.crt` is
+the upstream's own filename, not one invented here. `.crt` is the
+conventional extension for a certificate; `.pem` names a text *encoding*
+(base64 with header/footer lines), and that encoding is shared by
+certificates, CSRs and private keys alike — which is exactly why a bare
+`.pem` is the ambiguous, suspicious-looking case and `.crt` is not. The
+bytes in this file are PEM-encoded text.
 
-- The repo's docs CI (`.github/repo-docs.py`, `_r_secrets`) has two code
-  paths. When `gitleaks` is on `PATH` it content-scans every tracked file and
-  is authoritative; when it is not, the rule falls
-  back to a filename heuristic that
-  blocks anything matching `\.(pem|key|p12)$` on sight, because private keys
-  are routinely PEM-encoded too. The `.crt` extension gets this file past
-  that fallback.
-- It is also the more correct name on its own terms, independent of CI.
-  GlobalSign itself publishes this exact artifact at
-  `http://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt` — `.crt` is
-  the upstream's own filename, not one invented here. `.crt` is the
-  conventional extension for a certificate; `.pem` names a text *encoding*
-  (base64 with header/footer lines), and that encoding is shared by
-  certificates, CSRs and private keys alike — which is exactly why a bare
-  `.pem` is the ambiguous, suspicious-looking case and `.crt` is not. The
-  bytes in this file are PEM-encoded text.
-
-Using `.pem` re-trips the CI fallback with no offsetting benefit —
-don't.
+Using `.pem` buys nothing here and re-flags the file for every name-based
+secret check — don't.
 
 ## It is safe to ship despite looking secret-shaped
 
-The `.crt` extension does not weaken what the check is actually for. This file
-provably contains exactly one `BEGIN CERTIFICATE` block and no key material,
-the same rule's content scan for `BEGIN [A-Z ]*PRIVATE KEY` still runs
-against every tracked file regardless of extension, and `gitleaks` — when
-present — still content-scans this file like any other rather than trusting
-its name.
+The `.crt` extension does not weaken what the checks are actually for. This file
+provably contains exactly one `BEGIN CERTIFICATE` block and no key material:
+the pre-commit hook's gitleaks (`.githooks/pre-commit`, configured by
+`.gitleaks.toml`) content-scans it like any other file rather than trusting
+its name, and GitHub's secret scanning and push protection cover the whole
+repository.
 
 ## Why it is here
 

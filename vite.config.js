@@ -21,7 +21,7 @@ export default createAppConfig(
 		// Per-component imports, never the '@nextcloud/vue' barrel (L3-13): the
 		// package declares no `sideEffects`, so the barrel defeats tree-shaking
 		// and shipped emoji-mart, vue-select, striptags and the axios adapter —
-		// none used — at 1.08 MB for a 359 KB app. The committed js/ and css/
+		// none used — at 1.08 MB for a 359 KB app. The js/ and css/
 		// artifacts are rebuilt with this change; a new component import goes
 		// through the same subpath or the bundle silently regrows.
 		config: { build: { cssCodeSplit: false } },

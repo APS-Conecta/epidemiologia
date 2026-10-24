@@ -6,12 +6,13 @@ which are licensed by their own authors under their own terms. This file exists 
 satisfy the attribution those licences require.
 
 **Derived from `js/epidemiologia-main.mjs.license`**, which the build emits beside the bundle and
-which is committed with it, so the notices travel with the copy as AGPL §4 requires. That file is the
+which the release tarball carries, so the notices travel with the distribution as AGPL §4 requires.
+That file is the
 authority: it names every package the build actually pulled into `js/`, with its version. This one is
 its summary, grouped by licence.
 
 Regenerating is reading it again: run `npm run build`, then update the table from the `Included
-packages:` list in `js/epidemiologia-main.mjs.license`. `docs.py licences epidemiologia` reads the
+packages:` list in `js/epidemiologia-main.mjs.license`. A manifest summary would read the
 *manifests* instead, so it is a cross-check and never the source — the manifests name 5 runtime
 dependencies and the bundle carries 44, because a dependency's own dependencies ship too.
 

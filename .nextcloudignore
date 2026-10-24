@@ -1,0 +1,36 @@
+# The runtime exclude list — what the release tarball carries and what stays out.
+#
+# pack-app.sh (the org's shared app-release workflow, instalador #31) reads this file
+# with rsync rules anchored at the app root, and it REPLACES the packer's defaults, so
+# it must list every development path itself; '!' re-include lines are refused. The
+# tarball carries appinfo/, js/ and css/ (both built by the release), lib/, templates/,
+# img/, certs/ (the ISP intermediate the app merges into the instance's trust anchors),
+# LICENSE, README.md and THIRD-PARTY-NOTICES.md — an install needs no build step and
+# no development tree.
+#
+# src/ needs no re-include for src/aps: the vendored aps-common code is build input,
+# bundled into js/ by the release build, and nothing at runtime reads it.
+# /.* covers every dotfile and dot directory at the root, this file included:
+# .github, .githooks, .gitleaks.toml, .gitignore, .htaccess (a guard for a dev
+# checkout's node_modules; the tarball ships none of what it denies).
+- /.*
+- /src
+- /tests
+- /docs
+- /scripts
+- /CHANGELOG.md
+- /openapi.json
+- /AGENTS.md
+- /CLAUDE.md
+- /CONTEXT.md
+- /Makefile
+- /package.json
+- /package-lock.json
+- /phpunit.xml
+- /phpunit.integration.xml
+- /vite.config.js
+- /vitest.config.js
+# Sourcemaps stay out of the tarball (.gitignore's rule for the repo, this one for
+# the release): they name every source path of the build machine.
+- /js/*.map
+- /css/*.map
