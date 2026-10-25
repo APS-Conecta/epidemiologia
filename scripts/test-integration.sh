@@ -7,7 +7,7 @@
 # Usage: scripts/test-integration.sh [phpunit args…]   (override with EPI_CONTAINER=…)
 set -euo pipefail
 
-CONTAINER="${EPI_CONTAINER:-apsconecta-gestion-nextcloud-1}"
+CONTAINER="${EPI_CONTAINER:-aps-conecta-nextcloud}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PHPUNIT_VERSION=11
 
