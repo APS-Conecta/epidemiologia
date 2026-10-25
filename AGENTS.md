@@ -2,11 +2,13 @@
 
 Rules for any AI agent working in this repo. `CLAUDE.md` imports this file.
 
-**This repo is nested inside another one.** It is cloned into `gestion/apps/epidemiologia`, which
-`gestion` gitignores and bind-mounts to `/var/www/html/custom_apps`, so `gestion/AGENTS.md` loads as
-parent context whenever you work here. Its rules still apply; nothing below replaces them.
+**This repo is not nested.** It once cloned into `gestion/apps/epidemiologia`, a stack deleted at
+the cutover (instalador #53): the suite now installs this app from its signed release, and a clone
+is for development only. The suite's org-wide doctrine lives in the suite repository's `AGENTS.md`
+and `docs/adr/` (`APS-Conecta/instalador`), which is the parent context to re-read for
+organisation-wide rules.
 
-Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo citations stay bare. The org-wide contracts index lives in `gestion/docs/CONTRACTS.md`.
+Cross-repo ADR citations are `repo#ADR-NNNN` (`territorio#ADR-0016`); in-repo citations stay bare. The org-wide decisions live as ADRs in the suite repository (`APS-Conecta/instalador`, `docs/adr/`); cross-app contracts are each app's OpenAPI surface, indexed on the documentation site.
 
 **Language.** One line decides it: **Spanish is what a clinician reads. Everything else is English.**
 

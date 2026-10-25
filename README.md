@@ -39,7 +39,7 @@ Dentro de este repositorio quedan solo los documentos que viajan con el código:
 - [`CHANGELOG.md`](CHANGELOG.md): qué cambió y cuándo.
 - [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md): los componentes de terceros que lleva el bundle y su licencia.
 
-Las decisiones que alcanzan más allá de esta aplicación pertenecen al repositorio troncal, no a este: ver [gestion ADR-0011](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0011-org-wide-facts-live-in-gestion.md).
+Las decisiones que alcanzan más allá de esta aplicación pertenecen al repositorio troncal, no a este: ver [ADR-0007 de la suite](https://github.com/APS-Conecta/instalador/blob/main/docs/adr/0007-org-wide-decisions-live-in-this-repository.md).
 
 ## Estado
 
@@ -47,7 +47,7 @@ Las decisiones que alcanzan más allá de esta aplicación pertenecen al reposit
 
 **Desde un centro de datos, cuatro sectores no tienen nada que mostrar, y lo dicen.** `epi.minsal.cl` responde a un host así con el 403 de Cloudflare y el ISP no responde (medido el 2026-09-27): los sectores del Departamento de Epidemiología y los tres del ISP muestran su aviso y un enlace a la página del publicador, y la campana de administración nombra a cada uno, y al informe, en los días 2, 7 y 30. Un establecimiento con conexión residencial lee los seis.
 
-Lo que no está hecho, cada cosa por una razón: la ruta OCS no lleva `#[CORS]`, que necesita un origen concreto y no un comodín; nada propaga el establecimiento a esta aplicación, así que lee `notify_groups` y sus propios contadores del sondeo y nada más ([gestion ADR-0013](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0013-the-establishment-is-instance-configuration.md)); `scripts/smoke.sh` y `scripts/layout.sh` se ejecutan a mano. Las etiquetas `v0.3.0`…`v0.11.3` no tienen página de release en GitHub y no la tendrán: nacieron del tarball que `gestion` construía desde una etiqueta. Desde la `v0.12.0` cada etiqueta publica su release firmada (arriba) y el instalador de la suite instala desde ella; el tarball de `gestion` se retira con el horneado (instalador #42).
+Lo que no está hecho, cada cosa por una razón: la ruta OCS no lleva `#[CORS]`, que necesita un origen concreto y no un comodín; nada propaga el establecimiento a esta aplicación, así que lee `notify_groups` y sus propios contadores del sondeo y nada más ([ADR-0009 de la suite](https://github.com/APS-Conecta/instalador/blob/main/docs/adr/0009-the-establishment-is-instance-configuration.md)); `scripts/smoke.sh` y `scripts/layout.sh` se ejecutan a mano. Las etiquetas `v0.3.0`…`v0.11.3` no tienen página de release en GitHub y no la tendrán: nacieron del tarball que `gestion` construía desde una etiqueta. Desde la `v0.12.0` cada etiqueta publica su release firmada (arriba) y el instalador de la suite instala desde ella; el tarball de `gestion` se retira con el horneado (instalador #42).
 
 Dos trampas medidas, que ya costaron un diagnóstico equivocado (su detalle y el procedimiento están en la página de desarrollo):
 
@@ -56,23 +56,26 @@ Dos trampas medidas, que ya costaron un diagnóstico equivocado (su detalle y el
 
 ## Inicio rápido de desarrollo
 
-Cuatro pasos, en una máquina que ya ejecuta el stack de `gestion`.
+En una instalación real, la aplicación llega desde su release firmada: el manifiesto de la suite
+es la única lista de aplicaciones y el aprovisionamiento ya no clona nada. Lo que sigue es para
+trabajar sobre el código, contra una suite en marcha.
 
-1. **Clonar este repositorio en `gestion/apps/epidemiologia`** (en el host). `gestion` ignora `apps/*` y monta el directorio en `/var/www/html/custom_apps`, así que no se copia nada. El aprovisionamiento no clona por su cuenta: con el directorio ausente instala el tarball versionado, y con un clon a medias se detiene e imprime el `git clone` que hay que ejecutar.
-2. **Habilitar la aplicación.** `make -C ../.. seed` desde este clon ejecuta el aprovisionamiento de `gestion`, que la habilita (fase 12); también sirve, en el contenedor,
-   `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ app:enable epidemiologia`.
-   Responde `epidemiologia … enabled`, o `epidemiologia already enabled` si ya estaba activa.
+1. **Clonar este repositorio y construir el frontend.** `js/` y `css/` no están versionados: un
+   clon necesita `npm ci && npm run build` antes de que la aplicación sirva.
+2. **Llevar el código al contenedor.** Los comandos `occ` de esta guía corren en el contenedor
+   de Nextcloud de la suite (`docker exec -u www-data aps-conecta-nextcloud php occ …`); los
+   scripts del repositorio usan ese mismo contenedor y aceptan `EPI_CONTAINER` para otro destino.
 3. **Comprobar que los tres trabajos en segundo plano quedaron registrados** (en el contenedor):
-   `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ background-job:list | grep -E 'ProbeJob|RefreshJob|WarmJob'`.
+   `docker exec -u www-data aps-conecta-nextcloud php occ background-job:list | grep -E 'ProbeJob|RefreshJob|WarmJob'`.
    Exactamente tres filas es lo correcto: el sondeo que detecta, el pase horario que mantiene al día una instalación que nadie abre y el pase profundo nocturno que recorre los catálogos antiguos. **Una fila ausente significa que la habilitación no la registró:** ver las trampas de la plataforma en la página de desarrollo.
-4. **Abrir `http://localhost:8180/apps/epidemiologia`** (el puerto del host que publica `gestion/.env`; `http://localhost/…` es la base *dentro* del contenedor, por eso la usa `scripts/smoke.sh` y un navegador no puede). Inicio muestra una tarjeta por sector de alertas, cada una con lo último que publicó su fuente. Desde la terminal, `scripts/smoke.sh` comprueba el mismo cableado y más.
+4. **Abrir `/apps/epidemiologia`** en la URL de la instalación (`http://localhost/…` es la base *dentro* del contenedor, por eso la usa `scripts/smoke.sh` y un navegador no puede). Inicio muestra una tarjeta por sector de alertas, cada una con lo último que publicó su fuente. Desde la terminal, `scripts/smoke.sh` comprueba el mismo cableado y más.
 
 Pruebas: `scripts/test.sh` ejecuta la batería unitaria dentro del contenedor (PHPUnit 11), `npm test` la lógica del frontend (Vitest), `scripts/smoke.sh` el cableado contra la instancia en marcha, `scripts/layout.sh` la disposición en un navegador real a tres anchos y `scripts/openapi.sh` regenera `openapi.json`. La integración continua (`.github/workflows/ci.yml`) corre en `main` y en los pull requests, no en cada push.
 
-`js/` y `css/` **no están versionados**: los construye el flujo de release y viajan dentro del tarball firmado; un clon necesita `npm ci && npm run build` antes de que la aplicación sirva. Para actualizar una instalación desde un clon: `git pull`, `npm ci && npm run build`, `docker exec -u www-data apsconecta-gestion-nextcloud-1 php occ upgrade` y reiniciar el contenedor web. **La migración de la 0.11.0 reescribe la clave primaria de `epidemiologia_alert` y Nextcloud no tiene migraciones de retroceso:** respaldar la base de datos antes de esa actualización. La configuración (`notify_groups` y los contadores que escribe la propia aplicación), el procedimiento para añadir una fuente y el resto de las trampas están en la [referencia de desarrollo](https://aps-conecta.github.io/documentation/desarrollo/epidemiologia.html).
+`js/` y `css/` **no están versionados**: los construye el flujo de release y viajan dentro del tarball firmado; un clon necesita `npm ci && npm run build` antes de que la aplicación sirva. Para actualizar una instalación desde un clon: `git pull`, `npm ci && npm run build`, `docker exec -u www-data aps-conecta-nextcloud php occ upgrade` y reiniciar el contenedor web. **La migración de la 0.11.0 reescribe la clave primaria de `epidemiologia_alert` y Nextcloud no tiene migraciones de retroceso:** respaldar la base de datos antes de esa actualización. La configuración (`notify_groups` y los contadores que escribe la propia aplicación), el procedimiento para añadir una fuente y el resto de las trampas están en la [referencia de desarrollo](https://aps-conecta.github.io/documentation/desarrollo/epidemiologia.html).
 
 ## Licencia
 
-AGPL-3.0-or-later; véase [`LICENSE`](LICENSE). No es una elección libre: la aplicación compila `@nextcloud/vue` (AGPL-3.0-or-later) en los bundles de `js/`, junto con paquetes de Nextcloud bajo GPL-3.0-or-later, de modo que hereda el copyleft de lo que enlaza. [gestion ADR-0010](https://github.com/APS-Conecta/gestion/blob/main/docs/adr/0010-agpl-across-the-org.md) registra la decisión de toda la organización que se siguió de eso. Como la sección 13 de la AGPL cubre el uso en red, al personal que usa esta aplicación por la intranet se le debe su código fuente cuando lo pida.
+AGPL-3.0-or-later; véase [`LICENSE`](LICENSE). No es una elección libre: la aplicación compila `@nextcloud/vue` (AGPL-3.0-or-later) en los bundles de `js/`, junto con paquetes de Nextcloud bajo GPL-3.0-or-later, de modo que hereda el copyleft de lo que enlaza. [ADR-0006 de la suite](https://github.com/APS-Conecta/instalador/blob/main/docs/adr/0006-agpl-across-the-org.md) registra la decisión de toda la organización que se siguió de eso. Como la sección 13 de la AGPL cubre el uso en red, al personal que usa esta aplicación por la intranet se le debe su código fuente cuando lo pida.
 
 Datos del MINSAL, del ISP de Chile y de la OPS/OMS. Los componentes de terceros y sus avisos están en [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md); los avisos y licencias de la organización viven en [Aviso y licencias](https://aps-conecta.github.io/documentation/aviso.html).

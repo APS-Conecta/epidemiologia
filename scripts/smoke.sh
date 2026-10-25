@@ -16,7 +16,7 @@
 # Usage: scripts/smoke.sh     (override with EPI_CONTAINER=… EPI_USER=…)
 set -uo pipefail
 
-CONTAINER="${EPI_CONTAINER:-apsconecta-gestion-nextcloud-1}"
+CONTAINER="${EPI_CONTAINER:-aps-conecta-nextcloud}"
 USER_ID="${EPI_USER:-admin}"
 APP=epidemiologia
 BASE="http://localhost/apps/$APP"

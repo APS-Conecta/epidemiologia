@@ -14,7 +14,7 @@
 # Usage: scripts/openapi.sh     (override with EPI_CONTAINER=…)
 set -euo pipefail
 
-CONTAINER="${EPI_CONTAINER:-apsconecta-gestion-nextcloud-1}"
+CONTAINER="${EPI_CONTAINER:-aps-conecta-nextcloud}"
 APP=/var/www/html/custom_apps/epidemiologia
 
 # Root, not www-data: this writes tools/ and openapi.json in the repo bind

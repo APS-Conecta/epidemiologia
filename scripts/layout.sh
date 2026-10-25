@@ -13,7 +13,7 @@
 # Usage: scripts/layout.sh     (override with EPI_CONTAINER=… EPI_USER=…)
 set -uo pipefail
 
-CONTAINER="${EPI_CONTAINER:-apsconecta-gestion-nextcloud-1}"
+CONTAINER="${EPI_CONTAINER:-aps-conecta-nextcloud}"
 USER_ID="${EPI_USER:-admin}"
 # The port the host reaches the instance on, NOT the one inside the container:
 # the browser runs here, not in there.
