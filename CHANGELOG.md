@@ -10,6 +10,10 @@ made belongs in the commit, the issue, or a comment beside the code.
 
 ## [Unreleased]
 
+- **Dependency refresh (lockfile only):** 15 vulnerable packages floated to patched in-range
+  versions (dompurify, axios, vue, vitest, vite, among others), clearing every actionable
+  Dependabot alert; the 7 remaining low-severity alerts are upstream-blocked in
+  `@nextcloud/vite-config` and accepted.
 ## [0.12.0] — 2026-10-24
 
 - **First signed release (0.12.0).** Releases are built and signed by the org's shared
