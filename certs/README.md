@@ -66,3 +66,18 @@ echo | openssl s_client -connect www.ispch.gob.cl:443 -servername www.ispch.gob.
 Download the URL named under "CA Issuers", convert DER to PEM if needed
 (`openssl x509 -inform DER -in new.der -out gsgccr6alphasslca2025.crt`), and
 replace this file — keeping the `.crt` extension (see above).
+
+## Re-check record
+
+- **2026-10-29** (#140): nothing to replace. The live leaf is still the May 8
+  issuance (`*.ispch.gob.cl`, serial `1457738D2A7042DD7194D454`, notAfter
+  2026-11-23 13:22:09 GMT — not yet renewed) and still names this file's
+  issuer: `C = BE, O = GlobalSign nv-sa, CN = GlobalSign GCC R6 AlphaSSL CA 2025`,
+  AIA `CA Issuers` = `http://secure.globalsign.com/cacert/gsgccr6alphasslca2025.crt`;
+  a fresh fetch of that URL is byte-identical to the shipped file (SHA-256
+  `A8:83:55:92:31:F8:38:8D:AF:35:CE:41:C8:10:10:40:AE:8F:D9:B6:56:43:42:47:B9:47:5A:F5:92:CC:08:CA`).
+  The ISP answered this agent VPS (a datacentre IP, not the Gestión VPS) with
+  no timeout, so #140's "datacentre vantages time out" premise no longer holds
+  everywhere. The leaf has not been reissued: #140 stays open, and the check
+  is re-run when a renewed leaf appears (its `notAfter` moves off 2026-11-23) —
+  the renewal is the one moment the chain can switch.
